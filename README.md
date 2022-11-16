@@ -1,1 +1,1 @@
-# simplex-diffusion
+# Simplex Diffusion for text.
