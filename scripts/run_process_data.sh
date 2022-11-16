@@ -1,4 +1,4 @@
-# Process (group to fixed length, and tokenize) a dataset.
+# Process (group to fixed length chunks, and tokenize) a dataset.
 
 HF_HOME="/net/nfs.cirrascale/s2-research/rabeehk/.cache/huggingface/"
 
