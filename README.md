@@ -1,10 +1,12 @@
 # Simplex Diffusion Language Model (SDLM).
 
-# TODO(rabeeh): clean this yaml file.
 # How to setup the environment
 ```
 conda env create -f environment.yml
+python setup develop
 ```
+TODO(rabeeh): clean this yaml file and setup.
+
 
 # Process the data.
 ```
