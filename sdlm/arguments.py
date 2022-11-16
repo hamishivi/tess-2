@@ -140,7 +140,8 @@ class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
-
+    
+    data_percentage: int = field(default=100, metadata={"help": "Percentage of the data during data preprocessing."})
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
