@@ -1,1 +1,1 @@
-# Simplex Diffusion for text.
+# Simplex Diffusion Language Model (SDLM).
