@@ -7,7 +7,7 @@ from itertools import chain
 import datasets
 import transformers
 from datasets import load_dataset
-from sdlm.arguments import DataTrainingArguments, ModelArguments
+from sdlm.arguments import parse_args
 from transformers import AutoTokenizer, HfArgumentParser, TrainingArguments, set_seed
 from transformers.utils.versions import require_version
 
