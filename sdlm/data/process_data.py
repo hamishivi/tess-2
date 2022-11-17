@@ -174,6 +174,7 @@ def main():
 
     with training_args.main_process_first():
         tokenized_datasets.save_to_disk(training_args.output_dir)
+        logger.info(f"The processed data are written in {training_args.output_dir}")
 
 
 if __name__ == "__main__":
