@@ -19,16 +19,15 @@ from tqdm.auto import tqdm
 from transformers import (
     CONFIG_MAPPING,
     AutoConfig,
-    AutoModelForMaskedLM,
     AutoTokenizer,
     DataCollatorWithPadding,
     HfArgumentParser,
     get_scheduler,
 )
-from torch.nn import CrossEntropyLoss
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_validation
+from sdlm.models import RobertaForDiffusionLM
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0")
@@ -38,11 +37,6 @@ require_version(
     "datasets>=1.8.0",
     "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt",
 )
-
-
-def compute_loss(logits, labels, config):
-    loss_fct = CrossEntropyLoss()
-    return loss_fct(logits.view(-1, config.vocab_size), labels.view(-1))
 
 
 def main():
@@ -124,14 +118,14 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = AutoModelForMaskedLM.from_pretrained(
+        model = RobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
         )
     else:
         logger.info("Training new model from scratch")
-        model = AutoModelForMaskedLM.from_config(config)
+        model = RobertaForDiffusionLM.from_config(config)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
@@ -290,7 +284,7 @@ def main():
 
             with accelerator.accumulate(model):
                 outputs = model(**batch)
-                loss = compute_loss(outputs.logits, batch["input_ids"], config)
+                loss = outputs.loss
 
                 # We keep track of the loss at each epoch
                 if training_args.with_tracking:
@@ -321,7 +315,7 @@ def main():
             with torch.no_grad():
                 outputs = model(**batch)
 
-            loss = compute_loss(outputs.logits, batch["input_ids"], config)
+            loss = outputs.loss
             losses.append(accelerator.gather_for_metrics(loss.repeat(training_args.per_device_eval_batch_size)))
 
         losses = torch.cat(losses)
