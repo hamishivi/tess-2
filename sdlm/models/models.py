@@ -4,6 +4,8 @@ from transformers.models.roberta.modeling_roberta import RobertaPreTrainedModel,
 from transformers.utils import logging
 from transformers.modeling_outputs import MaskedLMOutput
 from torch.nn import CrossEntropyLoss
+import torch.nn as nn
+import pdb
 
 logger = logging.get_logger(__name__)
 
@@ -28,8 +30,15 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # The LM head weights require special treatment only when they are tied with the word embeddings
         self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
 
+        self.vocab_to_hidden_dim_embed = nn.Linear(config.vocab_size, config.hidden_size, bias=False)
+        self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
+
         # Initialize weights and apply final processing
         self.post_init()
+
+    def post_init(self):
+        super().post_init()
+        self.vocab_to_hidden_dim_embed.weight.data = self.get_input_embeddings().weight.data.T
 
     def get_output_embeddings(self):
         return self.lm_head.decoder
