@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import datasets
 import torch
+import pdb
 import transformers
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
@@ -253,7 +254,6 @@ def main():
             path = dirs[-1]  # Sorts folders by date modified, most recent checkpoint is the last
         # Extract `epoch_{i}` or `step_{i}`
         training_difference = os.path.splitext(path)[0]
-
         if "epoch" in training_difference:
             starting_epoch = int(training_difference.replace("epoch_", "")) + 1
             resume_step = None
