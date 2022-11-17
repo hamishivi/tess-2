@@ -25,6 +25,7 @@ from transformers import (
     HfArgumentParser,
     get_scheduler,
 )
+from torch.nn import CrossEntropyLoss
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_validation
@@ -146,7 +147,6 @@ def main():
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # Data collator
-    # TODO: check these getting the same results with their data-collator.
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer, max_length=data_args.max_seq_length)
 
     # DataLoaders creation:
@@ -161,7 +161,6 @@ def main():
         collate_fn=data_collator,
         batch_size=training_args.per_device_eval_batch_size,
     )
-
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight"]
@@ -286,7 +285,10 @@ def main():
 
             with accelerator.accumulate(model):
                 outputs = model(**batch)
-                loss = outputs.loss
+                logits = outputs.logits
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, config.vocab_size), batch["input_ids"].view(-1))
+
                 # We keep track of the loss at each epoch
                 if training_args.with_tracking:
                     total_loss += loss.detach().float()
