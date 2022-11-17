@@ -330,6 +330,7 @@ def main():
             if completed_steps >= training_args.max_train_steps:
                 break
 
+        """
         model.eval()
         losses = []
         for step, batch in enumerate(eval_dataloader):
@@ -359,7 +360,7 @@ def main():
                 },
                 step=completed_steps,
             )
-
+        """
         if epoch < training_args.num_train_epochs - 1:
             accelerator.wait_for_everyone()
             unwrapped_model = accelerator.unwrap_model(model)
@@ -390,8 +391,10 @@ def main():
         )
         if accelerator.is_main_process:
             tokenizer.save_pretrained(training_args.output_dir)
+            """
             with open(os.path.join(training_args.output_dir, "all_results.json"), "w") as f:
                 json.dump({"perplexity": perplexity}, f)
+            """
 
 
 if __name__ == "__main__":
