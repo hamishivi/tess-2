@@ -5,6 +5,7 @@ from transformers.utils import logging
 from transformers.modeling_outputs import MaskedLMOutput
 from torch.nn import CrossEntropyLoss
 import torch.nn as nn
+import torch.nn.functional as F
 import pdb
 
 logger = logging.get_logger(__name__)
@@ -48,12 +49,13 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
 
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
+        timesteps: torch.FloatTensor,
+        input_ids: torch.LongTensor,
+        inputs_embeds: torch.FloatTensor,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -71,8 +73,16 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # Adds timesteps to the noisy simplex (`input_embeds`).
+        inputs_embeds = F.softmax(inputs_embeds, dim=-1)
+        seq_length = inputs_embeds.shape[1]
+        inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_embeds)
+        # TODO(rabeeh): here this timestep can be improved.
+        timesteps_embed = self.timestep_embed(timesteps.view(-1, 1))
+        inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(1, seq_length, 1)
+
         outputs = self.roberta(
-            input_ids,
+            input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,

@@ -701,10 +701,8 @@ def main():
                     torch.sqrt(alpha_t_bar) * inputs_diralpha + torch.sqrt(1 - alpha_t_bar) * unit_noise
                 )
 
-                # sample the input simplex from dirichlet distribution
-                inputs_diralpha = torch.exp(inputs_diralpha)  # dirichlet's alpha cannot be negative
+                ## should be done inside the model.
                 perturbed_inputs_simplex = torch.nn.functional.softmax(perturbed_inputs_diralpha_noexp, dim=-1)
-
                 # pass to the model, conditioned on the timestep as well
                 perturbed_inputs_embeds = embedding_sum_layer(perturbed_inputs_simplex)
                 t_progress = selected_t / total_t

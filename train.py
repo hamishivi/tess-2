@@ -13,7 +13,7 @@ from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from datasets import load_from_disk
-from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
+from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments, DiffusionArguments
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import (
@@ -28,6 +28,8 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_validation
 from sdlm.models import RobertaForDiffusionLM
+from sdlm.utils import convert_to_simplex, scale
+from diffusers import DDPMScheduler
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0")
@@ -40,13 +42,13 @@ require_version(
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
     # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
     # If we're using tracking, we also need to initialize it here and it will by default pick up all supported trackers
@@ -129,8 +131,8 @@ def main():
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
-    embedding_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > embedding_size:
+    vocab_size = model.get_input_embeddings().weight.shape[0]
+    if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
     if not data_args.tokenized_data_path:
@@ -191,15 +193,15 @@ def main():
         num_warmup_steps=training_args.num_warmup_steps * training_args.gradient_accumulation_steps,
         num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps,
     )
+    # TODO: we need to check how this works.
+    noise_scheduler = DDPMScheduler(
+        num_train_timesteps=diffusion_args.num_diffusion_steps, beta_schedule=diffusion_args.beta_schedule
+    )
 
     # Prepare everything with our `accelerator`.
-    (
-        model,
-        optimizer,
-        train_dataloader,
-        eval_dataloader,
-        lr_scheduler,
-    ) = accelerator.prepare(model, optimizer, train_dataloader, eval_dataloader, lr_scheduler)
+    (model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler) = accelerator.prepare(
+        model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler
+    )
 
     # On TPU, the tie weights in our model have been disconnected, so we need to restore the ties.
     if accelerator.distributed_type == DistributedType.TPU:
@@ -220,7 +222,7 @@ def main():
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if training_args.with_tracking:
-        experiment_config = vars(args)
+        experiment_config = {**vars(model_args), **vars(training_args), **vars(diffusion_args), **vars(data_args)}
         # TensorBoard cannot log Enums, need the raw value
         experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
         accelerator.init_trackers("mlm_no_trainer", experiment_config)
@@ -283,7 +285,26 @@ def main():
                     continue
 
             with accelerator.accumulate(model):
-                outputs = model(**batch)
+                ###############
+                # Converts embeddings to a simplex representation.
+                simplex = convert_to_simplex(batch["input_ids"], diffusion_args.simplex_value, vocab_size)
+                noise = diffusion_args.simplex_value * torch.randn(simplex.shape).to(simplex.device)
+                bsz = simplex.shape[0]
+                # Sample a random timestep for each simplex token representation.
+                timesteps = torch.randint(
+                    0,
+                    noise_scheduler.config.num_train_timesteps,
+                    (bsz,),
+                    device=simplex.device,
+                ).long()
+                # Adds noise to each simplex representation accoding to the noise magnitude at
+                # each timestep (Forward diffusion process).
+                # TODO: check this!
+                noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
+                # TODO(rabeeh): shouldn't they scale it before using scheduler?
+                timesteps = scale(timesteps, noise_scheduler.config.num_train_timesteps)
+                outputs = model(inputs_embeds=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
+                ##############
                 loss = outputs.loss
 
                 # We keep track of the loss at each epoch

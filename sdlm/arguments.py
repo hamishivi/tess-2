@@ -204,3 +204,28 @@ class DataTrainingArguments:
                 extension = self.validation_file.split(".")[-1]
                 if extension not in ["csv", "json", "txt"]:
                     raise ValueError("`validation_file` should be a csv, a json or a txt file.")
+
+
+@dataclass
+class DiffusionArguments:
+    """Defines the diffusion related parameters."""
+
+    simplex_value: int = field(
+        default=5,
+        metadata={
+            "help": (
+                "We map the token ids to a vector of vocabulary size, where for tokens not"
+                "equal to the token id `-simplex_value` is selected, and `simplex_value` otherwise."
+            )
+        },
+    )
+    num_diffusion_steps: int = field(default=2500, metadata={"help": "Defines the number of diffusion steps."})
+    beta_schedule: str = field(
+        default="squaredcos_cap_v2",
+        metadata={
+            "help": (
+                "The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model."
+                "Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`."
+            )
+        },
+    )
