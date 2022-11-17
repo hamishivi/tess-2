@@ -54,15 +54,7 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
             examples[text_column_name] = [
                 line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
             ]
-            return tokenizer(
-                examples[text_column_name],
-                padding=padding,
-                truncation=True,
-                max_length=max_seq_length,
-                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                # receives the `special_tokens_mask`.
-                return_special_tokens_mask=True,
-            )
+            return tokenizer(examples[text_column_name], padding=padding, truncation=True, max_length=max_seq_length)
 
         with accelerator.main_process_first():
             tokenized_datasets = raw_datasets.map(
@@ -75,10 +67,8 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
-        # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
-        # efficient when it receives the `special_tokens_mask`.
         def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
+            return tokenizer(examples[text_column_name])
 
         with accelerator.main_process_first():
             tokenized_datasets = raw_datasets.map(
@@ -125,12 +115,13 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
     return tokenized_datasets
 
 
-def split_data_to_train_validation(data_args, data):
+def split_data_to_train_validation(data_args, data, seed):
     total_size = len(data["train"])
     validation_size = int(total_size * data_args.validation_split_ratio)
     train_size = total_size - validation_size
     train, validation = torch.utils.data.random_split(
-        data, [train_size, validation_size], generator=torch.Generator.manual_seed(data_args.seed)
+        data["train"], [train_size, validation_size], generator=torch.Generator().manual_seed(seed)
     )
     data["train"], data["validation"] = train, validation
+    assert len(data["train"]) == train_size and len(data["validation"]) == validation_size
     return data

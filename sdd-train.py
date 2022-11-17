@@ -441,10 +441,7 @@ def main():
     accelerator.wait_for_everyone()
 
     # under decode mode, will load model from the output_dir
-    if args.train_mode == "decode":
-        args.model_name_or_path = args.output_dir
-        logger.info(f"Overwriting model_name_or_path ({args.model_name_or_path}) with {args.output_dir}")
-    elif args.train_mode == "train":
+    if args.train_mode == "train":
         train_losses_log_file = os.path.join(args.output_dir, "training_losses.txt")
         if accelerator.is_main_process:
             if os.path.exists(train_losses_log_file):
@@ -519,15 +516,6 @@ def main():
         batch_size=args.per_device_eval_batch_size,
         generator=torch.Generator().manual_seed(42),
     )
-
-    ########
-
-    # # If we want to use a non-existing architecture, we can do it here, e.g.,
-    # config.hidden_size = 1600
-    # config.intermediate_size = 4096
-    # config.max_position_embeddings = 128
-    # config.num_attention_heads = 25
-    # config.num_hidden_layers = 48
 
     if args.init_blank_language_model:
         model = AutoModelForMaskedLM.from_config(config)
@@ -635,8 +623,6 @@ def main():
             # return 0 # just give warnings, do not interrupt
         accelerator.save_state(os.path.join(args.output_dir, "accelerate_ckpt"))
         completed_steps = 0
-    elif args.train_mode == "decode":
-        pass
     else:
         raise ValueError("train_mode must be one of 'train', 'resume', 'decode'")
 
@@ -711,42 +697,13 @@ def main():
                     * one_hot_value
                     * torch.normal(0, 1, size=inputs_diralpha.shape).to(accelerator.device)
                 )
-                if "no_z" in args.remove_noise_mode:
-                    raise ValueError("no_z is disabled for now")
-                    unit_noise = unit_noise * 0
-
-                if "biased_z" in args.remove_noise_mode:
-                    raise ValueError("biased_z is disabled for now")
-                else:
-                    perturbed_inputs_diralpha_noexp = (
-                        torch.sqrt(alpha_t_bar) * inputs_diralpha + torch.sqrt(1 - alpha_t_bar) * unit_noise
-                    )
+                perturbed_inputs_diralpha_noexp = (
+                    torch.sqrt(alpha_t_bar) * inputs_diralpha + torch.sqrt(1 - alpha_t_bar) * unit_noise
+                )
 
                 # sample the input simplex from dirichlet distribution
-                if "no_dir" in args.remove_noise_mode:
-                    inputs_diralpha = torch.exp(inputs_diralpha)  # dirichlet's alpha cannot be negative
-                    mean_or_protect_for_nan = True  # HACK: for the overflow issue
-                    if mean_or_protect_for_nan:
-                        perturbed_inputs_simplex = torch.nn.functional.softmax(
-                            perturbed_inputs_diralpha_noexp, dim=-1
-                        )  # HACK: only for mean of dirichlet, not for sample
-                    else:
-                        perturbed_inputs_diralpha = torch.exp(
-                            perturbed_inputs_diralpha_noexp
-                        )  # dirichlet's alpha cannot be negative, TODO: but leads to overflow issue sometimes
-                        dir_model = torch.distributions.dirichlet.Dirichlet(perturbed_inputs_diralpha)
-                        perturbed_inputs_simplex = dir_model.mean  # Han: choose between .sample() and .mean?
-                else:
-                    raise ValueError("have to specify no_dir now")
-                    inputs_diralpha = torch.exp(inputs_diralpha)  # dirichlet's alpha cannot be negative
-                    perturbed_inputs_diralpha = torch.exp(
-                        perturbed_inputs_diralpha_noexp
-                    )  # dirichlet's alpha cannot be negative
-                    dir_model = torch.distributions.dirichlet.Dirichlet(perturbed_inputs_diralpha)
-                    perturbed_inputs_simplex = dir_model.sample()  # Han: choose between .sample() and .mean?
-
-                if "debug" in args.remove_noise_mode:
-                    raise ValueError("debug is disabled for now")
+                inputs_diralpha = torch.exp(inputs_diralpha)  # dirichlet's alpha cannot be negative
+                perturbed_inputs_simplex = torch.nn.functional.softmax(perturbed_inputs_diralpha_noexp, dim=-1)
 
                 # pass to the model, conditioned on the timestep as well
                 perturbed_inputs_embeds = embedding_sum_layer(perturbed_inputs_simplex)
@@ -761,54 +718,11 @@ def main():
                 equivalent_score = equivalent_score[:, args.context_size :].contiguous()
 
                 # what we want to do with the output, loss mode kl or bhatt, the lower the better, reference: https://github.com/cran/Compositional/blob/master/R/kl.diri.R
-                if args.loss_mode == "kl":
-                    raise ValueError("kl is disabled for now")
-                    a = inputs_diralpha.view(-1, vocab_size)
-                    b = torch.exp(equivalent_score).view(-1, vocab_size)
-                    a0 = a.sum(dim=-1)
-                    b0 = b.sum(dim=-1)
-                    loss = (
-                        torch.sum(
-                            (a - b) * (torch.digamma(a) - torch.digamma(a0).view(batch_size * seq_len, 1)),
-                            dim=-1,
-                        )
-                        + torch.sum(torch.lgamma(b) - torch.lgamma(a), dim=-1)
-                        + torch.lgamma(a0)
-                        - torch.lgamma(b0)
-                    )
-                    loss = torch.mean(loss)
-                elif args.loss_mode == "bhatt":
-                    raise ValueError("bhatt is disabled for now")
-                    a = inputs_diralpha.view(-1, vocab_size)
-                    b = torch.exp(equivalent_score).view(-1, vocab_size)
-                    a0 = a.sum(dim=-1)
-                    b0 = b.sum(dim=-1)
-                    loss = (
-                        torch.lgamma(0.5 * torch.sum(a + b, dim=-1))
-                        + 0.5 * torch.sum(torch.lgamma(a) + torch.lgamma(b), dim=-1)
-                        - torch.sum(torch.lgamma(0.5 * (a + b)), dim=-1)
-                        - 0.5 * (torch.lgamma(a0) + torch.lgamma(b0))
-                    )
-                    loss = torch.mean(loss)
-                elif args.loss_mode == "xe":
-                    loss = torch.nn.functional.cross_entropy(
-                        equivalent_score.view(-1, vocab_size),
-                        diffusion_input_ids.contiguous().view(-1),
-                    )
-                    loss = torch.mean(loss)
-                elif args.loss_mode == "l2_on_z":
-                    raise ValueError("l2_on_z is disabled for now")
-                    diff_to_be_normed = unit_noise - equivalent_score
-                    loss = torch.mean(
-                        torch.linalg.norm(
-                            diff_to_be_normed.view(batch_size * seq_len * vocab_size, -1),
-                            ord=2,
-                            dim=-1,
-                        )
-                        ** 2
-                    )
-                else:
-                    raise ValueError("check loss_mode")
+                loss = torch.nn.functional.cross_entropy(
+                    equivalent_score.view(-1, vocab_size),
+                    diffusion_input_ids.contiguous().view(-1),
+                )
+                loss = torch.mean(loss)
 
                 train_losses.append(loss.item())
                 loss = loss / args.gradient_accumulation_steps

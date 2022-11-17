@@ -21,7 +21,7 @@ from transformers import (
     AutoConfig,
     AutoModelForMaskedLM,
     AutoTokenizer,
-    DataCollatorForLanguageModeling,
+    DataCollatorWithPadding,
     HfArgumentParser,
     get_scheduler,
 )
@@ -88,14 +88,14 @@ def main():
 
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
+        # TODO(rabeeh): this can take time for a large data, and we need to do it once.
         if "validation" not in tokenized_datasets:
-            tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets)
+            tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
     else:
         raw_datasets = load_data(data_args)
         if "validation" not in raw_datasets:
-            raw_datasets = split_data_to_train_validation(data_args, raw_datasets)
+            raw_datasets = split_data_to_train_validation(data_args, raw_datasets, training_args.seed)
 
-    pdb.set_trace()
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
@@ -146,8 +146,8 @@ def main():
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # Data collator
-    # This one will take care of randomly masking the tokens.
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
+    # TODO: check these getting the same results with their data-collator.
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer, max_length=data_args.max_seq_length)
 
     # DataLoaders creation:
     train_dataloader = DataLoader(

@@ -98,7 +98,7 @@ class TrainingArguments(HFTrainingArguments):
     )
     num_warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
     output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
-    seed: Optional[int] = field(default=None, metadata={"help": "A seed for reproducible training."})
+    seed: Optional[int] = field(default=42, metadata={"help": "A seed for reproducible training."})
     checkpointing_steps: str = field(
         default=None,
         metadata={
@@ -141,8 +141,8 @@ class DataTrainingArguments:
     )
     overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
     validation_split_ratio: Optional[float] = field(
-        default=5,
-        metadata={"help": "The ratio of the train set used as validation set in case there's no validation split."},
+        default=0.01,
+        metadata={"help": "The ratio(< 1.0) of the train set used as validation set in case there's no validation split."},
     )
     max_seq_length: Optional[int] = field(
         default=None,
