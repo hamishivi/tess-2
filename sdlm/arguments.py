@@ -1,9 +1,9 @@
 """Arguments used in training/inference/data processing."""
-import argparse
 from dataclasses import dataclass, field
 from typing import Optional
 
 from transformers import MODEL_MAPPING, SchedulerType
+from transformers import TrainingArguments as HFTrainingArguments
 
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -68,7 +68,7 @@ class ModelArguments:
 
 
 @dataclass
-class TrainingArguments:
+class TrainingArguments(HFTrainingArguments):
     per_device_train_batch_size: int = field(
         default=8, metadata={"help": "Batch size (per device) for the training dataloader."}
     )
@@ -127,6 +127,7 @@ class DataTrainingArguments:
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
 
+    tokenized_data_path: Optional[str] = field(default=None, metadata={"help": "If set, reads a tokenized train data."})
     data_percentage: int = field(default=100, metadata={"help": "Percentage of the data during data preprocessing."})
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}

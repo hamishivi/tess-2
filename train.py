@@ -2,6 +2,7 @@ import json
 import logging
 import math
 import os
+import pdb
 import random
 import sys
 from itertools import chain
@@ -12,7 +13,7 @@ import transformers
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -87,6 +88,10 @@ def main():
 
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
+    if data_args.tokenized_data_path:
+        tokenized_data = load_from_disk(data_args.tokenized_data_path)
+        pdb.set_trace()
+
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name)

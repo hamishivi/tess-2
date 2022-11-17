@@ -7,8 +7,8 @@ from itertools import chain
 import datasets
 import transformers
 from datasets import load_dataset
-from sdlm.arguments import parse_args
-from transformers import AutoTokenizer, HfArgumentParser, TrainingArguments, set_seed
+from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
+from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.utils.versions import require_version
 
 require_version("datasets>=1.8.0")
@@ -16,15 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = HfArgumentParser(
-        (ModelArguments, DataTrainingArguments, TrainingArguments)
-    )
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1])
-        )
+        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
@@ -55,7 +51,8 @@ def main():
 
     assert data_args.dataset_name is not None
     # Downloading and loading a dataset from the hub.
-    raw_datasets = load_dataset(
+    raw_datasets = datasets.DatasetDict()
+    raw_datasets["train"] = load_dataset(
         data_args.dataset_name,
         data_args.dataset_config_name,
         cache_dir=model_args.cache_dir,
@@ -70,9 +67,7 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, **tokenizer_kwargs
-        )
+        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -81,7 +76,7 @@ def main():
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
-    column_names = raw_datasets.column_names
+    column_names = raw_datasets["train"].column_names
     text_column_name = "text" if "text" in column_names else column_names[0]
 
     if data_args.max_seq_length is None:
@@ -107,9 +102,7 @@ def main():
         def tokenize_function(examples):
             # Remove empty lines
             examples[text_column_name] = [
-                line
-                for line in examples[text_column_name]
-                if len(line) > 0 and not line.isspace()
+                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
             ]
             return tokenizer(
                 examples[text_column_name],
@@ -135,9 +128,7 @@ def main():
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
         # efficient when it receives the `special_tokens_mask`.
         def tokenize_function(examples):
-            return tokenizer(
-                examples[text_column_name], return_special_tokens_mask=True
-            )
+            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
@@ -153,9 +144,7 @@ def main():
         # max_seq_length.
         def group_texts(examples):
             # Concatenate all texts.
-            concatenated_examples = {
-                k: list(chain(*examples[k])) for k in examples.keys()
-            }
+            concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
             total_length = len(concatenated_examples[list(examples.keys())[0]])
             # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
             # customize this part to your needs.
@@ -163,10 +152,7 @@ def main():
                 total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [
-                    t[i : i + max_seq_length]
-                    for i in range(0, total_length, max_seq_length)
-                ]
+                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
                 for k, t in concatenated_examples.items()
             }
             return result
