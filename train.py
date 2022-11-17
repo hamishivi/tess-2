@@ -3,9 +3,8 @@ import logging
 import math
 import os
 import random
+import sys
 from itertools import chain
-from pathlib import Path
-import sys 
 
 import datasets
 import torch
@@ -14,7 +13,7 @@ from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from datasets import load_dataset
-from huggingface_hub import Repository
+from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import (
@@ -23,16 +22,11 @@ from transformers import (
     AutoModelForMaskedLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
+    HfArgumentParser,
     get_scheduler,
-    HfArgumentParser
 )
-from transformers.utils import (
-    check_min_version,
-    get_full_repo_name,
-    send_example_telemetry,
-)
+from transformers.utils import check_min_version, get_full_repo_name
 from transformers.utils.versions import require_version
-from sdlm.arguments import TrainingArguments, ModelArguments, DataTrainingArguments
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0")
@@ -42,6 +36,7 @@ require_version(
     "datasets>=1.8.0",
     "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt",
 )
+
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
@@ -86,31 +81,10 @@ def main():
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if training_args.push_to_hub:
-            if training_args.hub_model_id is None:
-                repo_name = get_full_repo_name(
-                    Path(training_args.output_dir).name, token=training_args.hub_token
-                )
-            else:
-                repo_name = training_args.hub_model_id
-            repo = Repository(training_args.output_dir, clone_from=repo_name)
-
-            with open(os.path.join(training_args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif training_args.output_dir is not None:
+        if training_args.output_dir is not None:
             os.makedirs(training_args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
 
-    # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub).
-    #
-    # For CSV/JSON files, this script will use the column called 'text' or the first column if no column called
-    # 'text' is found. You can easily tweak this behavior (see below).
-    #
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
     if data_args.dataset_name is not None:
@@ -142,12 +116,12 @@ def main():
             raw_datasets["validation"] = load_dataset(
                 extension,
                 data_files=data_files,
-                split=f"train[:{args.validation_split_percentage}%]",
+                split=f"train[:{data_args.validation_split_percentage}%]",
             )
             raw_datasets["train"] = load_dataset(
                 extension,
                 data_files=data_files,
-                split=f"train[{args.validation_split_percentage}%:]",
+                split=f"train[{data_args.validation_split_percentage}%:]",
             )
 
     # Load pretrained model and tokenizer
@@ -162,13 +136,9 @@ def main():
         logger.warning("You are instantiating a new config instance from scratch.")
 
     if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, use_fast=model_args.use_fast_tokenizer
-        )
+        tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, use_fast=model_args.use_fast_tokenizer)
     elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, use_fast=model_args.use_fast_tokenizer
-        )
+        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, use_fast=model_args.use_fast_tokenizer)
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -219,9 +189,7 @@ def main():
         def tokenize_function(examples):
             # Remove empty lines
             examples[text_column_name] = [
-                line
-                for line in examples[text_column_name]
-                if len(line) > 0 and not line.isspace()
+                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
             ]
             return tokenizer(
                 examples[text_column_name],
@@ -247,9 +215,7 @@ def main():
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
         # efficient when it receives the `special_tokens_mask`.
         def tokenize_function(examples):
-            return tokenizer(
-                examples[text_column_name], return_special_tokens_mask=True
-            )
+            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
 
         with accelerator.main_process_first():
             tokenized_datasets = raw_datasets.map(
@@ -265,9 +231,7 @@ def main():
         # max_seq_length.
         def group_texts(examples):
             # Concatenate all texts.
-            concatenated_examples = {
-                k: list(chain(*examples[k])) for k in examples.keys()
-            }
+            concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
             total_length = len(concatenated_examples[list(examples.keys())[0]])
             # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
             # customize this part to your needs.
@@ -275,10 +239,7 @@ def main():
                 total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [
-                    t[i : i + max_seq_length]
-                    for i in range(0, total_length, max_seq_length)
-                ]
+                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -310,9 +271,7 @@ def main():
 
     # Data collator
     # This one will take care of randomly masking the tokens.
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer, mlm_probability=data_args.mlm_probability
-    )
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # DataLoaders creation:
     train_dataloader = DataLoader(
@@ -332,19 +291,11 @@ def main():
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if not any(nd in n for nd in no_decay)
-            ],
+            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
             "weight_decay": training_args.weight_decay,
         },
         {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if any(nd in n for nd in no_decay)
-            ],
+            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
             "weight_decay": 0.0,
         },
     ]
@@ -355,9 +306,7 @@ def main():
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / training_args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / training_args.gradient_accumulation_steps)
     if training_args.max_train_steps is None:
         training_args.max_train_steps = training_args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -376,18 +325,14 @@ def main():
         train_dataloader,
         eval_dataloader,
         lr_scheduler,
-    ) = accelerator.prepare(
-        model, optimizer, train_dataloader, eval_dataloader, lr_scheduler
-    )
+    ) = accelerator.prepare(model, optimizer, train_dataloader, eval_dataloader, lr_scheduler)
 
     # On TPU, the tie weights in our model have been disconnected, so we need to restore the ties.
     if accelerator.distributed_type == DistributedType.TPU:
         model.tie_weights()
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(
-        len(train_dataloader) / training_args.gradient_accumulation_steps
-    )
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / training_args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         training_args.max_train_steps = training_args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -403,33 +348,23 @@ def main():
     if training_args.with_tracking:
         experiment_config = vars(args)
         # TensorBoard cannot log Enums, need the raw value
-        experiment_config["lr_scheduler_type"] = experiment_config[
-            "lr_scheduler_type"
-        ].value
+        experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
         accelerator.init_trackers("mlm_no_trainer", experiment_config)
 
     # Train!
     total_batch_size = (
-        training_args.per_device_train_batch_size
-        * accelerator.num_processes
-        * training_args.gradient_accumulation_steps
+        training_args.per_device_train_batch_size * accelerator.num_processes * training_args.gradient_accumulation_steps
     )
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {training_args.num_train_epochs}")
-    logger.info(
-        f"  Instantaneous batch size per device = {training_args.per_device_train_batch_size}"
-    )
-    logger.info(
-        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
-    )
+    logger.info(f"  Instantaneous batch size per device = {training_args.per_device_train_batch_size}")
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {training_args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {training_args.max_train_steps}")
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(
-        range(training_args.max_train_steps), disable=not accelerator.is_local_main_process
-    )
+    progress_bar = tqdm(range(training_args.max_train_steps), disable=not accelerator.is_local_main_process)
     completed_steps = 0
     starting_epoch = 0
 
@@ -443,9 +378,7 @@ def main():
             # Get the most recent checkpoint
             dirs = [f.name for f in os.scandir(os.getcwd()) if f.is_dir()]
             dirs.sort(key=os.path.getctime)
-            path = dirs[
-                -1
-            ]  # Sorts folders by date modified, most recent checkpoint is the last
+            path = dirs[-1]  # Sorts folders by date modified, most recent checkpoint is the last
         # Extract `epoch_{i}` or `step_{i}`
         training_difference = os.path.splitext(path)[0]
 
@@ -454,10 +387,7 @@ def main():
             resume_step = None
         else:
             # need to multiply `gradient_accumulation_steps` to reflect real steps
-            resume_step = (
-                int(training_difference.replace("step_", ""))
-                * training_args.gradient_accumulation_steps
-            )
+            resume_step = int(training_difference.replace("step_", "")) * training_args.gradient_accumulation_steps
             starting_epoch = resume_step // len(train_dataloader)
             resume_step -= starting_epoch * len(train_dataloader)
 
@@ -511,11 +441,7 @@ def main():
                 outputs = model(**batch)
 
             loss = outputs.loss
-            losses.append(
-                accelerator.gather_for_metrics(
-                    loss.repeat(training_args.per_device_eval_batch_size)
-                )
-            )
+            losses.append(accelerator.gather_for_metrics(loss.repeat(training_args.per_device_eval_batch_size)))
 
         losses = torch.cat(losses)
         try:
@@ -538,7 +464,7 @@ def main():
                 step=completed_steps,
             )
 
-        if training_args.push_to_hub and epoch < training_args.num_train_epochs - 1:
+        if epoch < training_args.num_train_epochs - 1:
             accelerator.wait_for_everyone()
             unwrapped_model = accelerator.unwrap_model(model)
             unwrapped_model.save_pretrained(
@@ -548,11 +474,6 @@ def main():
             )
             if accelerator.is_main_process:
                 tokenizer.save_pretrained(training_args.output_dir)
-                repo.push_to_hub(
-                    commit_message=f"Training in progress epoch {epoch}",
-                    blocking=False,
-                    auto_lfs_prune=True,
-                )
 
         if training_args.checkpointing_steps == "epoch":
             output_dir = f"epoch_{epoch}"
@@ -573,9 +494,6 @@ def main():
         )
         if accelerator.is_main_process:
             tokenizer.save_pretrained(training_args.output_dir)
-            if training_args.push_to_hub:
-                repo.push_to_hub(commit_message="End of training", auto_lfs_prune=True)
-
             with open(os.path.join(training_args.output_dir, "all_results.json"), "w") as f:
                 json.dump({"perplexity": perplexity}, f)
 

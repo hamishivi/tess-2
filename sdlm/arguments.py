@@ -2,8 +2,9 @@
 import argparse
 from dataclasses import dataclass, field
 from typing import Optional
-from transformers import  MODEL_MAPPING,  SchedulerType
-   
+
+from transformers import MODEL_MAPPING, SchedulerType
+
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
@@ -17,9 +18,7 @@ class ModelArguments:
     model_name_or_path: Optional[str] = field(
         default=None,
         metadata={
-            "help": (
-                "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
-            )
+            "help": ("The model checkpoint for weights initialization. Don't set if you want to train a model from scratch.")
         },
     )
     model_type: Optional[str] = field(
@@ -65,82 +64,69 @@ class ModelArguments:
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
-            raise ValueError(
-                "--config_overrides can't be used in combination with --config_name or --model_name_or_path"
-            )
+            raise ValueError("--config_overrides can't be used in combination with --config_name or --model_name_or_path")
 
-@dataclass 
+
+@dataclass
 class TrainingArguments:
-    hub_token:str = field(metadata={"help":"The token to use to push to the Model Hub."})
     per_device_train_batch_size: int = field(
-        default=8,
-        metadata={"help": "Batch size (per device) for the training dataloader."}
+        default=8, metadata={"help": "Batch size (per device) for the training dataloader."}
     )
     per_device_eval_batch_size: int = field(
-        default=8,
-        metadata={"help":"Batch size (per device) for the evaluation dataloader."}
+        default=8, metadata={"help": "Batch size (per device) for the evaluation dataloader."}
     )
     learning_rate: float = field(
-        default=5e-5,
-        metadata={"help": "Initial learning rate (after the potential warmup period) to use."}
+        default=5e-5, metadata={"help": "Initial learning rate (after the potential warmup period) to use."}
     )
-    weight_decay: float = field(default=0.0, metadata={"help":"Weight decay to use."})
-    num_train_epochs:int= field(default=3,
-        metadata={"help":"Total number of training epochs to perform."}
-    )
-    max_train_steps: Optional[int]=field(
+    weight_decay: float = field(default=0.0, metadata={"help": "Weight decay to use."})
+    num_train_epochs: int = field(default=3, metadata={"help": "Total number of training epochs to perform."})
+    max_train_steps: Optional[int] = field(
         default=None,
-        metadata={"help":"Total number of training steps to perform. If provided, overrides num_train_epochs."}
+        metadata={"help": "Total number of training steps to perform. If provided, overrides num_train_epochs."},
     )
     gradient_accumulation_steps: int = field(
-        default=1,
-        metadata={"help": "Number of updates steps to accumulate before performing a backward/update pass."}
+        default=1, metadata={"help": "Number of updates steps to accumulate before performing a backward/update pass."}
     )
     lr_scheduler_type: SchedulerType = field(
         default="linear",
-        metadata={"help":("The scheduler type to use. It can be `linear`, `cosine`,"
-            "`cosine_with_restarts`, `polynomial`, `constant`, and `constant_with_warmup`")}
+        metadata={
+            "help": (
+                "The scheduler type to use. It can be `linear`, `cosine`,"
+                "`cosine_with_restarts`, `polynomial`, `constant`, and `constant_with_warmup`"
+            )
+        },
     )
-    num_warmup_steps: int = field(
-        default=0,
-        metadata={"help": "Number of steps for the warmup in the lr scheduler."}
-    )
-    output_dir: Optional[str] = field(
-        default=None, metadata={"help": "Where to store the final model."}
-    )
-    seed: Optional[int] = field(default=None, metadata={"help": "A seed for reproducible training."}
-    )
-    push_to_hub: bool = field(default=False, metadata={"help": "Whether or not to push the model to the Hub."}
-    )
-    hub_model_id: str = field(default=None,
-        metadata={"help":"The name of the repository to keep in sync with the local `output_dir`."}
-    )
-    checkpointing_steps:str= field(
+    num_warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
+    output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
+    seed: Optional[int] = field(default=None, metadata={"help": "A seed for reproducible training."})
+    checkpointing_steps: str = field(
         default=None,
-        metadata={"help":"Whether the various states should be saved at the end of every n steps, or 'epoch' for each epoch."}
+        metadata={
+            "help": "Whether the various states should be saved at the end of every n steps, or 'epoch' for each epoch."
+        },
     )
     resume_from_checkpoint: Optional[str] = field(
-        default=None,
-        metadata={"help":"If the training should continue from a checkpoint folder."}
+        default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
-    with_tracking: str = field(default=False,
-        metadata={"help":"Whether to enable experiment trackers for logging."}
-    )
+    with_tracking: str = field(default=False, metadata={"help": "Whether to enable experiment trackers for logging."})
     report_to: str = field(
         default="all",
-        metadata={"help":(
-            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
-            ' `"wandb"`, `"comet_ml"` and `"clearml"`. Use `"all"` (default) to report to all integrations.'
-            "Only applicable when `--with_tracking` is passed."
-        )}
+        metadata={
+            "help": (
+                'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
+                ' `"wandb"`, `"comet_ml"` and `"clearml"`. Use `"all"` (default) to report to all integrations.'
+                "Only applicable when `--with_tracking` is passed."
+            )
+        },
     )
+
 
 @dataclass
 class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
-    
+
     data_percentage: int = field(default=100, metadata={"help": "Percentage of the data during data preprocessing."})
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
@@ -153,14 +139,10 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
     )
-    overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
-    )
+    overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
     validation_split_percentage: Optional[int] = field(
         default=5,
-        metadata={
-            "help": "The percentage of the train set used as validation set in case there's no validation split"
-        },
+        metadata={"help": "The percentage of the train set used as validation set in case there's no validation split"},
     )
     max_seq_length: Optional[int] = field(
         default=None,
@@ -222,4 +204,3 @@ class DataTrainingArguments:
                 extension = self.validation_file.split(".")[-1]
                 if extension not in ["csv", "json", "txt"]:
                     raise ValueError("`validation_file` should be a csv, a json or a txt file.")
-
