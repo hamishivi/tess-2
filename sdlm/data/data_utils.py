@@ -1,6 +1,7 @@
 from itertools import chain
 from datasets import load_dataset
 import logging
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -122,3 +123,14 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
                 desc=f"Grouping texts in chunks of {max_seq_length}",
             )
     return tokenized_datasets
+
+
+def split_data_to_train_validation(data_args, data):
+    total_size = len(data["train"])
+    validation_size = int(total_size * data_args.validation_split_ratio)
+    train_size = total_size - validation_size
+    train, validation = torch.utils.data.random_split(
+        data, [train_size, validation_size], generator=torch.Generator.manual_seed(data_args.seed)
+    )
+    data["train"], data["validation"] = train, validation
+    return data

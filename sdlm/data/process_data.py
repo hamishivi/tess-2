@@ -56,7 +56,7 @@ def main():
         data_args.dataset_config_name,
         cache_dir=model_args.cache_dir,
         use_auth_token=True if model_args.use_auth_token else None,
-        split=f"train[:{data_args.data_percentage}%]",
+        split="train",
     )
 
     tokenizer_kwargs = {

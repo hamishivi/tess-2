@@ -12,7 +12,7 @@ import transformers
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from datasets import load_dataset, load_from_disk
+from datasets import load_from_disk
 from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -27,7 +27,7 @@ from transformers import (
 )
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from sdlm.data.data_utils import tokenize_data, load_data
+from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_validation
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0")
@@ -87,11 +87,15 @@ def main():
     accelerator.wait_for_everyone()
 
     if data_args.tokenized_data_path:
-        tokenized_data = load_from_disk(data_args.tokenized_data_path)
+        tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
+        if "validation" not in tokenized_datasets:
+            tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets)
     else:
         raw_datasets = load_data(data_args)
-        pdb.set_trace()
+        if "validation" not in raw_datasets:
+            raw_datasets = split_data_to_train_validation(data_args, raw_datasets)
 
+    pdb.set_trace()
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
@@ -129,7 +133,8 @@ def main():
     if len(tokenizer) > embedding_size:
         model.resize_token_embeddings(len(tokenizer))
 
-    tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
+    if not data_args.tokenized_data_path:
+        tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
 
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]

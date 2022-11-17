@@ -128,7 +128,6 @@ class DataTrainingArguments:
     """
 
     tokenized_data_path: Optional[str] = field(default=None, metadata={"help": "If set, reads a tokenized train data."})
-    data_percentage: int = field(default=100, metadata={"help": "Percentage of the data during data preprocessing."})
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
@@ -141,9 +140,9 @@ class DataTrainingArguments:
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
     )
     overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
-    validation_split_percentage: Optional[int] = field(
+    validation_split_ratio: Optional[float] = field(
         default=5,
-        metadata={"help": "The percentage of the train set used as validation set in case there's no validation split"},
+        metadata={"help": "The ratio of the train set used as validation set in case there's no validation split."},
     )
     max_seq_length: Optional[int] = field(
         default=None,
