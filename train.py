@@ -40,6 +40,11 @@ require_version(
 )
 
 
+def compute_loss(logits, labels, config):
+    loss_fct = CrossEntropyLoss()
+    return loss_fct(logits.view(-1, config.vocab_size), labels.view(-1))
+
+
 def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
@@ -285,9 +290,7 @@ def main():
 
             with accelerator.accumulate(model):
                 outputs = model(**batch)
-                logits = outputs.logits
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, config.vocab_size), batch["input_ids"].view(-1))
+                loss = compute_loss(outputs.logits, batch["input_ids"], config)
 
                 # We keep track of the loss at each epoch
                 if training_args.with_tracking:
@@ -318,7 +321,7 @@ def main():
             with torch.no_grad():
                 outputs = model(**batch)
 
-            loss = outputs.loss
+            loss = compute_loss(outputs.logits, batch["input_ids"], config)
             losses.append(accelerator.gather_for_metrics(loss.repeat(training_args.per_device_eval_batch_size)))
 
         losses = torch.cat(losses)
