@@ -1,11 +1,9 @@
-import json
 import logging
 import math
 import os
-import pdb
 import random
 import sys
-
+import numpy as np
 import datasets
 import torch
 import transformers
@@ -216,8 +214,6 @@ def main():
 
     # Figure out how many steps we should save the Accelerator states
     checkpointing_steps = training_args.checkpointing_steps
-    if checkpointing_steps is not None and checkpointing_steps.isdigit():
-        checkpointing_steps = int(checkpointing_steps)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -274,7 +270,7 @@ def main():
     for epoch in range(starting_epoch, training_args.num_train_epochs):
         model.train()
         if training_args.with_tracking:
-            total_loss = 0
+            train_losses = []
         for step, batch in enumerate(train_dataloader):
             # We need to skip steps until we reach the resumed step
             if training_args.resume_from_checkpoint and epoch == starting_epoch:
@@ -285,7 +281,7 @@ def main():
                     continue
 
             with accelerator.accumulate(model):
-                ###############
+                # TODO(rabeeh): we need to modify this block.
                 # Converts embeddings to a simplex representation.
                 simplex = convert_to_simplex(batch["input_ids"], diffusion_args.simplex_value, vocab_size)
                 noise = diffusion_args.simplex_value * torch.randn(simplex.shape).to(simplex.device)
@@ -293,23 +289,21 @@ def main():
                 # Sample a random timestep for each simplex token representation.
                 timesteps = torch.randint(
                     0,
-                    noise_scheduler.config.num_train_timesteps,
+                    len(noise_scheduler),
                     (bsz,),
                     device=simplex.device,
                 ).long()
                 # Adds noise to each simplex representation accoding to the noise magnitude at
                 # each timestep (Forward diffusion process).
-                # TODO: check this!
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
                 # TODO(rabeeh): shouldn't they scale it before using scheduler?
-                timesteps = scale(timesteps, noise_scheduler.config.num_train_timesteps)
+                timesteps = scale(timesteps, len(noise_scheduler))
                 outputs = model(inputs_embeds=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
-                ##############
                 loss = outputs.loss
 
                 # We keep track of the loss at each epoch
                 if training_args.with_tracking:
-                    total_loss += loss.detach().float()
+                    train_losses.append(loss.detach().float())
                 accelerator.backward(loss)
                 optimizer.step()
                 lr_scheduler.step()
@@ -320,16 +314,37 @@ def main():
                 progress_bar.update(1)
                 completed_steps += 1
 
-            if isinstance(checkpointing_steps, int):
-                if completed_steps % checkpointing_steps == 0:
-                    output_dir = f"step_{completed_steps }"
-                    if training_args.output_dir is not None:
-                        output_dir = os.path.join(training_args.output_dir, output_dir)
-                    accelerator.save_state(output_dir)
+            # Saves a checkpoint every checkpoint steps or at the end of training phase.
+            if completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps:
+                output_dir = f"step_{completed_steps}"
+                if training_args.output_dir is not None:
+                    output_dir = os.path.join(training_args.output_dir, output_dir)
+                accelerator.save_state(output_dir)
+                if training_args.with_tracking:
+                    accelerator.log(
+                        {
+                            "train_loss": np.mean(train_losses),
+                            "epoch": epoch,
+                            "step": completed_steps,
+                        },
+                        step=completed_steps,
+                    )
+                    train_losses = []
+                accelerator.wait_for_everyone()
+                unwrapped_model = accelerator.unwrap_model(model)
+                # TODO(rabeeh): check resume and we need to read from the last checkpoint.
+                unwrapped_model.save_pretrained(
+                    output_dir,
+                    is_main_process=accelerator.is_main_process,
+                    save_function=accelerator.save,
+                )
+                if accelerator.is_main_process:
+                    tokenizer.save_pretrained(output_dir)
 
             if completed_steps >= training_args.max_train_steps:
                 break
 
+        # TODO(rabeeh): removed eval for now.
         """
         model.eval()
         losses = []
@@ -348,53 +363,10 @@ def main():
             perplexity = float("inf")
 
         logger.info(f"epoch {epoch}: perplexity: {perplexity}")
-
-        if training_args.with_tracking:
-            accelerator.log(
-                {
-                    "perplexity": perplexity,
-                    "eval_loss": eval_loss,
-                    "train_loss": total_loss.item() / len(train_dataloader),
-                    "epoch": epoch,
-                    "step": completed_steps,
-                },
-                step=completed_steps,
-            )
         """
-        if epoch < training_args.num_train_epochs - 1:
-            accelerator.wait_for_everyone()
-            unwrapped_model = accelerator.unwrap_model(model)
-            unwrapped_model.save_pretrained(
-                training_args.output_dir,
-                is_main_process=accelerator.is_main_process,
-                save_function=accelerator.save,
-            )
-            if accelerator.is_main_process:
-                tokenizer.save_pretrained(training_args.output_dir)
-
-        if training_args.checkpointing_steps == "epoch":
-            output_dir = f"epoch_{epoch}"
-            if training_args.output_dir is not None:
-                output_dir = os.path.join(training_args.output_dir, output_dir)
-            accelerator.save_state(output_dir)
 
     if training_args.with_tracking:
         accelerator.end_training()
-
-    if training_args.output_dir is not None:
-        accelerator.wait_for_everyone()
-        unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.save_pretrained(
-            training_args.output_dir,
-            is_main_process=accelerator.is_main_process,
-            save_function=accelerator.save,
-        )
-        if accelerator.is_main_process:
-            tokenizer.save_pretrained(training_args.output_dir)
-            """
-            with open(os.path.join(training_args.output_dir, "all_results.json"), "w") as f:
-                json.dump({"perplexity": perplexity}, f)
-            """
 
 
 if __name__ == "__main__":

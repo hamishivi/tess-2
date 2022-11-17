@@ -99,12 +99,7 @@ class TrainingArguments(HFTrainingArguments):
     num_warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
     output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
     seed: Optional[int] = field(default=42, metadata={"help": "A seed for reproducible training."})
-    checkpointing_steps: str = field(
-        default=None,
-        metadata={
-            "help": "Whether the various states should be saved at the end of every n steps, or 'epoch' for each epoch."
-        },
-    )
+    checkpointing_steps: int = field(default=1000, metadata={"help": "Specifies the checkpoint step."})
     resume_from_checkpoint: Optional[str] = field(
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
