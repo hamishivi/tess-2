@@ -344,27 +344,6 @@ def main():
             if completed_steps >= training_args.max_train_steps:
                 break
 
-        # TODO(rabeeh): removed eval for now.
-        """
-        model.eval()
-        losses = []
-        for step, batch in enumerate(eval_dataloader):
-            with torch.no_grad():
-                outputs = model(**batch)
-
-            loss = outputs.loss
-            losses.append(accelerator.gather_for_metrics(loss.repeat(training_args.per_device_eval_batch_size)))
-
-        losses = torch.cat(losses)
-        try:
-            eval_loss = torch.mean(losses)
-            perplexity = math.exp(eval_loss)
-        except OverflowError:
-            perplexity = float("inf")
-
-        logger.info(f"epoch {epoch}: perplexity: {perplexity}")
-        """
-
     if training_args.with_tracking:
         accelerator.end_training()
 
