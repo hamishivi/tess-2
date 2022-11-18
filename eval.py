@@ -2,10 +2,11 @@
 import sys
 from accelerate import Accelerator
 import os
+import torch
 import pdb
 import transformers
 from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments, DiffusionArguments
-from transformers import HfArgumentParser, AutoConfig
+from transformers import HfArgumentParser, AutoConfig, AutoTokenizer
 from accelerate.logging import get_logger
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
@@ -15,6 +16,9 @@ from accelerate.utils import set_seed
 from sdlm.utils import get_last_checkpoint
 from diffusers import DDPMScheduler
 from sdlm.models import RobertaForDiffusionLM
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+import torch.nn.functional as F
+from sdlm.inference.inference_utils import process_text
 
 check_min_version("4.24.0")
 logger = get_logger(__name__)
@@ -62,11 +66,31 @@ def main():
         from_tf=bool(".ckpt" in last_checkpoint),
         config=config,
     )
-    pipeline = 
+    pipeline = SimplexDDPMPipeline(
+        model=accelerator.unwrap_model(model),
+        scheduler=noise_scheduler,
+        simplex_value=diffusion_args.simplex_value,
+        top_p=diffusion_args.top_p,
+        sampling_type=diffusion_args.sampling_type,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(last_checkpoint, use_fast=model_args.use_fast_tokenizer)
     # TODO(rabeeh): complete this.
-    texts = generate_text(inference_model=accelerator.unwrap_model(model), noise_scheduler=noise_scheduler)
+    texts = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
     for text in texts:
         logger.info(text)
+
+
+def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args):
+    simplex = pipeline(
+        batch_size=training_args.per_device_eval_batch_size,
+        seq_length=data_args.max_seq_length,
+        num_inference_steps=diffusion_args.num_diffusion_steps,
+    ).simplex
+    probabilities = F.softmax(simplex, dim=-1)
+    # TODO(rabeeh): this needs to be checked.
+    token_ids = torch.argmax(probabilities, dim=-1)
+    pred_texts = tokenizer.batch_decode(token_ids)
+    return process_text(pred_texts)
 
 
 if __name__ == "__main__":

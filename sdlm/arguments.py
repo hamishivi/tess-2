@@ -223,3 +223,4 @@ class DiffusionArguments:
         metadata={"help": "Uses for scheduler, if model predicts the noise (epsilon), or the samples instead of the noise."},
     )
     sampling_type: str = field(default="top_p", metadata={"help": "Sampling type used during the logit projection."})
+    top_p: float = field(default=0.95, metadata={"help": "top_p value for nucleus (top_p) sampling."})

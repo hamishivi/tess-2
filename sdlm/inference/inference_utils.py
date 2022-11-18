@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 
 def sample_logits(sampling_type, logits, top_p):
@@ -23,5 +24,27 @@ def sample_logits(sampling_type, logits, top_p):
         token_ids = torch.distributions.categorical.Categorical(logits=filtered_logits).sample()
     else:
         assert NotImplementedError
-
     return token_ids
+
+
+def remove_first_occurrence(string, char):
+    if char in string:
+        idx = string.index(char)
+        string = string[idx + len(char) :]
+    return string.strip()
+
+
+def keep_till_first_occurrence(string, chars):
+    """Given a list of characters, trim the text after the first occurance between them."""
+    idxs = [string.index(char) for char in chars if char in string]
+    if len(idxs):
+        min_idx = np.min(idxs)
+        string = string[:min_idx]
+    return string.strip()
+
+
+def process_text(texts):
+    # TODO(rabeeh): for now we only cover roberta case.
+    texts = [keep_till_first_occurrence(text, ["</s>"]) for text in texts]
+    texts = [remove_first_occurrence(text, "<s>") for text in texts]
+    return texts
