@@ -52,7 +52,7 @@ class DDPMPipeline(DiffusionPipeline):
                 expense of slower inference.
 
         Returns:
-            [`~pipeline_utils.TextPipelineOutput`]: [`~pipelines.utils.TextPipelineOutput`] returns a list of generated logits.
+            [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
         """
         # Sample gaussian noise to begin loop
         vocab_size = self.model.config.vocab_size
