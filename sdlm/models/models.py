@@ -51,7 +51,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self,
         timesteps: torch.FloatTensor,
         input_ids: torch.LongTensor,
-        inputs_embeds: torch.FloatTensor,
+        simplex: torch.FloatTensor,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -73,10 +73,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # Adds timesteps to the noisy simplex (`input_embeds`).
-        inputs_embeds = F.softmax(inputs_embeds, dim=-1)
-        seq_length = inputs_embeds.shape[1]
-        inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_embeds)
+        # Adds timesteps to the input simplex.
+        inputs_probs = F.softmax(simplex, dim=-1)
+        seq_length = inputs_probs.shape[1]
+        inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
         # TODO(rabeeh): here this timestep can be improved.
         timesteps_embed = self.timestep_embed(timesteps.view(-1, 1))
         inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(1, seq_length, 1)
@@ -99,7 +99,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
 
         # TODO(rabeeh): for now we compute based on the original token ids. might be changed later.
         loss_fct = CrossEntropyLoss()
-        masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), input_ids.view(-1))
+        masked_lm_loss = None
+        if input_ids is not None:
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), input_ids.view(-1))
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]

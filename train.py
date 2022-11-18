@@ -1,3 +1,4 @@
+"""Training script to for simplex diffusion languge models."""
 import logging
 import math
 import os
@@ -6,6 +7,7 @@ import sys
 import numpy as np
 import datasets
 import torch
+import pdb
 import transformers
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
@@ -29,37 +31,23 @@ from sdlm.models import RobertaForDiffusionLM
 from sdlm.utils import convert_to_simplex, scale
 from diffusers import DDPMScheduler
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0")
-
 logger = get_logger(__name__)
-require_version(
-    "datasets>=1.8.0",
-    "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt",
-)
+require_version("datasets>=1.8.0")
 
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
         model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
-    # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
-    # If we're using tracking, we also need to initialize it here and it will by default pick up all supported trackers
-    # in the environment
-    accelerator_log_kwargs = {}
-
-    if training_args.with_tracking:
-        accelerator_log_kwargs["log_with"] = training_args.report_to
-        accelerator_log_kwargs["logging_dir"] = training_args.output_dir
-
+    # Initialize the accelerator.
     accelerator = Accelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
-        **accelerator_log_kwargs,
+        log_with="tensorboard",
+        logging_dir=training_args.output_dir,
     )
 
     # Make one log on every process with the configuration for debugging.
@@ -80,7 +68,6 @@ def main():
     if training_args.seed is not None:
         set_seed(training_args.seed)
 
-    # Handle the repository creation
     if accelerator.is_main_process:
         if training_args.output_dir is not None:
             os.makedirs(training_args.output_dir, exist_ok=True)
@@ -192,8 +179,11 @@ def main():
         num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps,
     )
     # TODO: we need to check how this works.
+    # TODO(rabeeh): fix this.
     noise_scheduler = DDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps, beta_schedule=diffusion_args.beta_schedule
+        num_train_timesteps=diffusion_args.num_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        # predict_epsilon=diffusion_args.predict_epsilon,
     )
 
     # Prepare everything with our `accelerator`.
@@ -217,11 +207,12 @@ def main():
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
-    if training_args.with_tracking:
-        experiment_config = {**vars(model_args), **vars(training_args), **vars(diffusion_args), **vars(data_args)}
-        # TensorBoard cannot log Enums, need the raw value
-        experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
-        accelerator.init_trackers("mlm_no_trainer", experiment_config)
+    # TODO(rabeeh): fix config later.
+    # experiment_config = {**vars(model_args), **vars(training_args), **vars(diffusion_args), **vars(data_args)}
+    # TensorBoard cannot log Enums, need the raw value
+    # experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
+    # accelerator.init_trackers("train_sdlm", config=experiment_config)
+    accelerator.init_trackers("train_sdlm")
 
     # Train!
     total_batch_size = (
@@ -253,7 +244,6 @@ def main():
             path = dirs[-1]  # Sorts folders by date modified, most recent checkpoint is the last
         # Extract `epoch_{i}` or `step_{i}`
         training_difference = os.path.splitext(path)[0]
-
         if "epoch" in training_difference:
             starting_epoch = int(training_difference.replace("epoch_", "")) + 1
             resume_step = None
@@ -269,8 +259,7 @@ def main():
 
     for epoch in range(starting_epoch, training_args.num_train_epochs):
         model.train()
-        if training_args.with_tracking:
-            train_losses = []
+        train_losses = []
         for step, batch in enumerate(train_dataloader):
             # We need to skip steps until we reach the resumed step
             if training_args.resume_from_checkpoint and epoch == starting_epoch:
@@ -298,12 +287,10 @@ def main():
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
                 # TODO(rabeeh): shouldn't they scale it before using scheduler?
                 timesteps = scale(timesteps, len(noise_scheduler))
-                outputs = model(inputs_embeds=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
+                outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
                 loss = outputs.loss
-
-                # We keep track of the loss at each epoch
-                if training_args.with_tracking:
-                    train_losses.append(loss.detach().float())
+                # Keeping track of training loss for each duration of checkpointing.
+                train_losses.append(loss.item())
                 accelerator.backward(loss)
                 optimizer.step()
                 lr_scheduler.step()
@@ -320,16 +307,15 @@ def main():
                 if training_args.output_dir is not None:
                     output_dir = os.path.join(training_args.output_dir, output_dir)
                 accelerator.save_state(output_dir)
-                if training_args.with_tracking:
-                    accelerator.log(
-                        {
-                            "train_loss": np.mean(train_losses),
-                            "epoch": epoch,
-                            "step": completed_steps,
-                        },
-                        step=completed_steps,
-                    )
-                    train_losses = []
+                accelerator.log(
+                    {
+                        "train_loss": np.mean(train_losses),
+                        "epoch": epoch,
+                        "step": completed_steps,
+                    },
+                    step=completed_steps,
+                )
+                train_losses = []
                 accelerator.wait_for_everyone()
                 unwrapped_model = accelerator.unwrap_model(model)
                 # TODO(rabeeh): check resume and we need to read from the last checkpoint.
@@ -344,8 +330,7 @@ def main():
             if completed_steps >= training_args.max_train_steps:
                 break
 
-    if training_args.with_tracking:
-        accelerator.end_training()
+    accelerator.end_training()
 
 
 if __name__ == "__main__":

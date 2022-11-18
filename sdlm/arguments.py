@@ -103,17 +103,6 @@ class TrainingArguments(HFTrainingArguments):
     resume_from_checkpoint: Optional[str] = field(
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
-    with_tracking: str = field(default=False, metadata={"help": "Whether to enable experiment trackers for logging."})
-    report_to: str = field(
-        default="all",
-        metadata={
-            "help": (
-                'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
-                ' `"wandb"`, `"comet_ml"` and `"clearml"`. Use `"all"` (default) to report to all integrations.'
-                "Only applicable when `--with_tracking` is passed."
-            )
-        },
-    )
 
 
 @dataclass
@@ -188,8 +177,13 @@ class DataTrainingArguments:
     )
 
     def __post_init__(self):
-        if self.dataset_name is None and self.train_file is None and self.validation_file is None:
-            raise ValueError("Need either a dataset name or a training/validation file.")
+        if (
+            not self.tokenized_data_path
+            and self.dataset_name is None
+            and self.train_file is None
+            and self.validation_file is None
+        ):
+            raise ValueError("Need either a dataset name or a training/validation file or a tokenized dataset path.")
         else:
             if self.train_file is not None:
                 extension = self.train_file.split(".")[-1]
@@ -224,3 +218,9 @@ class DiffusionArguments:
             )
         },
     )
+    predict_epsilon: bool = field(
+        default=False,
+        metadata={"help": "Uses for scheduler, if model predicts the noise (epsilon), or the samples instead of the noise."},
+    )
+    sampling_type: str = field(default="top_p", metadata={"help": "Sampling type used during the logit projection."})
+    top_p: float = field(default=0.95, metadata={"help": "top_p value for nucleus (top_p) sampling."})
