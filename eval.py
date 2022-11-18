@@ -59,7 +59,8 @@ def main():
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
         # predict_epsilon=diffusion_args.predict_epsilon,
     )
     model = RobertaForDiffusionLM.from_pretrained(
@@ -92,7 +93,7 @@ def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
     probabilities = F.softmax(simplex, dim=-1)
     token_ids = torch.argmax(probabilities, dim=-1)
     pred_texts = tokenizer.batch_decode(token_ids)
-    return process_text(pred_texts)
+    return {"pred_texts": process_text(pred_texts)}
 
 
 if __name__ == "__main__":

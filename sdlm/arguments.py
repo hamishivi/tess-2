@@ -141,9 +141,6 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
-    mlm_probability: float = field(
-        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
-    )
     line_by_line: bool = field(
         default=False,
         metadata={"help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."},
@@ -224,3 +221,9 @@ class DiffusionArguments:
     )
     sampling_type: str = field(default="top_p", metadata={"help": "Sampling type used during the logit projection."})
     top_p: float = field(default=0.95, metadata={"help": "top_p value for nucleus (top_p) sampling."})
+    clip_sample: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to clip predicted sample between -1 and 1 for numerical stability in the noise scheduler."
+        },
+    )

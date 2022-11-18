@@ -78,7 +78,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
         # TODO(rabeeh): here this timestep can be improved.
-        timesteps_embed = self.timestep_embed(timesteps.view(-1, 1))
+        timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float())
         inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(1, seq_length, 1)
 
         outputs = self.roberta(

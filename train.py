@@ -30,6 +30,8 @@ from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_v
 from sdlm.models import RobertaForDiffusionLM
 from sdlm.utils import convert_to_simplex, scale
 from sdlm.schedulers import SimplexDDPMScheduler
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from eval import generate_text
 
 check_min_version("4.24.0")
 logger = get_logger(__name__)
@@ -183,8 +185,9 @@ def main():
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value
+        simplex_value=diffusion_args.simplex_value,
         # predict_epsilon=diffusion_args.predict_epsilon,
+        clip_sample=diffusion_args.clip_sample,
     )
 
     # Prepare everything with our `accelerator`.
@@ -287,7 +290,7 @@ def main():
                 # each timestep (Forward diffusion process).
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
                 # TODO(rabeeh): shouldn't they scale it before using scheduler?
-                timesteps = scale(timesteps, len(noise_scheduler))
+                # timesteps = scale(timesteps, len(noise_scheduler))
                 outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
                 loss = outputs.loss
                 # Keeping track of training loss for each duration of checkpointing.
@@ -317,15 +320,29 @@ def main():
                     step=completed_steps,
                 )
                 train_losses = []
-                accelerator.wait_for_everyone()
-                unwrapped_model = accelerator.unwrap_model(model)
-                # TODO(rabeeh): check resume and we need to read from the last checkpoint.
-                unwrapped_model.save_pretrained(
-                    output_dir,
-                    is_main_process=accelerator.is_main_process,
-                    save_function=accelerator.save,
-                )
+                # generates samples.
                 if accelerator.is_main_process:
+                    logger.info("Generating sample texts and evaluating the generated texts.")
+                    pipeline = SimplexDDPMPipeline(
+                        model=accelerator.unwrap_model(model),
+                        scheduler=noise_scheduler,
+                        simplex_value=diffusion_args.simplex_value,
+                        top_p=diffusion_args.top_p,
+                        sampling_type=diffusion_args.sampling_type,
+                    )
+                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
+                    for i, pred_text in enumerate(results["pred_texts"]):
+                        total_text = "*** pred_text ***: " + pred_text + "  \n"
+                        accelerator.trackers[0].writer.add_text(f"sample_{i}", total_text, completed_steps)
+                        logger.info(total_text)
+                accelerator.wait_for_everyone()
+                if accelerator.is_main_process:
+                    unwrapped_model = accelerator.unwrap_model(model)
+                    unwrapped_model.save_pretrained(
+                        output_dir,
+                        is_main_process=accelerator.is_main_process,
+                        save_function=accelerator.save,
+                    )
                     tokenizer.save_pretrained(output_dir)
 
             if completed_steps >= training_args.max_train_steps:
