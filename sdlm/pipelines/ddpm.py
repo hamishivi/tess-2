@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from diffusers.pipeline_utils import DiffusionPipeline
-from sdlm.pipeline.pipeline_utils import TextPipelineOutput
+from sdlm.pipeline.pipeline_utils import SimplexDiffusionPipelineOutput
 from sdlm.utils import scale, convert_to_simplex
 from sdlm.inference.inference_utils import sample_logits
 
@@ -38,7 +38,7 @@ class DDPMPipeline(DiffusionPipeline):
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 1000,
-    ) -> Union[TextPipelineOutput, Tuple]:
+    ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):
