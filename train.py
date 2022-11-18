@@ -29,7 +29,7 @@ from transformers.utils.versions import require_version
 from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_validation
 from sdlm.models import RobertaForDiffusionLM
 from sdlm.utils import convert_to_simplex, scale
-from diffusers import DDPMScheduler
+from sdlm.schedulers import SimplexDDPMScheduler
 
 check_min_version("4.24.0")
 logger = get_logger(__name__)
@@ -180,9 +180,10 @@ def main():
     )
     # TODO: we need to check how this works.
     # TODO(rabeeh): fix this.
-    noise_scheduler = DDPMScheduler(
+    noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value
         # predict_epsilon=diffusion_args.predict_epsilon,
     )
 

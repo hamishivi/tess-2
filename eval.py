@@ -14,7 +14,7 @@ import datasets
 import logging
 from accelerate.utils import set_seed
 from sdlm.utils import get_last_checkpoint
-from diffusers import DDPMScheduler
+from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.models import RobertaForDiffusionLM
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 import torch.nn.functional as F
@@ -56,9 +56,10 @@ def main():
     last_checkpoint = get_last_checkpoint(training_args.output_dir, prefix_checkpoint_dir="step")
     config = AutoConfig.from_pretrained(last_checkpoint)
     # TODO(rabeeh): fix predict epsilon one.
-    noise_scheduler = DDPMScheduler(
+    noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value
         # predict_epsilon=diffusion_args.predict_epsilon,
     )
     model = RobertaForDiffusionLM.from_pretrained(

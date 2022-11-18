@@ -3,9 +3,9 @@
    	"output_dir": "/tmp/test-mlm",
        	"tokenized_data_path": "processed_data/openwebtext/",
        	"validation_split_ratio": 0.01,
-        "checkpointing_steps": 5,
+        "checkpointing_steps": 10,
 	"preprocessing_num_workers": 8,
 	"max_seq_length": 512,
-	"num_diffusion_steps": 5
+	"num_diffusion_steps": 2000
 }
 
