@@ -62,6 +62,8 @@ def main():
         from_tf=bool(".ckpt" in last_checkpoint),
         config=config,
     )
+    pipeline = 
+    # TODO(rabeeh): complete this.
     texts = generate_text(inference_model=accelerator.unwrap_model(model), noise_scheduler=noise_scheduler)
     for text in texts:
         logger.info(text)

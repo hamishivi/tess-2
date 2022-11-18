@@ -8,7 +8,7 @@ from sdlm.utils import scale, convert_to_simplex
 from sdlm.inference.inference_utils import sample_logits
 
 
-class DDPMPipeline(DiffusionPipeline):
+class SimplexDDPMPipeline(DiffusionPipeline):
     r"""
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -56,13 +56,14 @@ class DDPMPipeline(DiffusionPipeline):
         """
         # Sample gaussian noise to begin loop
         vocab_size = self.model.config.vocab_size
-        logits_shape = (batch_size, seq_length, vocab_size)
-        simplex = self.simplex_value * torch.randn(logits_shape, generator=generator, device=self.device)
+        simplex_shape = (batch_size, seq_length, vocab_size)
+        simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
+            # TODO(rabeeh): we need to check if scale is needed or is done inside scheduler.
             t = scale(t, len(self.scheduler))
 
             # 1. predict noise model_output
@@ -72,6 +73,8 @@ class DDPMPipeline(DiffusionPipeline):
             projected_simplex = self.logits_projection(model_output.logits)
 
             # 2. compute previous logits: x_t -> x_t-1
+            # TODO(rabeeh): this line is wrong and they pass simplex noise here, and we need
+            # to also do so, inside the scheduler.
             simplex = self.scheduler.step(projected_simplex, t, simplex, generator=generator).prev_sample
 
         return SimplexDiffusionPipelineOutput(simplex=simplex)
