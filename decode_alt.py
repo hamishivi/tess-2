@@ -88,11 +88,11 @@ def logits_sampling_projection(logits, top_p, one_hot_value):
 
     # get top-p indices
     probs = torch.nn.functional.softmax(logits, dim=-1)
-    sorted_probs, indices = torch.sort(probs, dim=-1, descending=True)
+    sorted_probs, sorted_indices = torch.sort(probs, dim=-1, descending=True)
     cum_sum_probs = torch.cumsum(sorted_probs, dim=-1)
     nucleus = cum_sum_probs < top_p
     nucleus = torch.cat([nucleus.new_ones(nucleus.shape[:-1] + (1,)), nucleus[..., :-1]], dim=-1)
-    valid_indices = nucleus.scatter(2, indices, nucleus)
+    valid_indices = nucleus.scatter(2, sorted_indices, nucleus)
 
     filtered_logits = logits.masked_fill(valid_indices == 0, -float("Inf"))
     m = torch.distributions.categorical.Categorical(logits=filtered_logits)
@@ -148,14 +148,7 @@ def decode(
             )
 
             perturbed_inputs_diralpha = xt
-
-            mean_or_protect_for_nan = True  # (HACK: for the nan issue)
-            if mean_or_protect_for_nan:
-                perturbed_inputs_simplex = torch.nn.functional.softmax(perturbed_inputs_diralpha, dim=-1)
-            else:
-                perturbed_inputs_diralpha = torch.exp(perturbed_inputs_diralpha)
-                dir_model = torch.distributions.dirichlet.Dirichlet(perturbed_inputs_diralpha)
-                perturbed_inputs_simplex = dir_model.sample()
+            perturbed_inputs_simplex = torch.nn.functional.softmax(perturbed_inputs_diralpha, dim=-1)
 
             # pass to the model, conditioned on the timestep as well
             perturbed_inputs_embeds = embedding_sum_layer(perturbed_inputs_simplex)

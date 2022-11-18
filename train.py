@@ -180,7 +180,9 @@ def main():
     )
     # TODO: we need to check how this works.
     noise_scheduler = DDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps, beta_schedule=diffusion_args.beta_schedule
+        num_train_timesteps=diffusion_args.num_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        predict_epsilon=diffusion_args.predict_epsilon,
     )
 
     # Prepare everything with our `accelerator`.
@@ -284,10 +286,10 @@ def main():
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
                 # TODO(rabeeh): shouldn't they scale it before using scheduler?
                 timesteps = scale(timesteps, len(noise_scheduler))
-                outputs = model(inputs_embeds=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
+                outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
                 loss = outputs.loss
                 # Keeping track of training loss for each duration of checkpointing.
-                train_losses.append(loss.detach().float())
+                train_losses.append(loss.item())
                 accelerator.backward(loss)
                 optimizer.step()
                 lr_scheduler.step()

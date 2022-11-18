@@ -218,3 +218,8 @@ class DiffusionArguments:
             )
         },
     )
+    predict_epsilon: bool = field(
+        default=False,
+        metadata={"help": "Uses for scheduler, if model predicts the noise (epsilon), or the samples instead of the noise."},
+    )
+    sampling_type: str = field(default="top_p", metadata={"help": "Sampling type used during the logit projection."})

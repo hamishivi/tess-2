@@ -2,6 +2,7 @@
 import sys
 from accelerate import Accelerator
 import os
+import pdb
 import transformers
 from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments, DiffusionArguments
 from transformers import HfArgumentParser, AutoConfig
@@ -52,13 +53,18 @@ def main():
     last_checkpoint = get_last_checkpoint(training_args.output_dir, prefix_checkpoint_dir="step")
     config = AutoConfig.from_pretrained(last_checkpoint)
     noise_scheduler = DDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps, beta_schedule=diffusion_args.beta_schedule
+        num_train_timesteps=diffusion_args.num_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        predict_epsilon=diffusion_args.predict_epsilon,
     )
     model = RobertaForDiffusionLM.from_pretrained(
         last_checkpoint,
         from_tf=bool(".ckpt" in last_checkpoint),
         config=config,
     )
+    texts = generate_text(inference_model=accelerator.unwrap_model(model), noise_scheduler=noise_scheduler)
+    for text in texts:
+        logger.info(text)
 
 
 if __name__ == "__main__":
