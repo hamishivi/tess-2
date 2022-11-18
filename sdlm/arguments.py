@@ -103,17 +103,6 @@ class TrainingArguments(HFTrainingArguments):
     resume_from_checkpoint: Optional[str] = field(
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
-    with_tracking: str = field(default=False, metadata={"help": "Whether to enable experiment trackers for logging."})
-    report_to: str = field(
-        default="all",
-        metadata={
-            "help": (
-                'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
-                ' `"wandb"`, `"comet_ml"` and `"clearml"`. Use `"all"` (default) to report to all integrations.'
-                "Only applicable when `--with_tracking` is passed."
-            )
-        },
-    )
 
 
 @dataclass

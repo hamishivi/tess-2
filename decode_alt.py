@@ -1,27 +1,3 @@
-#!/usr/bin/env python
-# coding=utf-8
-# Copyright 2021 The HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Fine-tuning the library models for masked language modeling (BERT, ALBERT, RoBERTa...)
-on a text file or a dataset without using HuggingFace Trainer.
-
-Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
-https://huggingface.co/models?filter=masked-lm
-"""
-# You can also adapt this script on your own mlm task. Pointers for this are left as comments.
-
 import argparse
 from cmath import exp
 import logging
@@ -34,8 +10,7 @@ from pathlib import Path
 import datasets
 import torch
 from datasets import load_dataset
-from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
-                              TensorDataset)
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from tqdm.auto import tqdm
 
 import transformers
@@ -79,42 +54,16 @@ MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 
-def get_time_variables(t, total_t, device): # according to https://arxiv.org/pdf/2102.09672.pdf
-
+def get_time_variables(t, total_t, device):  # according to https://arxiv.org/pdf/2102.09672.pdf
     def ft(small_t, big_t, s=1e-4):
         return torch.cos((small_t / big_t + s) / (1 + s) * math.pi / 2) ** 2
 
     alpha_t_bar = ft(t, total_t) / ft(torch.zeros(t.shape).to(device), total_t)
-    alpha_t_minus_bar = ft(t-1, total_t) / ft(torch.zeros(t.shape).to(device), total_t)
+    alpha_t_minus_bar = ft(t - 1, total_t) / ft(torch.zeros(t.shape).to(device), total_t)
     beta_t = 1 - (alpha_t_bar / alpha_t_minus_bar)
     beta_t_til = (1 - alpha_t_minus_bar) / (1 - alpha_t_bar) * beta_t
     alpha_t = 1 - beta_t
     return alpha_t_bar, alpha_t_minus_bar, beta_t, beta_t_til, alpha_t
-
-
-def apply_controlling_drift(args, perturbed_inputs_diralpha):
-    if args.decode_ctr_lr <= 0:
-        args.ctr_loss = -1
-        return perturbed_inputs_diralpha
-
-    if args.ctr_model is None:
-        ctr_model_name = "cardiffnlp/twitter-roberta-base-sentiment"
-        args.ctr_model = AutoModelForSequenceClassification.from_pretrained(ctr_model_name).to(args.accelerator.device)
-    optimizing_label_index = 2 
-
-    for ctr_i in range(1):
-        with torch.enable_grad():
-            perturbed_inputs_diralpha_4ctr = perturbed_inputs_diralpha.clone()
-            perturbed_inputs_diralpha_4ctr.requires_grad_()
-            perturbed_inputs_simplex_4ctr = torch.nn.functional.softmax(perturbed_inputs_diralpha_4ctr, dim=-1)
-            perturbed_inputs_embeds_4ctr = torch.nn.functional.linear(perturbed_inputs_simplex_4ctr, args.ctr_model.get_input_embeddings().weight.t())
-            ctr_loss = -torch.nn.functional.log_softmax(args.ctr_model(inputs_embeds=perturbed_inputs_embeds_4ctr).logits, dim=-1)[:,optimizing_label_index].mean()
-            args.ctr_loss = ctr_loss
-            ctr_delta = -torch.autograd.grad(ctr_loss, perturbed_inputs_diralpha_4ctr)[0] # indexing 0 because the return is a tuple
-
-        perturbed_inputs_diralpha = perturbed_inputs_diralpha + args.decode_ctr_lr * ctr_delta 
-    
-    return perturbed_inputs_diralpha
 
 
 def logits_projection(logits, top_p, one_hot_value):
@@ -133,24 +82,6 @@ def logits_projection(logits, top_p, one_hot_value):
     return torch.clamp(logits, max=very_low_value + one_hot_value) - very_low_value
 
 
-def logits_uneven_projection(logits, top_p, one_hot_value):
-    assert len(logits.size()) == 3
-    very_low_value = -10000
-
-    # get top-p indices
-    probs = torch.nn.functional.softmax(logits, dim=-1)
-    sorted_probs, indices = torch.sort(probs, dim=-1, descending=True)
-    cum_sum_probs = torch.cumsum(sorted_probs, dim=-1)
-    nucleus = cum_sum_probs < top_p
-    nucleus = torch.cat([nucleus.new_ones(nucleus.shape[:-1] + (1,)), nucleus[..., :-1]], dim=-1)
-    valid_indices = nucleus.scatter(2, indices, nucleus)
-
-    filtered_logits = logits.masked_fill(valid_indices == 0, very_low_value)
-    max_logits = torch.max(filtered_logits, -1, keepdim=True)[0]
-    filtered_logits = filtered_logits - max_logits + one_hot_value # max logit gets +5, others keep the same diff with max logit
-    return torch.clamp(filtered_logits, min=-one_hot_value)
-
-
 def logits_sampling_projection(logits, top_p, one_hot_value):
     assert len(logits.size()) == 3
     very_low_value = -10000
@@ -163,30 +94,36 @@ def logits_sampling_projection(logits, top_p, one_hot_value):
     nucleus = torch.cat([nucleus.new_ones(nucleus.shape[:-1] + (1,)), nucleus[..., :-1]], dim=-1)
     valid_indices = nucleus.scatter(2, indices, nucleus)
 
-    filtered_logits = logits.masked_fill(valid_indices == 0, -float('Inf'))
+    filtered_logits = logits.masked_fill(valid_indices == 0, -float("Inf"))
     m = torch.distributions.categorical.Categorical(logits=filtered_logits)
     selected = m.sample()
     return 2 * one_hot_value * torch.nn.functional.one_hot(selected, logits.size(2)) - one_hot_value
 
 
-def decode(args, batch_input_ids, dec_depth, total_t, model_embedding_lut, embedding_sum_layer, timestep_layer, model, tokenizer):
+def decode(
+    args, batch_input_ids, dec_depth, total_t, model_embedding_lut, embedding_sum_layer, timestep_layer, model, tokenizer
+):
     batch_size = args.per_device_eval_batch_size
     if args.decode_truncate_len > 0:
-        diffusion_input_ids = batch_input_ids[:, args.context_size:-args.decode_truncate_len]
+        diffusion_input_ids = batch_input_ids[:, args.context_size : -args.decode_truncate_len]
     else:
-        diffusion_input_ids = batch_input_ids[:, args.context_size:]
-    
+        diffusion_input_ids = batch_input_ids[:, args.context_size :]
+
     # for each decode step
     assert (args.max_seq_length - args.context_size - args.decode_truncate_len) % dec_depth == 0
     unit_seq_len = int((args.max_seq_length - args.context_size - args.decode_truncate_len) / dec_depth)
     if args.context_size > 0:
-        unit_context_input_ids = batch_input_ids[:, :args.context_size].clone()
+        unit_context_input_ids = batch_input_ids[:, : args.context_size].clone()
     else:
         unit_context_input_ids = None
     history_decode_ids = None
 
     for i in range(dec_depth):
-        unit_noise = args.noise_manual_scale * args.one_hot_value * torch.normal(0, 1, size=(batch_size, unit_seq_len, args.vocab_size)).to(args.accelerator.device)
+        unit_noise = (
+            args.noise_manual_scale
+            * args.one_hot_value
+            * torch.normal(0, 1, size=(batch_size, unit_seq_len, args.vocab_size)).to(args.accelerator.device)
+        )
         xt = unit_noise
 
         if unit_context_input_ids is not None:
@@ -194,30 +131,36 @@ def decode(args, batch_input_ids, dec_depth, total_t, model_embedding_lut, embed
         else:
             context_inputs_embeds = None
 
-        t_range = list(range(1, args.sigma_num_steps+1))
+        t_range = list(range(1, args.sigma_num_steps + 1))
         t_range.reverse()
         progress_bar = tqdm(range(len(t_range)), disable=not args.accelerator.is_local_main_process)
-        
+
         for t in t_range:
             selected_t = torch.FloatTensor([t]).repeat(batch_size).to(args.accelerator.device)
-            alpha_t_bar, alpha_t_minus_bar, beta_t, beta_t_til, alpha_t = get_time_variables(selected_t, total_t, args.accelerator.device)
+            alpha_t_bar, alpha_t_minus_bar, beta_t, beta_t_til, alpha_t = get_time_variables(
+                selected_t, total_t, args.accelerator.device
+            )
             beta_t_til = beta_t_til.view(batch_size, 1, 1)
-            zt = args.noise_manual_scale * args.one_hot_value * torch.normal(0, 1, size=(batch_size, unit_seq_len, args.vocab_size)).to(args.accelerator.device)
-            
+            zt = (
+                args.noise_manual_scale
+                * args.one_hot_value
+                * torch.normal(0, 1, size=(batch_size, unit_seq_len, args.vocab_size)).to(args.accelerator.device)
+            )
+
             perturbed_inputs_diralpha = xt
-            
-            mean_or_protect_for_nan = True # (HACK: for the nan issue)
+
+            mean_or_protect_for_nan = True  # (HACK: for the nan issue)
             if mean_or_protect_for_nan:
-                perturbed_inputs_simplex = torch.nn.functional.softmax(perturbed_inputs_diralpha, dim=-1) 
+                perturbed_inputs_simplex = torch.nn.functional.softmax(perturbed_inputs_diralpha, dim=-1)
             else:
-                perturbed_inputs_diralpha = torch.exp(perturbed_inputs_diralpha) 
+                perturbed_inputs_diralpha = torch.exp(perturbed_inputs_diralpha)
                 dir_model = torch.distributions.dirichlet.Dirichlet(perturbed_inputs_diralpha)
-                perturbed_inputs_simplex = dir_model.sample() 
+                perturbed_inputs_simplex = dir_model.sample()
 
             # pass to the model, conditioned on the timestep as well
             perturbed_inputs_embeds = embedding_sum_layer(perturbed_inputs_simplex)
             t_progress = selected_t / total_t
-            timestep_embeds = timestep_layer(t_progress.view(batch_size,1,1).repeat(1,unit_seq_len,1))
+            timestep_embeds = timestep_layer(t_progress.view(batch_size, 1, 1).repeat(1, unit_seq_len, 1))
 
             diffusion_embeds = perturbed_inputs_embeds + timestep_embeds
             if context_inputs_embeds is not None:
@@ -225,49 +168,53 @@ def decode(args, batch_input_ids, dec_depth, total_t, model_embedding_lut, embed
             outputs = model(inputs_embeds=diffusion_embeds, output_hidden_states=False)
             equivalent_score = outputs.logits
             if unit_context_input_ids is not None:
-                equivalent_score = equivalent_score[:, unit_context_input_ids.size(1):].contiguous()
+                equivalent_score = equivalent_score[:, unit_context_input_ids.size(1) :].contiguous()
 
-            equivalent_score = apply_controlling_drift(args, equivalent_score)
-            
             if t > 1:
                 sigma_t = torch.sqrt(beta_t_til)
             else:
                 sigma_t = 0
-            if args.loss_mode == "l2_on_z":
-                raise NotImplementedError("l2_on_z samping is not implemented yet")
-            else:
-                projected_logits = logits_sampling_projection(equivalent_score, top_p=args.projection_top_p, one_hot_value=args.one_hot_value)
-                xt = torch.sqrt(alpha_t_minus_bar).view(-1, 1, 1) * projected_logits
-                xt = xt + torch.sqrt(1 - alpha_t_minus_bar).view(-1, 1, 1) * zt 
+
+            projected_logits = logits_sampling_projection(
+                equivalent_score, top_p=args.projection_top_p, one_hot_value=args.one_hot_value
+            )
+            xt = torch.sqrt(alpha_t_minus_bar).view(-1, 1, 1) * projected_logits
+            xt = xt + torch.sqrt(1 - alpha_t_minus_bar).view(-1, 1, 1) * zt
 
             progress_bar.update(1)
 
             if t % 100 == 0 or t == 1:
                 simplex = torch.nn.functional.softmax(xt, dim=-1)
                 logger.info(f"sigma_t={sigma_t}, training_coef_at_t={torch.sqrt(1 - alpha_t_bar)}")
-                logger.info(f"predicted simplex's entropy={torch.distributions.categorical.Categorical(logits=equivalent_score).entropy()}, logit_max,min,mean={torch.max(equivalent_score)},{torch.min(equivalent_score)},{torch.mean(equivalent_score)}")
+                logger.info(
+                    f"predicted simplex's entropy={torch.distributions.categorical.Categorical(logits=equivalent_score).entropy()}, logit_max,min,mean={torch.max(equivalent_score)},{torch.min(equivalent_score)},{torch.mean(equivalent_score)}"
+                )
 
                 if unit_context_input_ids is not None:
-                    context_sequences = tokenizer.batch_decode(unit_context_input_ids.detach().to('cpu'))
+                    context_sequences = tokenizer.batch_decode(unit_context_input_ids.detach().to("cpu"))
                     logger.info(f"context: {context_sequences}")
-                
+
                 real_token_ids_list = torch.argmax(simplex, dim=-1).view(batch_size, unit_seq_len)
-                sampled_sequences = tokenizer.batch_decode(real_token_ids_list.clone().detach().to('cpu'))
+                sampled_sequences = tokenizer.batch_decode(real_token_ids_list.clone().detach().to("cpu"))
                 logger.info(f"t={t}: {colored(str(sampled_sequences), 'red')}")
 
                 simplex = equivalent_score
                 real_token_ids_list = torch.argmax(simplex, dim=-1).view(batch_size, unit_seq_len)
-                sampled_sequences = tokenizer.batch_decode(real_token_ids_list.clone().detach().to('cpu'))
+                sampled_sequences = tokenizer.batch_decode(real_token_ids_list.clone().detach().to("cpu"))
                 logger.info(f"t={t} (before +z): {colored(str(sampled_sequences), 'green')}")
 
-                alt_i = 1 # look at the second best candidate
-                alt_real_token_ids_list = torch.topk(simplex, alt_i+1, dim=-1).indices[:, :, alt_i].view(batch_size, unit_seq_len)
-                alt_sampled_sequences = tokenizer.batch_decode(alt_real_token_ids_list.clone().detach().to('cpu'))
+                alt_i = 1  # look at the second best candidate
+                alt_real_token_ids_list = (
+                    torch.topk(simplex, alt_i + 1, dim=-1).indices[:, :, alt_i].view(batch_size, unit_seq_len)
+                )
+                alt_sampled_sequences = tokenizer.batch_decode(alt_real_token_ids_list.clone().detach().to("cpu"))
                 logger.info(f"t={t} (alt{alt_i+1}): {colored(str(alt_sampled_sequences), 'blue')}")
 
                 logger.info(f"ctr loss: {args.ctr_loss}")
-                logger.info(f"non-zero vocab: {torch.count_nonzero(projected_logits > -args.one_hot_value+0.0001) / simplex.size(0) / simplex.size(1)} out of {torch.numel(projected_logits) / simplex.size(0) / simplex.size(1)}")
-        
+                logger.info(
+                    f"non-zero vocab: {torch.count_nonzero(projected_logits > -args.one_hot_value+0.0001) / simplex.size(0) / simplex.size(1)} out of {torch.numel(projected_logits) / simplex.size(0) / simplex.size(1)}"
+                )
+
         unit_context_input_ids = torch.cat((unit_context_input_ids, real_token_ids_list), dim=1)
         if history_decode_ids is None:
             history_decode_ids = real_token_ids_list
@@ -275,18 +222,25 @@ def decode(args, batch_input_ids, dec_depth, total_t, model_embedding_lut, embed
             history_decode_ids = torch.cat((history_decode_ids, real_token_ids_list), dim=1)
 
     if args.context_size > 0:
-        init_context_input_ids = batch_input_ids[:, :args.context_size].clone()
-        context_sequences = tokenizer.batch_decode(init_context_input_ids.detach().to('cpu'))
+        init_context_input_ids = batch_input_ids[:, : args.context_size].clone()
+        context_sequences = tokenizer.batch_decode(init_context_input_ids.detach().to("cpu"))
     else:
         init_context_input_ids = None
         context_sequences = None
-    gold_sequences = tokenizer.batch_decode(diffusion_input_ids.clone().detach().to('cpu'))
-    sampled_sequences = tokenizer.batch_decode(history_decode_ids.clone().detach().to('cpu'))
+    gold_sequences = tokenizer.batch_decode(diffusion_input_ids.clone().detach().to("cpu"))
+    sampled_sequences = tokenizer.batch_decode(history_decode_ids.clone().detach().to("cpu"))
     logger.info(f"context: {context_sequences}")
     logger.info(f"gold: {colored(str(gold_sequences), 'yellow')}")
     logger.info(f"t={t}: {colored(str(sampled_sequences), 'red')}")
 
-    return history_decode_ids, init_context_input_ids, diffusion_input_ids, sampled_sequences, context_sequences, gold_sequences
+    return (
+        history_decode_ids,
+        init_context_input_ids,
+        diffusion_input_ids,
+        sampled_sequences,
+        context_sequences,
+        gold_sequences,
+    )
 
 
 def parse_args():
@@ -310,9 +264,7 @@ def parse_args():
         default=None,
         help="The name of the additional dataset to use (via the datasets library). For example, BookCorpus.",
     )
-    parser.add_argument(
-        "--train_file", type=str, default=None, help="A csv or a json file containing the training data."
-    )
+    parser.add_argument("--train_file", type=str, default=None, help="A csv or a json file containing the training data.")
     parser.add_argument(
         "--validation_file", type=str, default=None, help="A csv or a json file containing the validation data."
     )
@@ -446,63 +398,117 @@ def parse_args():
         "--query_file", type=str, default=None, help="A pickle file containing gradient information from the querying data."
     )
     parser.add_argument(
-        "--query_data_cap", type=int, default=None, help="Max number of data for which we will save gradients.",
+        "--query_data_cap",
+        type=int,
+        default=None,
+        help="Max number of data for which we will save gradients.",
     )
     parser.add_argument("--influence_metric", type=str, default=None, help="Metric for computing the gradients.")
-    parser.add_argument("--init_blank_language_model", action="store_true", help="Whether or not to use a completely blank LM.")
     parser.add_argument(
-        "--tokenized_data_file_path", type=str, default=None, help="Path of the tokenized data file."
+        "--init_blank_language_model", action="store_true", help="Whether or not to use a completely blank LM."
+    )
+    parser.add_argument("--tokenized_data_file_path", type=str, default=None, help="Path of the tokenized data file.")
+    parser.add_argument(
+        "--if_create_tokenized_data_file",
+        type=str,
+        default=None,
+        help="Whether to create a new tokenized data file (yes or no).",
     )
     parser.add_argument(
-        "--if_create_tokenized_data_file", type=str, default=None, help="Whether to create a new tokenized data file (yes or no)."
+        "--sigma_start_value",
+        type=float,
+        default=-1,
+        help="",
     )
     parser.add_argument(
-        "--sigma_start_value", type=float, default=-1, help="",
+        "--sigma_end_value",
+        type=float,
+        default=-1,
+        help="",
     )
     parser.add_argument(
-        "--sigma_end_value", type=float, default=-1, help="",
+        "--sigma_num_steps",
+        type=int,
+        default=1000,
+        help="",
     )
     parser.add_argument(
-        "--sigma_num_steps", type=int, default=1000, help="",
+        "--loss_mode",
+        type=str,
+        default="",
+        help="",
     )
     parser.add_argument(
-        "--loss_mode", type=str, default="", help="",
+        "--remove_noise_mode",
+        type=str,
+        default="",
+        help="",
     )
     parser.add_argument(
-        "--remove_noise_mode", type=str, default="", help="",
+        "--hardcoded_pseudo_diralpha",
+        type=float,
+        default=3,
+        help="",
     )
     parser.add_argument(
-        "--hardcoded_pseudo_diralpha", type=float, default=3, help="",
+        "--context_size",
+        type=int,
+        default=0,
+        help="",
     )
     parser.add_argument(
-        "--context_size", type=int, default=0, help="",
+        "--decoding_block_size",
+        type=int,
+        default=25,
+        help="",
     )
     parser.add_argument(
-        "--decoding_block_size", type=int, default=25, help="",
+        "--train_mode",
+        type=str,
+        default="",
+        help="",
     )
     parser.add_argument(
-        "--train_mode", type=str, default="", help="",
+        "--noise_manual_scale",
+        type=float,
+        default=1,
+        help="",
     )
     parser.add_argument(
-        "--noise_manual_scale", type=float, default=1, help="",
+        "--decode_context_size",
+        type=int,
+        default=25,
+        help="",
+    )  # how many to cut from left
+    parser.add_argument(
+        "--decode_truncate_len",
+        type=int,
+        default=50,
+        help="",
+    )  # how many to cut from right
+    parser.add_argument(
+        "--decode_depth",
+        type=int,
+        default=2,
+        help="",
     )
     parser.add_argument(
-        "--decode_context_size", type=int, default=25, help="",
-    ) # how many to cut from left
-    parser.add_argument(
-        "--decode_truncate_len", type=int, default=50, help="",
-    ) # how many to cut from right
-    parser.add_argument(
-        "--decode_depth", type=int, default=2, help="",
+        "--decode_ctr_lr",
+        type=float,
+        default=0.0,
+        help="",
     )
     parser.add_argument(
-        "--decode_ctr_lr", type=float, default=0.0, help="",
+        "--out_fn",
+        type=str,
+        default="_sample_gen.jsonl",
+        help="",
     )
     parser.add_argument(
-        "--out_fn", type=str, default="_sample_gen.jsonl", help="",
-    )
-    parser.add_argument(
-        "--projection_top_p", type=float, default=0.2, help="",
+        "--projection_top_p",
+        type=float,
+        default=0.2,
+        help="",
     )
     args = parser.parse_args()
 
@@ -535,7 +541,7 @@ def main():
     # If passed along, set the training seed now.
     if args.seed is not None:
         # set_seed(args.seed)
-        accelerate.utils.set_seed(args.seed, device_specific=True) # differ slightly for each device
+        accelerate.utils.set_seed(args.seed, device_specific=True)  # differ slightly for each device
 
     # HACK: we can pass in "resume" mode, but if output_dir doesn't exist, we change to "train" mode
     if args.train_mode == "resume" and not os.path.exists(args.output_dir):
@@ -577,7 +583,7 @@ def main():
         config = CONFIG_MAPPING[args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
 
-    assert args.use_slow_tokenizer == True 
+    assert args.use_slow_tokenizer == True
     if args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=not args.use_slow_tokenizer)
     elif args.model_name_or_path:
@@ -588,32 +594,15 @@ def main():
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub).
-    #
-    # For CSV/JSON files, this script will use the column called 'text' or the first column if no column called
-    # 'text' is found. You can easily tweak this behavior (see below).
-    #
-    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-    # download the dataset.
-    jump = False
-    if args.tokenized_data_file_path and args.if_create_tokenized_data_file:
-        if args.if_create_tokenized_data_file == "no":
-            tokenized_datasets = load_from_disk(args.tokenized_data_file_path)
-            jump = True
-        elif args.if_create_tokenized_data_file == "yes":
-            raise ValueError("should not create dataset in this train file")
-            if accelerator.is_main_process:
-                pass
-        else:
-            raise ValueError("check args.if_create_tokenized_data_file")
+    tokenized_datasets = load_from_disk(args.tokenized_data_file_path)
 
-    full_dataset = tokenized_datasets["train"] 
-    validation_ratio = 0.01 # 1 pct of the data is used for validation
+    full_dataset = tokenized_datasets["train"]
+    validation_ratio = 0.01  # 1 pct of the data is used for validation
     validation_len = int(len(full_dataset) * validation_ratio)
     train_len = len(full_dataset) - validation_len
-    train_dataset, eval_dataset = torch.utils.data.random_split(full_dataset, [train_len, validation_len], generator=torch.Generator().manual_seed(42)) # fixing seed here
+    train_dataset, eval_dataset = torch.utils.data.random_split(
+        full_dataset, [train_len, validation_len], generator=torch.Generator().manual_seed(42)
+    )  # fixing seed here
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_dataset)), 3):
@@ -621,7 +610,7 @@ def main():
 
     # Data collator
     # This one will take care of randomly masking the tokens.
-    assert args.mlm_probability == 0 # diffusion model does not use [MASK]
+    assert args.mlm_probability == 0  # diffusion model does not use [MASK]
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=args.mlm_probability)
 
     # DataLoaders creation:
@@ -629,17 +618,12 @@ def main():
         train_dataset, shuffle=True, collate_fn=data_collator, batch_size=args.per_device_train_batch_size
     )
     eval_dataloader = DataLoader(
-        eval_dataset, shuffle=True, collate_fn=data_collator, batch_size=args.per_device_eval_batch_size, generator=torch.Generator().manual_seed(42)
+        eval_dataset,
+        shuffle=True,
+        collate_fn=data_collator,
+        batch_size=args.per_device_eval_batch_size,
+        generator=torch.Generator().manual_seed(42),
     )
-
-    ########
-
-    # # If we want to use a non-existing architecture, we can do it here
-    # config.hidden_size = 1600
-    # config.intermediate_size = 4096
-    # config.max_position_embeddings = 128
-    # config.num_attention_heads = 25
-    # config.num_hidden_layers = 48
 
     if args.init_blank_language_model:
         model = AutoModelForMaskedLM.from_config(config)
@@ -678,11 +662,19 @@ def main():
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() if (not any(fr in n for fr in frozen)) and (not any(nd in n for nd in no_decay))],
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if (not any(fr in n for fr in frozen)) and (not any(nd in n for nd in no_decay))
+            ],
             "weight_decay": args.weight_decay,
         },
         {
-            "params": [p for n, p in model.named_parameters() if (not any(fr in n for fr in frozen)) and (any(nd in n for nd in no_decay))],
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if (not any(fr in n for fr in frozen)) and (any(nd in n for nd in no_decay))
+            ],
             "weight_decay": 0.0,
         },
         {
@@ -722,15 +714,17 @@ def main():
     #     model.tie_weights()
 
     # Save accelerator state
-    if args.train_mode == "resume": # resuming job would still break the strict reproducibility, since we are not saving noise states
-        accelerator.load_state(os.path.join(args.output_dir, 'accelerate_ckpt'))
-        with open(os.path.join(args.output_dir, "completed_steps.txt"), 'r') as f:
+    if (
+        args.train_mode == "resume"
+    ):  # resuming job would still break the strict reproducibility, since we are not saving noise states
+        accelerator.load_state(os.path.join(args.output_dir, "accelerate_ckpt"))
+        with open(os.path.join(args.output_dir, "completed_steps.txt"), "r") as f:
             completed_steps = int(f.read())
     elif args.train_mode == "train":
-        if os.path.exists(os.path.join(args.output_dir, 'accelerate_ckpt')):
+        if os.path.exists(os.path.join(args.output_dir, "accelerate_ckpt")):
             logger.info("training probably interrupted, should change mode to resume for the next run")
             return 0
-        accelerator.save_state(os.path.join(args.output_dir, 'accelerate_ckpt'))
+        accelerator.save_state(os.path.join(args.output_dir, "accelerate_ckpt"))
         completed_steps = 0
     elif args.train_mode == "decode":
         pass
@@ -739,11 +733,11 @@ def main():
 
     model_embedding_lut = accelerator.unwrap_model(model).get_input_embeddings()
 
-    t_list = list(range(1, args.sigma_num_steps+1))
+    t_list = list(range(1, args.sigma_num_steps + 1))
     total_t = args.sigma_num_steps
-    one_hot_value = args.hardcoded_pseudo_diralpha # for a pseudo one-hot encoding for alpha
+    one_hot_value = args.hardcoded_pseudo_diralpha  # for a pseudo one-hot encoding for alpha
 
-    args.remove_noise_mode = args.remove_noise_mode.split('|')
+    args.remove_noise_mode = args.remove_noise_mode.split("|")
     args.noise_analysis_list = list()
 
     if args.train_mode == "train" or args.train_mode == "resume":
@@ -751,7 +745,11 @@ def main():
 
     ##########################################
 
-    out_json_fn = os.path.join(args.output_dir, f"ctx{args.decode_context_size}_trunc{args.decode_truncate_len}_depth{args.decode_depth}_ctrlr{args.decode_ctr_lr}_step{args.sigma_num_steps}_topp{args.projection_top_p}_" + args.out_fn)
+    out_json_fn = os.path.join(
+        args.output_dir,
+        f"ctx{args.decode_context_size}_trunc{args.decode_truncate_len}_depth{args.decode_depth}_ctrlr{args.decode_ctr_lr}_step{args.sigma_num_steps}_topp{args.projection_top_p}_"
+        + args.out_fn,
+    )
 
     # Decoding, includes hardcode for now
     if args.train_mode == "decode":
@@ -759,20 +757,24 @@ def main():
         # # Use this when running without accelerator
         # _stdict = dict((_k[7:], _stdict[_k]) if _k.startswith("module.") else (_k, _stdict[_k]) for _k in _stdict)
         # Use this when running with accelerator
-        _stdict = dict((f"module.{_k}", _stdict[_k]) if not _k.startswith("module.") else (_k, _stdict[_k]) for _k in _stdict)
+        _stdict = dict(
+            (f"module.{_k}", _stdict[_k]) if not _k.startswith("module.") else (_k, _stdict[_k]) for _k in _stdict
+        )
         embedding_sum_layer.load_state_dict(_stdict)
 
         _stdict = torch.load(os.path.join(args.output_dir, "timestep_layer.pt"))
         # # Use this when running without accelerator
         # _stdict = dict((_k[7:], _stdict[_k]) if _k.startswith("module.") else (_k, _stdict[_k]) for _k in _stdict)
         # Use this when running with accelerator
-        _stdict = dict((f"module.{_k}", _stdict[_k]) if not _k.startswith("module.") else (_k, _stdict[_k]) for _k in _stdict)
+        _stdict = dict(
+            (f"module.{_k}", _stdict[_k]) if not _k.startswith("module.") else (_k, _stdict[_k]) for _k in _stdict
+        )
         timestep_layer.load_state_dict(_stdict)
 
         model.eval()
 
-        args.sigma_noise_scale = 1.0 
-        args.interpolation_with_prev = 0.0 
+        args.sigma_noise_scale = 1.0
+        args.interpolation_with_prev = 0.0
 
         args.context_size = args.decode_context_size
 
@@ -781,67 +783,64 @@ def main():
         args.accelerator = accelerator
         args.ctr_model = None
 
-        if "interactive" in args.remove_noise_mode:
-            args.orig_decode_truncate_len = args.decode_truncate_len
-            with torch.no_grad():
-                while True:
-                    accelerator.wait_for_everyone()
-                    if accelerator.is_main_process:
-                        prompt = input("Type in your prompt: ")
-                        if prompt:
-                            if prompt[0] != " ":
-                                prompt = f" {prompt}"
-                            input_ids = torch.LongTensor(tokenizer.encode(prompt, add_special_tokens=False)).to(args.accelerator.device)
-                            args.context_size = len(input_ids)
-                            args.decode_truncate_len = args.orig_decode_truncate_len - args.context_size # Han: this compensates for the unknown input context size
-                            input_ids = input_ids.unsqueeze(0)
-                            history_decode_ids, context_input_ids, diffusion_input_ids, sampled_sequences, context_sequences, gold_sequences = \
-                                decode(args, input_ids, args.decode_depth, total_t, model_embedding_lut, embedding_sum_layer, timestep_layer, model, tokenizer)
-                        else:
-                            breakpoint() # Han: can use exit(0) here
-                    accelerator.wait_for_everyone()
-
-        # breakpoint()
         export_list = []
         with torch.no_grad():
             for step, batch in enumerate(eval_dataloader):
                 accelerator.wait_for_everyone()
 
-                repeat_sample = 5 # Han: currently change here manually
+                repeat_sample = 5  # Han: currently change here manually
                 for _r in range(repeat_sample):
-                    history_decode_ids, context_input_ids, diffusion_input_ids, sampled_sequences, context_sequences, gold_sequences = \
-                        decode(args, batch['input_ids'], args.decode_depth, total_t, model_embedding_lut, embedding_sum_layer, timestep_layer, model, tokenizer)
-                    if _r == 0: # first sample
+                    (
+                        history_decode_ids,
+                        context_input_ids,
+                        diffusion_input_ids,
+                        sampled_sequences,
+                        context_sequences,
+                        gold_sequences,
+                    ) = decode(
+                        args,
+                        batch["input_ids"],
+                        args.decode_depth,
+                        total_t,
+                        model_embedding_lut,
+                        embedding_sum_layer,
+                        timestep_layer,
+                        model,
+                        tokenizer,
+                    )
+                    if _r == 0:  # first sample
                         # export to jsonl
                         for _i in range(args.per_device_eval_batch_size):
                             export_dict = dict()
-                            export_dict['context_len'] = args.context_size
-                            export_dict['context'] = context_input_ids.tolist()[_i]
-                            export_dict['context_string'] = context_sequences[_i]
-                            export_dict['len'] = args.max_seq_length - args.context_size - args.decode_truncate_len
-                            export_dict['tokens'] = [history_decode_ids.tolist()[_i]]
-                            export_dict['string'] = [sampled_sequences[_i]]
-                            export_dict['gold_tokens'] = diffusion_input_ids.tolist()[_i]
-                            export_dict['gold_string'] = gold_sequences[_i]
+                            export_dict["context_len"] = args.context_size
+                            export_dict["context"] = context_input_ids.tolist()[_i]
+                            export_dict["context_string"] = context_sequences[_i]
+                            export_dict["len"] = args.max_seq_length - args.context_size - args.decode_truncate_len
+                            export_dict["tokens"] = [history_decode_ids.tolist()[_i]]
+                            export_dict["string"] = [sampled_sequences[_i]]
+                            export_dict["gold_tokens"] = diffusion_input_ids.tolist()[_i]
+                            export_dict["gold_string"] = gold_sequences[_i]
                             export_list.append(export_dict)
                     else:
                         for _i in range(args.per_device_eval_batch_size):
-                            export_list[-(args.per_device_eval_batch_size - _i)]['tokens'].append(history_decode_ids.tolist()[_i])
-                            export_list[-(args.per_device_eval_batch_size - _i)]['string'].append(sampled_sequences[_i])
+                            export_list[-(args.per_device_eval_batch_size - _i)]["tokens"].append(
+                                history_decode_ids.tolist()[_i]
+                            )
+                            export_list[-(args.per_device_eval_batch_size - _i)]["string"].append(sampled_sequences[_i])
 
                 # # use below for manual inspection
                 # if accelerator.is_main_process:
                 #     breakpoint()
                 # accelerator.wait_for_everyone()
 
-                num_exports = 5 # Han: currently change here manually, multiply this with effective eval bs
+                num_exports = 5  # Han: currently change here manually, multiply this with effective eval bs
                 if (step + 1) == num_exports:
                     if accelerator.is_main_process:
                         if os.path.exists(out_json_fn):
                             os.remove(out_json_fn)
                             logger.info(f"Cleaning existing {out_json_fn}")
                     accelerator.wait_for_everyone()
-                    with Lock(out_json_fn + '.lock', lifetime=120):
+                    with Lock(out_json_fn + ".lock", lifetime=120):
                         with open(out_json_fn, mode="a") as f_out:
                             for export in export_list:
                                 f_out.write(json.dumps(export))
