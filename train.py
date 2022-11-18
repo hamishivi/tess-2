@@ -210,10 +210,12 @@ def main():
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
-    experiment_config = {**vars(model_args), **vars(training_args), **vars(diffusion_args), **vars(data_args)}
+    # TODO(rabeeh): fix config later.
+    # experiment_config = {**vars(model_args), **vars(training_args), **vars(diffusion_args), **vars(data_args)}
     # TensorBoard cannot log Enums, need the raw value
-    experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
-    accelerator.init_trackers("mlm_no_trainer", experiment_config)
+    # experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
+    # accelerator.init_trackers("train_sdlm", config=experiment_config)
+    accelerator.init_trackers("train_sdlm")
 
     # Train!
     total_batch_size = (
