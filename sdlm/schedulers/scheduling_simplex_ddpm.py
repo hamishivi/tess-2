@@ -4,8 +4,7 @@ from diffusers import DDPMScheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
 from typing import Union, Tuple
 import torch
-from diffusers.configuration_utils import FrozenDict, register_to_config
-from diffusers.utils import deprecate
+from diffusers.configuration_utils import register_to_config
 
 
 class SimplexDDPMScheduler(DDPMScheduler):
