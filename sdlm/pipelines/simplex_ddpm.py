@@ -1,9 +1,9 @@
 from typing import Optional, Tuple, Union
 
 import torch
-
+import pdb
 from diffusers.pipeline_utils import DiffusionPipeline
-from sdlm.pipeline.pipeline_utils import SimplexDiffusionPipelineOutput
+from sdlm.pipelines.pipeline_utils import SimplexDiffusionPipelineOutput
 from sdlm.utils import scale, convert_to_simplex
 from sdlm.inference.inference_utils import sample_logits
 
@@ -63,11 +63,13 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
+            t = t.to(simplex.device)
+
             # TODO(rabeeh): we need to check if scale is needed or is done inside scheduler.
-            t = scale(t, len(self.scheduler))
+            t_scaled = scale(t, len(self.scheduler))
 
             # 1. predict noise model_output
-            model_output = self.model(simplex=simplex, timesteps=t, input_ids=None)
+            model_output = self.model(simplex=simplex, timesteps=t_scaled, input_ids=None)
 
             # Projection.
             projected_simplex = self.logits_projection(model_output.logits)
@@ -75,6 +77,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # 2. compute previous logits: x_t -> x_t-1
             # TODO(rabeeh): this line is wrong and they pass simplex noise here, and we need
             # to also do so, inside the scheduler.
-            simplex = self.scheduler.step(projected_simplex, t, simplex, generator=generator).prev_sample
+            # TODO(rabeeh): ask here projected simplex is a -5,5 vector, while simplex is not!!!
+            simplex = self.scheduler.step(projected_simplex.float(), t, simplex, generator=generator).prev_sample
 
         return SimplexDiffusionPipelineOutput(simplex=simplex)

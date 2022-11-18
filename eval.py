@@ -38,7 +38,6 @@ def main():
         log_with="tensorboard",
         logging_dir=training_args.output_dir,
     )
-
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -56,10 +55,11 @@ def main():
         set_seed(training_args.seed)
     last_checkpoint = get_last_checkpoint(training_args.output_dir, prefix_checkpoint_dir="step")
     config = AutoConfig.from_pretrained(last_checkpoint)
+    # TODO(rabeeh): fix predict epsilon one.
     noise_scheduler = DDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
-        predict_epsilon=diffusion_args.predict_epsilon,
+        # predict_epsilon=diffusion_args.predict_epsilon,
     )
     model = RobertaForDiffusionLM.from_pretrained(
         last_checkpoint,
@@ -74,6 +74,8 @@ def main():
         sampling_type=diffusion_args.sampling_type,
     )
     tokenizer = AutoTokenizer.from_pretrained(last_checkpoint, use_fast=model_args.use_fast_tokenizer)
+    (model, tokenizer, pipeline, noise_scheduler) = accelerator.prepare(model, tokenizer, pipeline, noise_scheduler)
+
     # TODO(rabeeh): complete this.
     texts = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
     for text in texts:
@@ -87,7 +89,6 @@ def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
         num_inference_steps=diffusion_args.num_diffusion_steps,
     ).simplex
     probabilities = F.softmax(simplex, dim=-1)
-    # TODO(rabeeh): this needs to be checked.
     token_ids = torch.argmax(probabilities, dim=-1)
     pred_texts = tokenizer.batch_decode(token_ids)
     return process_text(pred_texts)

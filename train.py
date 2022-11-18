@@ -179,10 +179,11 @@ def main():
         num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps,
     )
     # TODO: we need to check how this works.
+    # TODO(rabeeh): fix this.
     noise_scheduler = DDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
-        predict_epsilon=diffusion_args.predict_epsilon,
+        # predict_epsilon=diffusion_args.predict_epsilon,
     )
 
     # Prepare everything with our `accelerator`.
