@@ -31,14 +31,9 @@ from sdlm.models import RobertaForDiffusionLM
 from sdlm.utils import convert_to_simplex, scale
 from diffusers import DDPMScheduler
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0")
-
 logger = get_logger(__name__)
-require_version(
-    "datasets>=1.8.0",
-    "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt",
-)
+require_version("datasets>=1.8.0")
 
 
 def main():
@@ -73,7 +68,6 @@ def main():
     if training_args.seed is not None:
         set_seed(training_args.seed)
 
-    # Handle the repository creation
     if accelerator.is_main_process:
         if training_args.output_dir is not None:
             os.makedirs(training_args.output_dir, exist_ok=True)

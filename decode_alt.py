@@ -557,24 +557,9 @@ def main():
     accelerator.wait_for_everyone()
 
     # under decode mode, will load model from the output_dir
-    if args.train_mode == "decode":
-        args.model_name_or_path = args.output_dir
-        logger.info(f"Overwriting model_name_or_path ({args.model_name_or_path}) with {args.output_dir}")
-    elif args.train_mode == "train":
-        train_losses_log_file = os.path.join(args.output_dir, "training_losses.txt")
-        if accelerator.is_main_process:
-            if os.path.exists(train_losses_log_file):
-                os.remove(train_losses_log_file)
-                logger.info(f"Cleaning existing {train_losses_log_file}")
-        accelerator.wait_for_everyone()
+    args.model_name_or_path = args.output_dir
+    logger.info(f"Overwriting model_name_or_path ({args.model_name_or_path}) with {args.output_dir}")
 
-    # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
-
-    # Load pretrained model and tokenizer
-    #
-    # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
-    # download model & vocab.
     if args.config_name:
         config = AutoConfig.from_pretrained(args.config_name)
     elif args.model_name_or_path:
@@ -739,9 +724,6 @@ def main():
 
     args.remove_noise_mode = args.remove_noise_mode.split("|")
     args.noise_analysis_list = list()
-
-    if args.train_mode == "train" or args.train_mode == "resume":
-        raise ValueError("Training or resuming is disabled here")
 
     ##########################################
 
