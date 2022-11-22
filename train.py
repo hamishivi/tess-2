@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import random
+from pathlib import Path
 import sys
 import numpy as np
 import datasets
@@ -32,10 +33,43 @@ from sdlm.utils import convert_to_simplex, scale
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from eval import generate_text
+import sdlm.utils as utils
 
 check_min_version("4.24.0")
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
+
+
+def save_checkpoint(args, output_dir, accelerator, model, tokenizer):
+    # Removes previous checkpoints.
+    utils.remove_checkpoints(args.output_dir)
+    # Saves the new checkpoint.
+    unwrapped_model = accelerator.unwrap_model(model)
+    unwrapped_model.save_pretrained(output_dir, save_function=accelerator.save)
+    accelerator.save_state(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    logger.info("Saving checkpoint is complete.")
+
+
+def setup_logging(accelerator, logging_dir):
+    logging_dir = Path(logging_dir)
+    logging_dir.mkdir(exist_ok=True)
+    filename = f"debug_{accelerator.process_index}.log"
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+        handlers=[logging.FileHandler(logging_dir / filename), logging.StreamHandler()],
+    )
+    if accelerator.is_main_process:  # we only want to setup logging once
+        logger.setLevel(logging.INFO)
+        datasets.utils.logging.set_verbosity_info()
+        transformers.utils.logging.set_verbosity_info()
+    else:
+        logger.setLevel(logging.ERROR)
+        datasets.utils.logging.set_verbosity_error()
+        transformers.utils.logging.set_verbosity_error()
+    return logger
 
 
 def main():
@@ -48,23 +82,16 @@ def main():
     # Initialize the accelerator.
     accelerator = Accelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
+        # mixed_precision=training_args.mixed_precision,
         log_with="tensorboard",
-        logging_dir=training_args.output_dir,
+        logging_dir=f"{training_args.output_dir}/log",
     )
 
-    # Make one log on every process with the configuration for debugging.
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
-    logger.info(accelerator.state, main_process_only=False)
-    if accelerator.is_local_main_process:
-        datasets.utils.logging.set_verbosity_warning()
-        transformers.utils.logging.set_verbosity_info()
-    else:
-        datasets.utils.logging.set_verbosity_error()
-        transformers.utils.logging.set_verbosity_error()
+    # We need to initialize the trackers we use, and also store our configuration.
+    # The trackers initializes automatically on the main process.
+    if accelerator.is_main_process:
+        accelerator.init_trackers("train-text-diffusion")
+    logger = setup_logging(accelerator, training_args.output_dir)
 
     # If passed along, set the training seed now.
     if training_args.seed is not None:
@@ -209,15 +236,6 @@ def main():
     # Figure out how many steps we should save the Accelerator states
     checkpointing_steps = training_args.checkpointing_steps
 
-    # We need to initialize the trackers we use, and also store our configuration.
-    # The trackers initializes automatically on the main process.
-    # TODO(rabeeh): fix config later.
-    # experiment_config = {**vars(model_args), **vars(training_args), **vars(diffusion_args), **vars(data_args)}
-    # TensorBoard cannot log Enums, need the raw value
-    # experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
-    # accelerator.init_trackers("train_sdlm", config=experiment_config)
-    accelerator.init_trackers("train_sdlm")
-
     # Train!
     total_batch_size = (
         training_args.per_device_train_batch_size * accelerator.num_processes * training_args.gradient_accumulation_steps
@@ -277,7 +295,7 @@ def main():
                 # TODO(rabeeh): we need to modify this block.
                 # Converts embeddings to a simplex representation.
                 simplex = convert_to_simplex(batch["input_ids"], diffusion_args.simplex_value, vocab_size)
-                noise = diffusion_args.simplex_value * torch.randn(simplex.shape).to(simplex.device)
+                noise = diffusion_args.simplex_value * torch.randn(simplex.shape, device=simplex.device, dtype=simplex.dtype)
                 bsz = simplex.shape[0]
                 # Sample a random timestep for each simplex token representation.
                 timesteps = torch.randint(
@@ -310,7 +328,6 @@ def main():
                 output_dir = f"step_{completed_steps}"
                 if training_args.output_dir is not None:
                     output_dir = os.path.join(training_args.output_dir, output_dir)
-                accelerator.save_state(output_dir)
                 accelerator.log(
                     {
                         "train_loss": np.mean(train_losses),
@@ -337,13 +354,7 @@ def main():
                         logger.info(total_text)
                 accelerator.wait_for_everyone()
                 if accelerator.is_main_process:
-                    unwrapped_model = accelerator.unwrap_model(model)
-                    unwrapped_model.save_pretrained(
-                        output_dir,
-                        is_main_process=accelerator.is_main_process,
-                        save_function=accelerator.save,
-                    )
-                    tokenizer.save_pretrained(output_dir)
+                    save_checkpoint(training_args, output_dir, accelerator, model, tokenizer)
 
             if completed_steps >= training_args.max_train_steps:
                 break

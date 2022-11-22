@@ -4,7 +4,6 @@ import torch
 import pdb
 from diffusers.pipeline_utils import DiffusionPipeline
 from sdlm.pipelines.pipeline_utils import SimplexDiffusionPipelineOutput
-from sdlm.utils import scale, convert_to_simplex
 from sdlm.inference.inference_utils import sample_logits
 import torch.nn.functional as F
 
@@ -29,8 +28,9 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
     def logits_projection(self, logits):
         # TODO(rabeeh): huggingface has different sampling, like constrastive one.
-        token_ids = sample_logits(self.sampling_type, logits, self.top_p)
-        return convert_to_simplex(token_ids, self.simplex_value, vocab_size=logits.shape[2])
+        token_ids = sample_logits(self.sampling_type, logits, self.top_p, self.simplex_value)
+        # return convert_to_simplex(token_ids, self.simplex_value, vocab_size=logits.shape[2])
+        return token_ids
 
     @torch.no_grad()
     def __call__(
@@ -74,7 +74,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
             # Projection.
             projected_simplex = model_output.logits
-            # projected_simplex = self.logits_projection(model_output.logits)
+            projected_simplex = self.logits_projection(model_output.logits)
 
             # 2. compute previous logits: x_t -> x_t-1
             # TODO(rabeeh): this line is wrong and they pass simplex noise here, and we need

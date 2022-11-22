@@ -196,8 +196,8 @@ class DataTrainingArguments:
 class DiffusionArguments:
     """Defines the diffusion related parameters."""
 
-    simplex_value: int = field(
-        default=5,
+    simplex_value: float = field(
+        default=5.0,
         metadata={
             "help": (
                 "We map the token ids to a vector of vocabulary size, where for tokens not"
