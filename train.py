@@ -205,13 +205,14 @@ def main():
         name=training_args.lr_scheduler_type,
         optimizer=optimizer,
         num_warmup_steps=training_args.num_warmup_steps * training_args.gradient_accumulation_steps,
-        num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps,
+        num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps
     )
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
+        device=accelerator.device
     )
 
     # Prepare everything with our `accelerator`.
