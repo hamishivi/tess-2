@@ -3,7 +3,7 @@
    	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/simple_data",
 	"train_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-train.txt",
 	"validation_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-test.txt",
-        "checkpointing_steps": 10,
+        "checkpointing_steps": 20,
 	"max_seq_length": 50,
 	"num_diffusion_steps": 20,
 	"line_by_line": true,

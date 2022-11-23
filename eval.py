@@ -60,8 +60,7 @@ def main():
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        # predict_epsilon=diffusion_args.predict_epsilon,
+        clip_sample=diffusion_args.clip_sample
     )
     model = RobertaForDiffusionLM.from_pretrained(
         last_checkpoint,
@@ -78,9 +77,12 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(last_checkpoint, use_fast=model_args.use_fast_tokenizer)
     (model, tokenizer, pipeline, noise_scheduler) = accelerator.prepare(model, tokenizer, pipeline, noise_scheduler)
 
-    texts = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
-    for key, value in texts.items():
-        logger.info(key+":"+value)
+    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
+    
+    for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
+        total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
+        total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
+        logger.info(total_text)
 
 
 def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args):

@@ -350,7 +350,7 @@ def main():
                     results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
                     for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
                         total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
-                        total_text = "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
+                        total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
                         accelerator.trackers[0].writer.add_text(f"sample_{i}", total_text, completed_steps)
                         logger.info(total_text)
                 accelerator.wait_for_everyone()
