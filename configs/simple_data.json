@@ -1,17 +1,21 @@
 {
-	"model_name_or_path": "roberta-base",
-   	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/simple_data",
+	"model_name_or_path": "roberta-large",
+   	"per_device_train_batch_size": 192,
+	"per_device_eval_batch_size": 192,
+	"learning_rate": 1e-4,
+	"weight_decay": 0.01,
+	"num_warmup_steps": 2000,
+	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/simple_data",
 	"train_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-train.txt",
 	"validation_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-test.txt",
-        "checkpointing_steps": 20,
-	"max_seq_length": 50,
-	"num_diffusion_steps": 20,
+        "checkpointing_steps": 1000,
+	"max_seq_length": 25,
+	"simplex_value": 5,
+	"num_diffusion_steps": 2500,
 	"line_by_line": true,
 	"pad_to_max_length": false,
 	"max_train_steps": 25000,
-	"per_device_train_batch_size": 64,
-	"learning_rate": 1e-4,
 	"lr_scheduler_type": "cosine",
-	"num_warmup_steps": 1000
+	"beta_schedule": "squaredcos_improved_ddpm"
 }
 
