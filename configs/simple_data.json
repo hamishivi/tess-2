@@ -10,12 +10,13 @@
 	"validation_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-test.txt",
         "checkpointing_steps": 1000,
 	"max_seq_length": 25,
-	"simplex_value": 5,
+	"simplex_value": 5.0,
 	"num_diffusion_steps": 2500,
 	"line_by_line": true,
 	"pad_to_max_length": false,
 	"max_train_steps": 25000,
 	"lr_scheduler_type": "cosine",
-	"beta_schedule": "squaredcos_improved_ddpm"
+	"beta_schedule": "squaredcos_improved_ddpm",
+	"top_p": 0.99
 }
 
