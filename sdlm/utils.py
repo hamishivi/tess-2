@@ -3,6 +3,11 @@ import torch.nn.functional as F
 import os
 import re
 import pdb
+from pathlib import Path
+from transformers.utils import logging
+import shutil
+
+logger = logging.get_logger(__name__)
 
 
 def convert_to_simplex(token_ids, simplex_value, vocab_size):
@@ -22,3 +27,10 @@ def get_last_checkpoint(folder, prefix_checkpoint_dir="step"):
     if len(checkpoints) == 0:
         return
     return os.path.join(folder, max(checkpoints, key=lambda x: int(re_checkpoint.search(x).groups()[0])))
+
+
+def remove_checkpoints(output_dir, checkpoint_prefix="step"):
+    checkpoints = [str(x) for x in Path(output_dir).glob(f"{checkpoint_prefix}_*") if os.path.isdir(x)]
+    for checkpoint in checkpoints:
+        logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+        shutil.rmtree(checkpoint)

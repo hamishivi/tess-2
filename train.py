@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import random
+from pathlib import Path
 import sys
 import numpy as np
 import datasets
@@ -30,10 +31,45 @@ from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_v
 from sdlm.models import RobertaForDiffusionLM
 from sdlm.utils import convert_to_simplex, scale
 from sdlm.schedulers import SimplexDDPMScheduler
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from eval import generate_text
+import sdlm.utils as utils
 
 check_min_version("4.24.0")
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
+
+
+def save_checkpoint(args, output_dir, accelerator, model, tokenizer):
+    # Removes previous checkpoints.
+    utils.remove_checkpoints(args.output_dir)
+    # Saves the new checkpoint.
+    unwrapped_model = accelerator.unwrap_model(model)
+    unwrapped_model.save_pretrained(output_dir, save_function=accelerator.save)
+    accelerator.save_state(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    logger.info("Saving checkpoint is complete.")
+
+
+def setup_logging(accelerator, logging_dir):
+    logging_dir = Path(logging_dir)
+    logging_dir.mkdir(exist_ok=True)
+    filename = f"debug_{accelerator.process_index}.log"
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+        handlers=[logging.FileHandler(logging_dir / filename), logging.StreamHandler()],
+    )
+    if accelerator.is_main_process:  # we only want to setup logging once
+        logger.setLevel(logging.INFO)
+        datasets.utils.logging.set_verbosity_info()
+        transformers.utils.logging.set_verbosity_info()
+    else:
+        logger.setLevel(logging.ERROR)
+        datasets.utils.logging.set_verbosity_error()
+        transformers.utils.logging.set_verbosity_error()
+    return logger
 
 
 def main():
@@ -46,23 +82,16 @@ def main():
     # Initialize the accelerator.
     accelerator = Accelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
+        # mixed_precision=training_args.mixed_precision,
         log_with="tensorboard",
-        logging_dir=training_args.output_dir,
+        logging_dir=f"{training_args.output_dir}/log",
     )
 
-    # Make one log on every process with the configuration for debugging.
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
-    logger.info(accelerator.state, main_process_only=False)
-    if accelerator.is_local_main_process:
-        datasets.utils.logging.set_verbosity_warning()
-        transformers.utils.logging.set_verbosity_info()
-    else:
-        datasets.utils.logging.set_verbosity_error()
-        transformers.utils.logging.set_verbosity_error()
+    # We need to initialize the trackers we use, and also store our configuration.
+    # The trackers initializes automatically on the main process.
+    if accelerator.is_main_process:
+        accelerator.init_trackers("train-text-diffusion")
+    logger = setup_logging(accelerator, training_args.output_dir)
 
     # If passed along, set the training seed now.
     if training_args.seed is not None:
@@ -176,15 +205,14 @@ def main():
         name=training_args.lr_scheduler_type,
         optimizer=optimizer,
         num_warmup_steps=training_args.num_warmup_steps * training_args.gradient_accumulation_steps,
-        num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps,
+        num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps
     )
-    # TODO: we need to check how this works.
-    # TODO(rabeeh): fix this.
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value
-        # predict_epsilon=diffusion_args.predict_epsilon,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
+        device=accelerator.device
     )
 
     # Prepare everything with our `accelerator`.
@@ -193,8 +221,8 @@ def main():
     )
 
     # On TPU, the tie weights in our model have been disconnected, so we need to restore the ties.
-    if accelerator.distributed_type == DistributedType.TPU:
-        model.tie_weights()
+    # if accelerator.distributed_type == DistributedType.TPU:
+    #    model.tie_weights()
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / training_args.gradient_accumulation_steps)
@@ -205,15 +233,6 @@ def main():
 
     # Figure out how many steps we should save the Accelerator states
     checkpointing_steps = training_args.checkpointing_steps
-
-    # We need to initialize the trackers we use, and also store our configuration.
-    # The trackers initializes automatically on the main process.
-    # TODO(rabeeh): fix config later.
-    # experiment_config = {**vars(model_args), **vars(training_args), **vars(diffusion_args), **vars(data_args)}
-    # TensorBoard cannot log Enums, need the raw value
-    # experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
-    # accelerator.init_trackers("train_sdlm", config=experiment_config)
-    accelerator.init_trackers("train_sdlm")
 
     # Train!
     total_batch_size = (
@@ -274,7 +293,7 @@ def main():
                 # TODO(rabeeh): we need to modify this block.
                 # Converts embeddings to a simplex representation.
                 simplex = convert_to_simplex(batch["input_ids"], diffusion_args.simplex_value, vocab_size)
-                noise = diffusion_args.simplex_value * torch.randn(simplex.shape).to(simplex.device)
+                noise = diffusion_args.simplex_value * torch.randn(simplex.shape, device=simplex.device, dtype=simplex.dtype)
                 bsz = simplex.shape[0]
                 # Sample a random timestep for each simplex token representation.
                 timesteps = torch.randint(
@@ -286,7 +305,7 @@ def main():
                 # Adds noise to each simplex representation accoding to the noise magnitude at
                 # each timestep (Forward diffusion process).
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
-                # TODO(rabeeh): shouldn't they scale it before using scheduler?
+                # TODO(rabeeh): shouldn't they scale it before using scheduler? SSDLM scales here.
                 timesteps = scale(timesteps, len(noise_scheduler))
                 outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
                 loss = outputs.loss
@@ -307,7 +326,6 @@ def main():
                 output_dir = f"step_{completed_steps}"
                 if training_args.output_dir is not None:
                     output_dir = os.path.join(training_args.output_dir, output_dir)
-                accelerator.save_state(output_dir)
                 accelerator.log(
                     {
                         "train_loss": np.mean(train_losses),
@@ -317,16 +335,25 @@ def main():
                     step=completed_steps,
                 )
                 train_losses = []
-                accelerator.wait_for_everyone()
-                unwrapped_model = accelerator.unwrap_model(model)
-                # TODO(rabeeh): check resume and we need to read from the last checkpoint.
-                unwrapped_model.save_pretrained(
-                    output_dir,
-                    is_main_process=accelerator.is_main_process,
-                    save_function=accelerator.save,
-                )
+                # generates samples.
                 if accelerator.is_main_process:
-                    tokenizer.save_pretrained(output_dir)
+                    logger.info("Generating sample texts and evaluating the generated texts.")
+                    pipeline = SimplexDDPMPipeline(
+                        model=accelerator.unwrap_model(model),
+                        scheduler=noise_scheduler,
+                        simplex_value=diffusion_args.simplex_value,
+                        top_p=diffusion_args.top_p,
+                        sampling_type=diffusion_args.sampling_type,
+                    )
+                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
+                    for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
+                        total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
+                        total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
+                        accelerator.trackers[0].writer.add_text(f"sample_{i}", total_text, completed_steps)
+                        logger.info(total_text)
+                accelerator.wait_for_everyone()
+                if accelerator.is_main_process:
+                    save_checkpoint(training_args, output_dir, accelerator, model, tokenizer)
 
             if completed_steps >= training_args.max_train_steps:
                 break

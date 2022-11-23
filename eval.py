@@ -59,8 +59,8 @@ def main():
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value
-        # predict_epsilon=diffusion_args.predict_epsilon,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample
     )
     model = RobertaForDiffusionLM.from_pretrained(
         last_checkpoint,
@@ -77,10 +77,12 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(last_checkpoint, use_fast=model_args.use_fast_tokenizer)
     (model, tokenizer, pipeline, noise_scheduler) = accelerator.prepare(model, tokenizer, pipeline, noise_scheduler)
 
-    # TODO(rabeeh): complete this.
-    texts = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
-    for text in texts:
-        logger.info(text)
+    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
+    
+    for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
+        total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
+        total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
+        logger.info(total_text)
 
 
 def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args):
@@ -88,11 +90,16 @@ def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
         batch_size=training_args.per_device_eval_batch_size,
         seq_length=data_args.max_seq_length,
         num_inference_steps=diffusion_args.num_diffusion_steps,
-    ).simplex
-    probabilities = F.softmax(simplex, dim=-1)
+    )
+    probabilities = F.softmax(simplex.simplex, dim=-1)
     token_ids = torch.argmax(probabilities, dim=-1)
-    pred_texts = tokenizer.batch_decode(token_ids)
-    return process_text(pred_texts)
+    pred_texts_from_simplex = tokenizer.batch_decode(token_ids)
+
+    token_ids = torch.argmax(simplex.logits, dim=-1)
+    pred_texts_from_logits = tokenizer.batch_decode(token_ids)
+    
+    return {"pred_texts_from_simplex": process_text(pred_texts_from_simplex),
+            "pred_texts_from_logits": process_text(pred_texts_from_logits)}
 
 
 if __name__ == "__main__":

@@ -141,9 +141,6 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
-    mlm_probability: float = field(
-        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
-    )
     line_by_line: bool = field(
         default=False,
         metadata={"help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."},
@@ -199,8 +196,8 @@ class DataTrainingArguments:
 class DiffusionArguments:
     """Defines the diffusion related parameters."""
 
-    simplex_value: int = field(
-        default=5,
+    simplex_value: float = field(
+        default=5.0,
         metadata={
             "help": (
                 "We map the token ids to a vector of vocabulary size, where for tokens not"
@@ -210,17 +207,21 @@ class DiffusionArguments:
     )
     num_diffusion_steps: int = field(default=2500, metadata={"help": "Defines the number of diffusion steps."})
     beta_schedule: str = field(
-        default="squaredcos_cap_v2",
+        default="squaredcos_improved_ddpm",
         metadata={
             "help": (
                 "The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model."
-                "Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`."
+                "Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`, `squaredcos_improved_ddpm`."
+                "`squaredcos_improved_ddpm` model is proposed in eqn.17 in Improved ddpm"
+                "(https://arxiv.org/pdf/2102.09672.pdf)"
             )
         },
     )
-    predict_epsilon: bool = field(
-        default=False,
-        metadata={"help": "Uses for scheduler, if model predicts the noise (epsilon), or the samples instead of the noise."},
-    )
     sampling_type: str = field(default="top_p", metadata={"help": "Sampling type used during the logit projection."})
     top_p: float = field(default=0.95, metadata={"help": "top_p value for nucleus (top_p) sampling."})
+    clip_sample: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to clip predicted sample between -1 and 1 for numerical stability in the noise scheduler."
+        },
+    )

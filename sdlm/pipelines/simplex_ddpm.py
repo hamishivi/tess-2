@@ -3,9 +3,26 @@ from typing import Optional, Tuple, Union
 import torch
 import pdb
 from diffusers.pipeline_utils import DiffusionPipeline
-from sdlm.pipelines.pipeline_utils import SimplexDiffusionPipelineOutput
-from sdlm.utils import scale, convert_to_simplex
 from sdlm.inference.inference_utils import sample_logits
+from sdlm.utils import convert_to_simplex, scale
+from dataclasses import dataclass
+import numpy as np
+from diffusers.utils import BaseOutput
+
+
+@dataclass
+class SimplexDiffusionPipelineOutput(BaseOutput):
+    """
+    Output class for simplex diffusion pipelines.
+    Args:
+        simplex (`np.ndarray`)
+            numpy array showing the denoised simplex representation.
+        logits (`np.ndarray`) final generated logits before applying the projection.
+    """
+
+    simplex: np.ndarray
+    logits: np.ndarray
+
 
 
 class SimplexDDPMPipeline(DiffusionPipeline):
@@ -28,6 +45,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
     def logits_projection(self, logits):
         # TODO(rabeeh): huggingface has different sampling, like constrastive one.
+        # also there are more variant in diffusion-lm.
         token_ids = sample_logits(self.sampling_type, logits, self.top_p)
         return convert_to_simplex(token_ids, self.simplex_value, vocab_size=logits.shape[2])
 
@@ -59,25 +77,20 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
 
-        # set step values
-        self.scheduler.set_timesteps(num_inference_steps)
+        # Sets time steps.
+        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            t = t.to(simplex.device)
-
-            # TODO(rabeeh): we need to check if scale is needed or is done inside scheduler.
+            # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
-
             # 1. predict noise model_output
             model_output = self.model(simplex=simplex, timesteps=t_scaled, input_ids=None)
-
+            
             # Projection.
-            projected_simplex = self.logits_projection(model_output.logits)
+            projected_logits = self.logits_projection(model_output.logits)
 
             # 2. compute previous logits: x_t -> x_t-1
-            # TODO(rabeeh): this line is wrong and they pass simplex noise here, and we need
-            # to also do so, inside the scheduler.
-            # TODO(rabeeh): ask here projected simplex is a -5,5 vector, while simplex is not!!!
-            simplex = self.scheduler.step(projected_simplex.float(), t, simplex, generator=generator).prev_sample
+            noise = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
+            simplex = self.scheduler.step(projected_logits, t, noise, generator=generator).prev_sample
 
-        return SimplexDiffusionPipelineOutput(simplex=simplex)
+        return SimplexDiffusionPipelineOutput(simplex=simplex, logits=model_output.logits)
