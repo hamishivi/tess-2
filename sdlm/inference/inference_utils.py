@@ -2,30 +2,11 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import pdb
-from sdlm.utils import scale, convert_to_simplex
 
 
-def sample_logits(sampling_type, logits, top_p, simplex_value):
+def sample_logits(sampling_type, logits, top_p):
     # top-p (nucleus) sampling.
     if sampling_type == "top_p":
-        very_low_value = -10000
-        probs = F.softmax(logits, dim=-1)
-        sorted_probs, sorted_indices = torch.sort(probs, dim=-1, descending=True)
-        cumsum_probs = torch.cumsum(sorted_probs, dim=-1)
-
-        # Remove tokens with cumulative probability above the threshold.
-        sorted_indices_to_keep = cumsum_probs < top_p
-
-        # Shift the indices to the right to keep also the first token below the threshold.
-        sorted_indices_to_keep[..., 1:] = sorted_indices_to_keep[..., :-1].clone()
-        sorted_indices_to_keep[..., 0] = 1
-
-        indices_to_keep = sorted_indices_to_keep.scatter(dim=2, index=sorted_indices, src=sorted_indices_to_keep)
-        filtered_logits = logits.masked_fill(indices_to_keep == 0, very_low_value - simplex_value)
-        # sample from the filtered distribution.
-        token_ids = torch.clamp(filtered_logits, max=very_low_value + simplex_value) - very_low_value
-        """
-        # if sampling_type == "top_p":
         probs = F.softmax(logits, dim=-1)
         sorted_probs, sorted_indices = torch.sort(probs, dim=-1, descending=True)
         cumsum_probs = torch.cumsum(sorted_probs, dim=-1)
@@ -42,8 +23,6 @@ def sample_logits(sampling_type, logits, top_p, simplex_value):
 
         # sample from the filtered distribution.
         token_ids = torch.distributions.categorical.Categorical(logits=filtered_logits).sample()
-        token_ids = convert_to_simplex(token_ids, simplex_value, vocab_size=logits.shape[2])
-        """
     else:
         assert NotImplementedError
     return token_ids

@@ -207,11 +207,13 @@ class DiffusionArguments:
     )
     num_diffusion_steps: int = field(default=2500, metadata={"help": "Defines the number of diffusion steps."})
     beta_schedule: str = field(
-        default="squaredcos_cap_v2",
+        default="squaredcos_improved_ddpm",
         metadata={
             "help": (
                 "The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model."
-                "Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`."
+                "Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`, `squaredcos_improved_ddpm`."
+                "`squaredcos_improved_ddpm` model is proposed in eqn.17 in Improved ddpm"
+                "(https://arxiv.org/pdf/2102.09672.pdf)"
             )
         },
     )

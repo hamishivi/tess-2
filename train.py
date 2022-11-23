@@ -223,8 +223,8 @@ def main():
     )
 
     # On TPU, the tie weights in our model have been disconnected, so we need to restore the ties.
-    if accelerator.distributed_type == DistributedType.TPU:
-        model.tie_weights()
+    # if accelerator.distributed_type == DistributedType.TPU:
+    #    model.tie_weights()
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / training_args.gradient_accumulation_steps)
@@ -307,8 +307,8 @@ def main():
                 # Adds noise to each simplex representation accoding to the noise magnitude at
                 # each timestep (Forward diffusion process).
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
-                # TODO(rabeeh): shouldn't they scale it before using scheduler?
-                # timesteps = scale(timesteps, len(noise_scheduler))
+                # TODO(rabeeh): shouldn't they scale it before using scheduler? SSDLM scales here.
+                timesteps = scale(timesteps, len(noise_scheduler))
                 outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
                 loss = outputs.loss
                 # Keeping track of training loss for each duration of checkpointing.
@@ -348,8 +348,9 @@ def main():
                         sampling_type=diffusion_args.sampling_type,
                     )
                     results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
-                    for i, pred_text in enumerate(results["pred_texts"]):
-                        total_text = "*** pred_text ***: " + pred_text + "  \n"
+                    for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
+                        total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
+                        total_text = "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
                         accelerator.trackers[0].writer.add_text(f"sample_{i}", total_text, completed_steps)
                         logger.info(total_text)
                 accelerator.wait_for_everyone()
