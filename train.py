@@ -29,13 +29,13 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_validation
 from sdlm.models import RobertaForDiffusionLM
-from sdlm.utils import convert_to_simplex, scale
+from sdlm.utils import convert_to_simplex, scale, get_norm_stats
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from eval import generate_text
 import sdlm.utils as utils
 
-check_min_version("4.24.0")
+# check_min_version("4.24.0")
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
 
@@ -154,6 +154,7 @@ def main():
 
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
+    # TODO(rabeeh): we need to add max_train samples for the non-tokenized examples with two splits as well.
 
     # Conditional for small test subsets
     if len(train_dataset) > 3:
@@ -312,6 +313,9 @@ def main():
                 # Keeping track of training loss for each duration of checkpointing.
                 train_losses.append(loss.item())
                 accelerator.backward(loss)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), training_args.max_grad_norm)
+                norm_stats = get_norm_stats(accelerator.unwrap_model(model))
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -321,19 +325,33 @@ def main():
                 progress_bar.update(1)
                 completed_steps += 1
 
+            # Logs metric every step.
+            logs = {
+                "train_loss": loss.detach().item(),
+                "lr": lr_scheduler.get_last_lr()[0],
+                "step": completed_steps,
+                **norm_stats
+            }
+            progress_bar.set_postfix(**logs)
+            if accelerator.is_main_process:
+                accelerator.log(logs, step=completed_steps)
+
             # Saves a checkpoint every checkpoint steps or at the end of training phase.
-            if completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps:
+            if (completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps) and completed_steps != 0:
                 output_dir = f"step_{completed_steps}"
                 if training_args.output_dir is not None:
                     output_dir = os.path.join(training_args.output_dir, output_dir)
+                '''
                 accelerator.log(
                     {
                         "train_loss": np.mean(train_losses),
-                        "epoch": epoch,
+                        # "epoch": epoch,
                         "step": completed_steps,
                     },
                     step=completed_steps,
                 )
+                '''
+                # TODO(rabeeh): we need to add the metrics here.
                 train_losses = []
                 # generates samples.
                 if accelerator.is_main_process:

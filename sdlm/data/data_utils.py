@@ -1,7 +1,8 @@
 from itertools import chain
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 import logging
 import torch
+import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -119,9 +120,17 @@ def split_data_to_train_validation(data_args, data, seed):
     total_size = len(data["train"])
     validation_size = int(total_size * data_args.validation_split_ratio)
     train_size = total_size - validation_size
-    train, validation = torch.utils.data.random_split(
-        data["train"], [train_size, validation_size], generator=torch.Generator().manual_seed(seed)
-    )
-    data["train"], data["validation"] = train, validation
+
+    # TODO(rabeeh): we need to do this for the other ones as well and think how to do it cleanly.
+    if data_args.max_train_samples is not None:
+        train_size = min(train_size, data_args.max_train_samples)
+    if data_args.max_eval_samples is not None:
+        validation_size = min(validation_size, data_args.max_eval_samples)
+
+    remaining_size = total_size - train_size - validation_size 
+    train, validation, _ = torch.utils.data.random_split(
+        data["train"], [train_size, validation_size, remaining_size], generator=torch.Generator().manual_seed(seed)
+    )    
+    data["train"], data["validation"] = train, validation 
     assert len(data["train"]) == train_size and len(data["validation"]) == validation_size
     return data

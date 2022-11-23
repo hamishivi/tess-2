@@ -20,7 +20,7 @@ from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 import torch.nn.functional as F
 from sdlm.inference.inference_utils import process_text
 
-check_min_version("4.24.0")
+# check_min_version("4.24.0")
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
 
