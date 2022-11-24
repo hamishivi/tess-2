@@ -61,6 +61,7 @@ def setup_logging(accelerator, logging_dir):
         handlers=[logging.FileHandler(logging_dir / filename), logging.StreamHandler()],
     )
     if accelerator.is_main_process:  # we only want to setup logging once
+        accelerator.init_trackers("train-text-diffusion")
         logger.setLevel(logging.INFO)
         datasets.utils.logging.set_verbosity_info()
         transformers.utils.logging.set_verbosity_info()
@@ -85,11 +86,6 @@ def main():
         log_with="tensorboard",
         logging_dir=f"{training_args.output_dir}/log",
     )
-
-    # We need to initialize the trackers we use, and also store our configuration.
-    # The trackers initializes automatically on the main process.
-    if accelerator.is_main_process:
-        accelerator.init_trackers("train-text-diffusion")
     logger = setup_logging(accelerator, training_args.output_dir)
 
     # If passed along, set the training seed now.
@@ -328,15 +324,15 @@ def main():
                 progress_bar.update(1)
                 completed_steps += 1
 
-            # Logs metric every step.
-            logs = {
-                "train_loss": loss.detach().item(),
-                "lr": lr_scheduler.get_last_lr()[0],
-                "step": completed_steps,
-                **norm_stats
-            }
-            progress_bar.set_postfix(**logs)
             if accelerator.is_main_process:
+                # Logs metric every step.
+                logs = {
+                    "train_loss": loss.detach().item(),
+                    "lr": lr_scheduler.get_last_lr()[0],
+                    "step": completed_steps,
+                    **norm_stats
+                }
+                progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=completed_steps)
 
             # Saves a checkpoint every checkpoint steps or at the end of training phase.
