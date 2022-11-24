@@ -313,9 +313,9 @@ def main():
                 # Keeping track of training loss for each duration of checkpointing.
                 train_losses.append(loss.item())
                 accelerator.backward(loss)
+                norm_stats = get_norm_stats(accelerator.unwrap_model(model))
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(model.parameters(), training_args.max_grad_norm)
-                norm_stats = get_norm_stats(accelerator.unwrap_model(model))
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
