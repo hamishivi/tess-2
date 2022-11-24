@@ -286,7 +286,6 @@ def main():
 
     for epoch in range(starting_epoch, training_args.num_train_epochs):
         model.train()
-        train_losses = []
         for step, batch in enumerate(train_dataloader):
             # We need to skip steps until we reach the resumed step
             if training_args.resume_from_checkpoint and epoch == starting_epoch:
@@ -316,8 +315,6 @@ def main():
                 timesteps = scale(timesteps, len(noise_scheduler))
                 outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
                 loss = outputs.loss
-                # Keeping track of training loss for each duration of checkpointing.
-                train_losses.append(loss.item())
                 accelerator.backward(loss)
                 norm_stats = get_norm_stats(accelerator.unwrap_model(model))
                 if accelerator.sync_gradients:
@@ -347,18 +344,7 @@ def main():
                 output_dir = f"step_{completed_steps}"
                 if training_args.output_dir is not None:
                     output_dir = os.path.join(training_args.output_dir, output_dir)
-                '''
-                accelerator.log(
-                    {
-                        "train_loss": np.mean(train_losses),
-                        # "epoch": epoch,
-                        "step": completed_steps,
-                    },
-                    step=completed_steps,
-                )
-                '''
-                # TODO(rabeeh): we need to add the metrics here.
-                train_losses = []
+                
                 # generates samples.
                 if accelerator.is_main_process:
                     logger.info("Generating sample texts and evaluating the generated texts.")
@@ -370,7 +356,8 @@ def main():
                         top_p=diffusion_args.top_p,
                         sampling_type=diffusion_args.sampling_type
                 )
-                results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator)
+                with torch.no_grad():
+                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator)
                 if accelerator.is_main_process:
                     for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
                         total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
