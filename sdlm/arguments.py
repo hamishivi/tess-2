@@ -206,6 +206,7 @@ class DiffusionArguments:
         },
     )
     num_diffusion_steps: int = field(default=2500, metadata={"help": "Defines the number of diffusion steps."})
+    num_inference_diffusion_steps: int = field(default=2500, metadata={"help": "Number of inference diffusion steps."})
     beta_schedule: str = field(
         default="squaredcos_improved_ddpm",
         metadata={

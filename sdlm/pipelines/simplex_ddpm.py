@@ -55,7 +55,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         batch_size: int = 1,
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
-        num_inference_steps: int = 1000,
+        # num_inference_steps: Optional[int] = None,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         r"""
         Args:
@@ -66,8 +66,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
             num_inference_steps (`int`, *optional*, defaults to 1000):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
+                The number of denoising steps. If not set, uses the scheduler number of timesteps.
 
         Returns:
             [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
@@ -76,10 +75,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         vocab_size = self.model.config.vocab_size
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
-
-        # Sets time steps.
-        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
-
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))

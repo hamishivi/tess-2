@@ -215,10 +215,17 @@ def main():
         clip_sample=diffusion_args.clip_sample,
         device=accelerator.device
     )
+    inference_noise_scheduler = SimplexDDPMScheduler(
+        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
+        device=accelerator.device
+    )
 
     # Prepare everything with our `accelerator`.
-    (model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler) = accelerator.prepare(
-        model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler
+    (model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler, inference_noise_scheduler) = accelerator.prepare(
+        model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler, inference_noise_scheduler
     )
 
     # On TPU, the tie weights in our model have been disconnected, so we need to restore the ties.
@@ -358,10 +365,11 @@ def main():
                     logger.info("Generating sample texts and evaluating the generated texts.")
                     pipeline = SimplexDDPMPipeline(
                         model=accelerator.unwrap_model(model),
-                        scheduler=noise_scheduler,
+                        scheduler=inference_noise_scheduler,
                         simplex_value=diffusion_args.simplex_value,
                         top_p=diffusion_args.top_p,
-                        sampling_type=diffusion_args.sampling_type,
+                        sampling_type=diffusion_args.sampling_type
+                        #num_inference_diffusion_steps = diffusion_args.num_inference_diffusion_steps
                     )
                     results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
                     for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):

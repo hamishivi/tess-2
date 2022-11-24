@@ -55,9 +55,8 @@ def main():
         set_seed(training_args.seed)
     last_checkpoint = get_last_checkpoint(training_args.output_dir, prefix_checkpoint_dir="step")
     config = AutoConfig.from_pretrained(last_checkpoint)
-    # TODO(rabeeh): fix predict epsilon one.
     noise_scheduler = SimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps,
+        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample
@@ -89,7 +88,7 @@ def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
     simplex = pipeline(
         batch_size=training_args.per_device_eval_batch_size,
         seq_length=data_args.max_seq_length,
-        num_inference_steps=diffusion_args.num_diffusion_steps,
+        # num_inference_steps=diffusion_args.num_inference_diffusion_steps,
     )
     probabilities = F.softmax(simplex.simplex, dim=-1)
     token_ids = torch.argmax(probabilities, dim=-1)
