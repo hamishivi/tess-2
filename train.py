@@ -97,16 +97,6 @@ def main():
             os.makedirs(training_args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
 
-    if data_args.tokenized_data_path:
-        tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
-        # TODO(rabeeh): this can take time for a large data, and we need to do it once.
-        if "validation" not in tokenized_datasets:
-            tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
-    else:
-        raw_datasets = load_data(data_args)
-        if "validation" not in raw_datasets:
-            raw_datasets = split_data_to_train_validation(data_args, raw_datasets, training_args.seed)
-
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
@@ -144,9 +134,17 @@ def main():
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
-    if not data_args.tokenized_data_path:
-        tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
-
+    if data_args.tokenized_data_path:
+        tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
+        # TODO(rabeeh): this can take time for a large data, and we need to do it once.
+        if "validation" not in tokenized_datasets:
+            tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
+    else:
+        raw_datasets = load_data(data_args)
+        if "validation" not in raw_datasets:
+            raw_datasets = split_data_to_train_validation(data_args, raw_datasets, training_args.seed)
+        if not data_args.tokenized_data_path:
+            tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
     # TODO(rabeeh): we need to add max_train samples for the non-tokenized examples with two splits as well.
@@ -319,16 +317,15 @@ def main():
                 progress_bar.update(1)
                 completed_steps += 1
 
-            if accelerator.is_main_process:
-                # Logs metric every step.
-                logs = {
+            # Logs metric every step.
+            logs = {
                     "train_loss": loss.detach().item(),
                     "lr": lr_scheduler.get_last_lr()[0],
                     "step": completed_steps,
                     **norm_stats
-                }
-                progress_bar.set_postfix(**logs)
-                accelerator.log(logs, step=completed_steps)
+            }
+            progress_bar.set_postfix(**logs)
+            accelerator.log(logs, step=completed_steps)
 
             # Saves a checkpoint every checkpoint steps or at the end of training phase.
             if (completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps) and completed_steps != 0:
