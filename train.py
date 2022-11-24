@@ -223,10 +223,6 @@ def main():
         model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler, inference_noise_scheduler
     )
 
-    # On TPU, the tie weights in our model have been disconnected, so we need to restore the ties.
-    # if accelerator.distributed_type == DistributedType.TPU:
-    #    model.tie_weights()
-
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / training_args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -292,7 +288,6 @@ def main():
                     continue
 
             with accelerator.accumulate(model):
-                # TODO(rabeeh): we need to modify this block.
                 # Converts embeddings to a simplex representation.
                 simplex = convert_to_simplex(batch["input_ids"], diffusion_args.simplex_value, vocab_size)
                 noise = diffusion_args.simplex_value * torch.randn(simplex.shape, device=simplex.device, dtype=simplex.dtype)

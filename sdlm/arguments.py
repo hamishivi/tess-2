@@ -104,7 +104,10 @@ class TrainingArguments(HFTrainingArguments):
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
     max_grad_norm: float = field(default=1.0)
-
+    span_infilling: bool = field(default=False, metadata={"help": "If set, trains a conditional case with filling the spans."})
+    mask_ratio: float = field(default=0.15, metadata={"help": "Defines the ratio of mask tokens. A number between 0 and 1."})
+    mean_mask_span_length: int = field(default=3, metadata={"help": "Defines the average mask length."})
+    
 @dataclass
 class DataTrainingArguments:
     """
