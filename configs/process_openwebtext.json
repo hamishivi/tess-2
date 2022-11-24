@@ -1,8 +1,8 @@
 {
     "dataset_name": "openwebtext",
-    "max_seq_length": 200,
+    "max_seq_length": 100,
     "seed": 2022,
     "preprocessing_num_workers": 32,
-    "output_dir": "processed_data/openwebtext",
+    "output_dir": "processed_data/openwebtext_100",
     "model_name_or_path": "roberta-large"
 }

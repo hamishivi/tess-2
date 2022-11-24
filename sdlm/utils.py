@@ -34,3 +34,38 @@ def remove_checkpoints(output_dir, checkpoint_prefix="step"):
     for checkpoint in checkpoints:
         logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
         shutil.rmtree(checkpoint)
+
+
+def get_norm_stats(model):
+    # Gradient norm of word embeddings and lm_head.
+    input_embed_grad_norm = 0
+    if model.roberta.embeddings.word_embeddings.weight.grad is not None:
+        input_embed_grad_norm = model.roberta.embeddings.word_embeddings.weight.grad.detach().data.norm(2).item()
+    
+    output_embed_grad_norm = 0.0
+    if model.lm_head.decoder.weight.grad is not None:
+        output_embed_grad_norm = model.lm_head.decoder.weight.grad.detach().data.norm(2).item()        
+    
+    total_grad_norm = 0.0
+    for p in model.parameters():
+        grad_norm = 0.0
+        if  p.grad is not None:
+            grad_norm = p.grad.detach().data.norm(2).item()
+        total_grad_norm += grad_norm ** 2
+    total_grad_norm = total_grad_norm ** 0.5
+
+    # Norms of word embeddings and lm_head.
+    input_embed_norm = model.roberta.embeddings.word_embeddings.weight.detach().data.norm(2).item()
+    output_embed_norm = model.lm_head.decoder.weight.detach().data.norm(2).item()
+    total_param_norm = 0.0
+    for p in model.parameters():
+        param_norm = p.detach().data.norm(2)
+        total_param_norm += param_norm.item() ** 2
+    total_param_norm = total_param_norm ** 0.5
+
+    return {"input_embed_grad_norm": input_embed_grad_norm,
+            "output_embed_grad_norm": output_embed_grad_norm,
+            "total_grad_norm": total_grad_norm,
+            "input_embed_norm": input_embed_norm,
+            "output_embed_norm": output_embed_norm,
+            "total_param_norm": total_param_norm}

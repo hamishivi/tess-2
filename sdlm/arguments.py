@@ -103,7 +103,7 @@ class TrainingArguments(HFTrainingArguments):
     resume_from_checkpoint: Optional[str] = field(
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
-
+    max_grad_norm: float = field(default=1.0)
 
 @dataclass
 class DataTrainingArguments:
@@ -206,6 +206,7 @@ class DiffusionArguments:
         },
     )
     num_diffusion_steps: int = field(default=2500, metadata={"help": "Defines the number of diffusion steps."})
+    num_inference_diffusion_steps: int = field(default=2500, metadata={"help": "Number of inference diffusion steps."})
     beta_schedule: str = field(
         default="squaredcos_improved_ddpm",
         metadata={

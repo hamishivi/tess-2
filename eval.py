@@ -20,7 +20,7 @@ from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 import torch.nn.functional as F
 from sdlm.inference.inference_utils import process_text
 
-check_min_version("4.24.0")
+# check_min_version("4.24.0")
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
 
@@ -55,9 +55,8 @@ def main():
         set_seed(training_args.seed)
     last_checkpoint = get_last_checkpoint(training_args.output_dir, prefix_checkpoint_dir="step")
     config = AutoConfig.from_pretrained(last_checkpoint)
-    # TODO(rabeeh): fix predict epsilon one.
     noise_scheduler = SimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps,
+        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample
@@ -79,23 +78,27 @@ def main():
 
     results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
     
-    for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
-        total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
-        total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
-        logger.info(total_text)
+    if accelerator.is_main_process:
+        for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
+            total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
+            total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
+            logger.info(total_text)
 
 
-def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args):
+def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator):
     simplex = pipeline(
         batch_size=training_args.per_device_eval_batch_size,
         seq_length=data_args.max_seq_length,
-        num_inference_steps=diffusion_args.num_diffusion_steps,
     )
-    probabilities = F.softmax(simplex.simplex, dim=-1)
+    # Gathers results.
+    simplex_results = accelerator.gather(simplex.simplex)
+    logits_results = accelerator.gather(simplex.logits)
+
+    probabilities = F.softmax(simplex_results, dim=-1)
     token_ids = torch.argmax(probabilities, dim=-1)
     pred_texts_from_simplex = tokenizer.batch_decode(token_ids)
 
-    token_ids = torch.argmax(simplex.logits, dim=-1)
+    token_ids = torch.argmax(logits_results, dim=-1)
     pred_texts_from_logits = tokenizer.batch_decode(token_ids)
     
     return {"pred_texts_from_simplex": process_text(pred_texts_from_simplex),

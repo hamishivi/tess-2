@@ -1,0 +1,10 @@
+{
+    "dataset_name": "c4",
+    "dataset_config_name": "en",
+    "max_seq_length": 200,
+    "seed": 2022,
+    "preprocessing_num_workers": 32,
+    "output_dir": "processed_data/c4_200",
+    "model_name_or_path": "roberta-large"
+}
+

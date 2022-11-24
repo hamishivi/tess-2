@@ -72,6 +72,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         device,
         simplex_value: float,
         num_train_timesteps: int = 1000,
+        num_inference_timesteps: int = 1000,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
@@ -115,7 +116,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         self.num_inference_steps = None
         # TODO(rabeeh): if memory issue, we can not add this to GPU and convert them iteratively.
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy()).to(device=device)
-
+        
         self.variance_type = variance_type
 
     def step(
