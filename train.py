@@ -5,7 +5,6 @@ import os
 import random
 from pathlib import Path
 import sys
-import numpy as np
 import datasets
 import torch
 import pdb
@@ -363,15 +362,16 @@ def main():
                 # generates samples.
                 if accelerator.is_main_process:
                     logger.info("Generating sample texts and evaluating the generated texts.")
-                    pipeline = SimplexDDPMPipeline(
+
+                pipeline = SimplexDDPMPipeline(
                         model=accelerator.unwrap_model(model),
                         scheduler=inference_noise_scheduler,
                         simplex_value=diffusion_args.simplex_value,
                         top_p=diffusion_args.top_p,
                         sampling_type=diffusion_args.sampling_type
-                        #num_inference_diffusion_steps = diffusion_args.num_inference_diffusion_steps
-                    )
-                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args)
+                )
+                results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator)
+                if accelerator.is_main_process:
                     for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
                         total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
                         total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"

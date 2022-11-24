@@ -55,7 +55,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         batch_size: int = 1,
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
-        # num_inference_steps: Optional[int] = None,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         r"""
         Args:
@@ -65,9 +64,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
-            num_inference_steps (`int`, *optional*, defaults to 1000):
-                The number of denoising steps. If not set, uses the scheduler number of timesteps.
-
         Returns:
             [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
         """
