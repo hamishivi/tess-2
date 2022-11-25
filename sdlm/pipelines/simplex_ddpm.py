@@ -55,6 +55,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         batch_size: int = 1,
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
+        batch: Optional[torch.FloatTensor] = None,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         r"""
         Args:
@@ -64,6 +65,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
+            batch (`torch.FloatTensor`): batch of input data, mostly used in the conditional generation setting.
         Returns:
             [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
         """

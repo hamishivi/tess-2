@@ -9,6 +9,7 @@ import datasets
 import torch
 import pdb
 import transformers
+from itertools import cycle
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -281,7 +282,7 @@ def main():
     # update the progress_bar if load from checkpoint
     progress_bar.update(starting_epoch * num_update_steps_per_epoch)
     completed_steps = starting_epoch * num_update_steps_per_epoch
-
+    infinite_eval_dataloader = cycle(eval_dataloader)
     for epoch in range(starting_epoch, training_args.num_train_epochs):
         model.train()
         for step, batch in enumerate(train_dataloader):
@@ -354,7 +355,8 @@ def main():
                         sampling_type=diffusion_args.sampling_type
                 )
                 with torch.no_grad():
-                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator)
+                    eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None
+                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=eval_batch)
                 if accelerator.is_main_process:
                     for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
                         total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"

@@ -85,10 +85,11 @@ def main():
             logger.info(total_text)
 
 
-def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator):
+def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=None):
     simplex = pipeline(
         batch_size=training_args.per_device_eval_batch_size,
         seq_length=data_args.max_seq_length,
+        batch=batch
     )
     # Gathers results.
     simplex_results = accelerator.gather(simplex.simplex)
