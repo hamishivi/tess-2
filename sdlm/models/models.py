@@ -52,6 +52,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         timesteps: torch.FloatTensor,
         input_ids: torch.LongTensor,
         simplex: torch.FloatTensor,
+        span_mask: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -82,6 +83,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float())
         inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(1, seq_length, 1)
 
+        if span_mask is not None:
+            # For the unmasked tokens, we only compute their original word embeddings.
+            inputs_word_embeds = self.get_input_embeddings()(input_ids)
+            inputs_embeds = torch.where(span_mask.unsqueeze(-1), inputs_embeds, inputs_word_embeds)
+
         outputs = self.roberta(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=attention_mask,
@@ -98,11 +104,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         sequence_output = outputs[0]
         prediction_scores = self.lm_head(sequence_output)
 
-        # TODO(rabeeh): for now we compute based on the original token ids. might be changed later.
         loss_fct = CrossEntropyLoss()
         masked_lm_loss = None
         if input_ids is not None:
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), input_ids.view(-1))
+            labels = torch.where(span_mask, input_ids, -100) if span_mask is not None else input_ids
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]

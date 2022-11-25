@@ -81,7 +81,7 @@ def main():
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
     if data_args.span_infilling:
-            assert padding is False, "having pad to max length with infilling is not implemented yet."
+        assert data_args.pad_to_max_length is False, "`pad_to_max_length` with `span_infilling` is not implemented yet."
 
     # Initialize the accelerator.
     accelerator = Accelerator(
@@ -310,7 +310,8 @@ def main():
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
                 # TODO(rabeeh): shouldn't they scale it before using scheduler? SSDLM scales here.
                 timesteps = scale(timesteps, len(noise_scheduler))
-                outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
+                outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
+                    span_mask=batch["span_mask"] if data_args.span_infilling else None)
                 loss = outputs.loss
                 accelerator.backward(loss)
                 norm_stats = get_norm_stats(accelerator.unwrap_model(model))

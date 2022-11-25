@@ -25,6 +25,7 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
     and https://github.com/allenai/contrastive_pretraining/blob/95fe35d3257402c7df362c3e0f746a40d9fba8f0/cpt/data.py#L288
     """
     # By default, we do not maks start and end of sequence.
+    # TODO: we need to put assert for this!
     length -= 2
     orig_length = length
     # Increase length to avoid degeneracy.
