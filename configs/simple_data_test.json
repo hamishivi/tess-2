@@ -18,6 +18,8 @@
 	"max_train_steps": 60000,
 	"lr_scheduler_type": "cosine",
 	"beta_schedule": "squaredcos_improved_ddpm",
-	"top_p": 0.99
+	"top_p": 0.99,
+	"span_infilling": true,
+	"mask_ratio": 0.8
 }
 

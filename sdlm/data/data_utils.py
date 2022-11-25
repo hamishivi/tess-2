@@ -49,7 +49,7 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
     if data_args.line_by_line:
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
-
+        
         def tokenize_function(examples):
             # Remove empty lines
             examples[text_column_name] = [

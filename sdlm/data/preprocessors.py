@@ -1,9 +1,9 @@
 """Implements data preprocessings including the T5 preprocessing."""
 import numpy as np
 import itertools
+import pdb
 
-
-def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None):
+def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None, pad_length=None):
     """Noise mask consisting of random spans of mask tokens.
 
     The number of mask tokens and the number of mask spans and non-mask spans
@@ -38,7 +38,6 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
     # Avoid degeneracy by ensuring positive number of mask spans.
     num_mask_spans = max(num_mask_spans, 1)
     num_nonmask_tokens = length - num_mask_tokens
-
     mask_span_lengths = _random_segmentation(num_mask_tokens, num_mask_spans, rng=rng)
     nonmask_span_lengths = _random_segmentation(num_nonmask_tokens, num_mask_spans, rng=rng)
     mask = list(
@@ -46,8 +45,11 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
             [[False] * nonmask_span_lengths[k] + [True] * mask_span_lengths[k] for k in range(num_mask_spans)]
         )
     )[:orig_length]
-    # Start and end of the sequence mask are set to Faslse.
-    return [False] + mask + [False]
+    # Start and end of the sequence mask are set to False.
+    mask = [False] + mask + [False]
+    if pad_length is not None:
+      mask += [False for _ in range(pad_length)]
+    return mask 
 
 def _random_segmentation(num_items, num_segments, rng=None):
     """Partition a sequence of items randomly into non-empty segments.

@@ -20,7 +20,7 @@ from transformers import (
     CONFIG_MAPPING,
     AutoConfig,
     AutoTokenizer,
-    DataCollatorWithPadding,
+    # DataCollatorWithPadding,
     HfArgumentParser,
     get_scheduler,
 )
@@ -31,6 +31,7 @@ from sdlm.models import RobertaForDiffusionLM
 from sdlm.utils import convert_to_simplex, scale, get_norm_stats
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from sdlm.data.data_collator import SpanInfillingDataCollator
 from eval import generate_text
 import sdlm.utils as utils
 
@@ -78,6 +79,9 @@ def main():
         model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
+
+    if data_args.span_infilling:
+            assert padding is False, "having pad to max length with infilling is not implemented yet."
 
     # Initialize the accelerator.
     accelerator = Accelerator(
@@ -155,8 +159,11 @@ def main():
         for index in random.sample(range(len(train_dataset)), 3):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
-    # Data collator
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer, max_length=data_args.max_seq_length)
+    data_collator = SpanInfillingDataCollator(
+        tokenizer=tokenizer, 
+        max_length=data_args.max_seq_length,
+        span_infilling=data_args.span_infilling, mask_ratio=data_args.mask_ratio,
+        mean_mask_span_length=data_args.mean_mask_span_length, seed=training_args.seed)
 
     # DataLoaders creation:
     train_dataloader = DataLoader(
@@ -170,6 +177,7 @@ def main():
         collate_fn=data_collator,
         batch_size=training_args.per_device_eval_batch_size,
     )
+
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
