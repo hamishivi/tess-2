@@ -40,6 +40,13 @@ import sdlm.utils as utils
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
 
+def get_max_seq_length_after_extra_padding(data_args, tokenizer):
+    max_seq_length = data_args.max_seq_length
+    if data_args.extra_padding_ratio:
+        # Updates the sequence length considering the added padding tokens.
+        num_special_tokens = tokenizer.num_special_tokens_to_add()
+        max_seq_length = max_seq_length + int(data_args.extra_padding_ratio*(max_seq_length-num_special_tokens))
+    return max_seq_length
 
 def save_checkpoint(args, output_dir, accelerator, model, tokenizer):
     # Removes previous checkpoints.
@@ -63,7 +70,6 @@ def setup_logging(accelerator, logging_dir):
         handlers=[logging.FileHandler(logging_dir / filename), logging.StreamHandler()],
     )
     if accelerator.is_main_process:  # we only want to setup logging once
-        accelerator.init_trackers("train-text-diffusion")
         logger.setLevel(logging.INFO)
         datasets.utils.logging.set_verbosity_info()
         transformers.utils.logging.set_verbosity_info()
@@ -83,7 +89,8 @@ def main():
 
     if data_args.span_infilling:
         assert data_args.pad_to_max_length is False, "`pad_to_max_length` with `span_infilling` is not implemented yet."
-
+    if data_args.extra_padding_ratio:
+        assert data_args.span_infilling, "extra padding should only be used in the `span_infilling` setting."
     # Initialize the accelerator.
     accelerator = Accelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
@@ -91,6 +98,8 @@ def main():
         log_with="tensorboard",
         logging_dir=f"{training_args.output_dir}/log",
     )
+    if accelerator.is_main_process:  # we only want to setup logging once
+        accelerator.init_trackers("train-text-diffusion")
     logger = setup_logging(accelerator, training_args.output_dir)
 
     # If passed along, set the training seed now.
@@ -160,25 +169,27 @@ def main():
         for index in random.sample(range(len(train_dataset)), 3):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
-    data_collator = SpanInfillingDataCollator(
+    data_collator = lambda max_seq_length, extra_padding_ratio: SpanInfillingDataCollator(
         tokenizer=tokenizer, 
-        max_length=data_args.max_seq_length,
+        max_length=max_seq_length,
         span_infilling=data_args.span_infilling, mask_ratio=data_args.mask_ratio,
-        mean_mask_span_length=data_args.mean_mask_span_length, seed=training_args.seed)
+        mean_mask_span_length=data_args.mean_mask_span_length, seed=training_args.seed,
+        extra_padding_ratio=extra_padding_ratio)
 
-    # DataLoaders creation:
+    # DataLoaders creation.
+    max_seq_length_after_padding = get_max_seq_length_after_extra_padding(data_args, tokenizer)
     train_dataloader = DataLoader(
         train_dataset,
         shuffle=True,
-        collate_fn=data_collator,
+        collate_fn=data_collator(max_seq_length_after_padding, data_args.extra_padding_ratio),
         batch_size=training_args.per_device_train_batch_size,
     )
     eval_dataloader = DataLoader(
         eval_dataset,
-        collate_fn=data_collator,
+        collate_fn=data_collator(data_args.max_seq_length, 0.0),
         batch_size=training_args.per_device_eval_batch_size,
     )
-
+   
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
@@ -328,14 +339,15 @@ def main():
                 completed_steps += 1
 
             # Logs metric every step.
-            logs = {
+            if accelerator.is_main_process:
+                logs = {
                     "train_loss": loss.detach().item(),
                     "lr": lr_scheduler.get_last_lr()[0],
                     "step": completed_steps,
                     **norm_stats
-            }
-            progress_bar.set_postfix(**logs)
-            accelerator.log(logs, step=completed_steps)
+                }
+                progress_bar.set_postfix(**logs)
+                accelerator.log(logs, step=completed_steps)
 
             # Saves a checkpoint every checkpoint steps or at the end of training phase.
             if (completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps) and completed_steps != 0:
