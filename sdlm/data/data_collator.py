@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Union
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
-from sdlm.data.preprocessors import t5_random_spans_mask
+from sdlm.data.preprocessors import t5_random_spans_mask, insert_extra_paddings
 import torch
 import numpy as np 
 import pdb 
@@ -39,6 +39,7 @@ class SpanInfillingDataCollator:
                 span_infilling: bool = False,
                 mask_ratio: float = 0.15,
                 mean_mask_span_length: int = 3,
+                extra_padding_ratio = 0.0,
                 seed: int = 42):
         self.tokenizer = tokenizer 
         self.padding = padding 
@@ -46,10 +47,23 @@ class SpanInfillingDataCollator:
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
         self.span_infilling = span_infilling
-        rng = np.random.default_rng(seed)
-        self.mask_generator = lambda length, pad_length : t5_random_spans_mask(length, mask_ratio, mean_mask_span_length, rng, pad_length)
+        self.extra_padding_ratio = extra_padding_ratio
+        self.rng = np.random.default_rng(seed)
+        self.mask_generator = lambda length, pad_length : t5_random_spans_mask(length, mask_ratio, mean_mask_span_length, self.rng, pad_length)
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
+        [f.pop("attention_mask") for f in features]
+            
+        if self.extra_padding_ratio:
+            # Inserting random tokens uniformly, we do not modify start and end of 
+            # sequence tokens.
+            for i in range(len(features)):
+                features[i]['input_ids'] = insert_extra_paddings(
+                self.rng, 
+                features[i]["input_ids"], 
+                self.tokenizer.pad_token_id, 
+                self.extra_padding_ratio)
+
         masks = {}
         if self.span_infilling:
             # Generates masks and pads them.

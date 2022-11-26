@@ -46,6 +46,7 @@ def get_norm_stats(model):
     if model.lm_head.decoder.weight.grad is not None:
         output_embed_grad_norm = model.lm_head.decoder.weight.grad.detach().data.norm(2).item()        
     
+    '''
     total_grad_norm = 0.0
     for p in model.parameters():
         grad_norm = 0.0
@@ -62,10 +63,11 @@ def get_norm_stats(model):
         param_norm = p.detach().data.norm(2)
         total_param_norm += param_norm.item() ** 2
     total_param_norm = total_param_norm ** 0.5
-
+    '''
     return {"input_embed_grad_norm": input_embed_grad_norm,
             "output_embed_grad_norm": output_embed_grad_norm,
-            "total_grad_norm": total_grad_norm,
-            "input_embed_norm": input_embed_norm,
-            "output_embed_norm": output_embed_norm,
-            "total_param_norm": total_param_norm}
+            #"total_grad_norm": total_grad_norm,
+            #"input_embed_norm": input_embed_norm,
+            #"output_embed_norm": output_embed_norm,
+            #"total_param_norm": total_param_norm
+            }

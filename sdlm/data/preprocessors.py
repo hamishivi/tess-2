@@ -73,3 +73,42 @@ def _random_segmentation(num_items, num_segments, rng=None):
     for k in range(num_items - 1):
         segment_length[segment_id[k]] += 1
     return segment_length
+
+
+def insert_extra_paddings(rng, token_ids, pad_token_id, padding_ratio):
+    """Inserts padding tokens with the ratio of `padding_ratio` into the token_ids."""
+    # TODO: we need to assert to have start/end of sequence tokens.
+    # We do not add the padding in the start and end of sequence.
+    length = len(token_ids) - 2
+    num_padding_tokens = int(length * padding_ratio)
+    if num_padding_tokens == 0:
+      # In this case, the rate of padding tokens was not enough to add extra tokens.
+      return token_ids
+    length = length + num_padding_tokens
+    # We do not modify the start token.
+    all_ids = np.arange(1, length+1)
+    # This is without shuffling.
+    # original_ids = np.arange(1, length+1)
+    rng = rng or np.random.default_rng()
+    rng.shuffle(all_ids)
+    # padding tokens positions.
+    padding_ids = np.array(all_ids)[:num_padding_tokens]+1
+    token_ids_extended = []
+    current_id = 0
+    for i in range(length+2):
+      if i not in padding_ids:
+        token_ids_extended.append(pad_token_id)
+      else:
+        token_ids_extended.append(token_ids[current_id])
+        current_id += 1 
+    return token_ids_extended
+
+    '''
+    # Other tokens positions, we do not change the start and end of sequence tokens.
+    other_tokens_ids = [0]+[x for x in original_ids if x not in padding_ids]+[length+1]
+    # Considers the start and end of sequence tokens in the final length.
+    token_ids_extended = np.full((length+2), pad_token_id, dtype=int)
+    token_ids_extended[other_tokens_ids] = token_ids
+    return token_ids_extended.tolist()
+    '''
+    
