@@ -102,7 +102,6 @@ def insert_extra_paddings(rng, token_ids, pad_token_id, padding_ratio):
         token_ids_extended.append(token_ids[current_id])
         current_id += 1 
     return token_ids_extended
-
     '''
     # Other tokens positions, we do not change the start and end of sequence tokens.
     other_tokens_ids = [0]+[x for x in original_ids if x not in padding_ids]+[length+1]
