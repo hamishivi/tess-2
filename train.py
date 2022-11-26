@@ -9,6 +9,7 @@ import datasets
 import torch
 import pdb
 import transformers
+from itertools import cycle
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -20,7 +21,7 @@ from transformers import (
     CONFIG_MAPPING,
     AutoConfig,
     AutoTokenizer,
-    DataCollatorWithPadding,
+    # DataCollatorWithPadding,
     HfArgumentParser,
     get_scheduler,
 )
@@ -31,6 +32,7 @@ from sdlm.models import RobertaForDiffusionLM
 from sdlm.utils import convert_to_simplex, scale, get_norm_stats
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from sdlm.data.data_collator import SpanInfillingDataCollator
 from eval import generate_text
 import sdlm.utils as utils
 
@@ -61,6 +63,7 @@ def setup_logging(accelerator, logging_dir):
         handlers=[logging.FileHandler(logging_dir / filename), logging.StreamHandler()],
     )
     if accelerator.is_main_process:  # we only want to setup logging once
+        accelerator.init_trackers("train-text-diffusion")
         logger.setLevel(logging.INFO)
         datasets.utils.logging.set_verbosity_info()
         transformers.utils.logging.set_verbosity_info()
@@ -78,6 +81,9 @@ def main():
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
+    if data_args.span_infilling:
+        assert data_args.pad_to_max_length is False, "`pad_to_max_length` with `span_infilling` is not implemented yet."
+
     # Initialize the accelerator.
     accelerator = Accelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
@@ -85,11 +91,6 @@ def main():
         log_with="tensorboard",
         logging_dir=f"{training_args.output_dir}/log",
     )
-
-    # We need to initialize the trackers we use, and also store our configuration.
-    # The trackers initializes automatically on the main process.
-    if accelerator.is_main_process:
-        accelerator.init_trackers("train-text-diffusion")
     logger = setup_logging(accelerator, training_args.output_dir)
 
     # If passed along, set the training seed now.
@@ -100,16 +101,6 @@ def main():
         if training_args.output_dir is not None:
             os.makedirs(training_args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
-
-    if data_args.tokenized_data_path:
-        tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
-        # TODO(rabeeh): this can take time for a large data, and we need to do it once.
-        if "validation" not in tokenized_datasets:
-            tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
-    else:
-        raw_datasets = load_data(data_args)
-        if "validation" not in raw_datasets:
-            raw_datasets = split_data_to_train_validation(data_args, raw_datasets, training_args.seed)
 
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
@@ -148,9 +139,17 @@ def main():
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
-    if not data_args.tokenized_data_path:
-        tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
-
+    if data_args.tokenized_data_path:
+        tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
+        # TODO(rabeeh): this can take time for a large data, and we need to do it once.
+        if "validation" not in tokenized_datasets:
+            tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
+    else:
+        raw_datasets = load_data(data_args)
+        if "validation" not in raw_datasets:
+            raw_datasets = split_data_to_train_validation(data_args, raw_datasets, training_args.seed)
+        if not data_args.tokenized_data_path:
+            tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
     # TODO(rabeeh): we need to add max_train samples for the non-tokenized examples with two splits as well.
@@ -161,8 +160,11 @@ def main():
         for index in random.sample(range(len(train_dataset)), 3):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
-    # Data collator
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer, max_length=data_args.max_seq_length)
+    data_collator = SpanInfillingDataCollator(
+        tokenizer=tokenizer, 
+        max_length=data_args.max_seq_length,
+        span_infilling=data_args.span_infilling, mask_ratio=data_args.mask_ratio,
+        mean_mask_span_length=data_args.mean_mask_span_length, seed=training_args.seed)
 
     # DataLoaders creation:
     train_dataloader = DataLoader(
@@ -176,6 +178,7 @@ def main():
         collate_fn=data_collator,
         batch_size=training_args.per_device_eval_batch_size,
     )
+
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
@@ -226,10 +229,6 @@ def main():
     (model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler, inference_noise_scheduler) = accelerator.prepare(
         model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler, inference_noise_scheduler
     )
-
-    # On TPU, the tie weights in our model have been disconnected, so we need to restore the ties.
-    # if accelerator.distributed_type == DistributedType.TPU:
-    #    model.tie_weights()
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / training_args.gradient_accumulation_steps)
@@ -283,7 +282,7 @@ def main():
     # update the progress_bar if load from checkpoint
     progress_bar.update(starting_epoch * num_update_steps_per_epoch)
     completed_steps = starting_epoch * num_update_steps_per_epoch
-
+    infinite_eval_dataloader = cycle(eval_dataloader)
     for epoch in range(starting_epoch, training_args.num_train_epochs):
         model.train()
         for step, batch in enumerate(train_dataloader):
@@ -296,7 +295,6 @@ def main():
                     continue
 
             with accelerator.accumulate(model):
-                # TODO(rabeeh): we need to modify this block.
                 # Converts embeddings to a simplex representation.
                 simplex = convert_to_simplex(batch["input_ids"], diffusion_args.simplex_value, vocab_size)
                 noise = diffusion_args.simplex_value * torch.randn(simplex.shape, device=simplex.device, dtype=simplex.dtype)
@@ -313,7 +311,8 @@ def main():
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
                 # TODO(rabeeh): shouldn't they scale it before using scheduler? SSDLM scales here.
                 timesteps = scale(timesteps, len(noise_scheduler))
-                outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"])
+                outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
+                    span_mask=batch["span_mask"] if data_args.span_infilling else None)
                 loss = outputs.loss
                 accelerator.backward(loss)
                 norm_stats = get_norm_stats(accelerator.unwrap_model(model))
@@ -330,14 +329,13 @@ def main():
 
             # Logs metric every step.
             logs = {
-                "train_loss": loss.detach().item(),
-                "lr": lr_scheduler.get_last_lr()[0],
-                "step": completed_steps,
-                **norm_stats
+                    "train_loss": loss.detach().item(),
+                    "lr": lr_scheduler.get_last_lr()[0],
+                    "step": completed_steps,
+                    **norm_stats
             }
             progress_bar.set_postfix(**logs)
-            if accelerator.is_main_process:
-                accelerator.log(logs, step=completed_steps)
+            accelerator.log(logs, step=completed_steps)
 
             # Saves a checkpoint every checkpoint steps or at the end of training phase.
             if (completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps) and completed_steps != 0:
@@ -354,14 +352,20 @@ def main():
                         scheduler=inference_noise_scheduler,
                         simplex_value=diffusion_args.simplex_value,
                         top_p=diffusion_args.top_p,
-                        sampling_type=diffusion_args.sampling_type
+                        sampling_type=diffusion_args.sampling_type,
+                        span_infilling=data_args.span_infilling
                 )
                 with torch.no_grad():
-                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator)
+                    eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None
+                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=eval_batch)
+                if data_args.span_infilling:
+                    # Adds the decoded original texts to the final results.
+                    results.update({'gold_texts': tokenizer.batch_decode(eval_batch["input_ids"], skip_special_tokens=False)})
                 if accelerator.is_main_process:
-                    for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
-                        total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
-                        total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
+                    for i in range(training_args.per_device_eval_batch_size):
+                        total_text = ""
+                        for k, v in results.items():
+                            total_text += f"*** {k} ***: {v[i]}"+"  \n"
                         accelerator.trackers[0].writer.add_text(f"sample_{i}", total_text, completed_steps)
                         logger.info(total_text)
                 accelerator.wait_for_everyone()

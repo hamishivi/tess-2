@@ -49,3 +49,47 @@ def process_text(texts):
     texts = [keep_till_first_occurrence(text, ["</s>"]) for text in texts]
     texts = [remove_first_occurrence(text, "<s>") for text in texts]
     return texts
+
+def split_into_masked_and_unmasked(token_ids, span_mask, return_masked=None):
+    """Given an span_mask, splits the given token_ids into masked and unmasked parts.
+    
+    If return_masked is set, only returns the masked parts, if this is set to False,
+    only returns the unmasked parts, and If set to None, returns both parts.
+    """
+    def update_spans(span, masked, unmasked, mask):
+        span = torch.stack(span)
+        masked.append(span) if mask else unmasked.append(span)
+
+    masked = []
+    unmasked = []
+    prev_mask = span_mask[0]
+    span = []
+    for _, (token_id, mask) in enumerate(zip(token_ids, span_mask)):
+        if mask == prev_mask:
+            span.append(token_id)
+        else:
+            # Adds the previous span.
+            update_spans(span, masked, unmasked, prev_mask)
+            prev_mask = mask
+            span = [token_id]
+    # Adds the last span.
+    update_spans(span, masked, unmasked, prev_mask)
+
+    if return_masked is None:
+        return masked, unmasked
+
+    return masked if return_masked else unmasked 
+
+
+def concatenate_alternatively(longer, shorter, mark=""):
+    """Given two lists of strings, concatenates them alternatively.
+
+    We assume that the concatenated string should starts from elements in the longer
+    list which has one extra element. The shorter text can optionally be embraced with
+    a `mark` text on both sides.
+    """
+    assert len(longer) == len(shorter) + 1
+    concatenated_str = ""
+    for l, s in zip(longer, shorter):
+        concatenated_str += l + " " + mark + s + mark + " "
+    return concatenated_str + longer[-1]
