@@ -40,6 +40,13 @@ import sdlm.utils as utils
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
 
+def get_max_seq_length_after_extra_padding(data_args, tokenizer):
+    max_seq_length = data_args.max_seq_length
+    if data_args.extra_padding_ratio:
+        # Updates the sequence length considering the added padding tokens.
+        num_special_tokens = tokenizer.num_special_tokens_to_add()
+        max_seq_length = max_seq_length + int(data_args.extra_padding_ratio*(max_seq_length-num_special_tokens))
+    return max_seq_length
 
 def save_checkpoint(args, output_dir, accelerator, model, tokenizer):
     # Removes previous checkpoints.
@@ -162,33 +169,27 @@ def main():
         for index in random.sample(range(len(train_dataset)), 3):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
-    # TODO: extra_padding should be only applied for the training data.
-    data_collator = SpanInfillingDataCollator(
+    data_collator = lambda max_seq_length, extra_padding_ratio: SpanInfillingDataCollator(
         tokenizer=tokenizer, 
-        max_length=data_args.max_seq_length,
+        max_length=max_seq_length,
         span_infilling=data_args.span_infilling, mask_ratio=data_args.mask_ratio,
         mean_mask_span_length=data_args.mean_mask_span_length, seed=training_args.seed,
-        extra_padding_ratio=data_args.extra_padding_ratio)
+        extra_padding_ratio=extra_padding_ratio)
 
-    # DataLoaders creation:
+    # DataLoaders creation.
+    max_seq_length_after_padding = get_max_seq_length_after_extra_padding(data_args, tokenizer)
     train_dataloader = DataLoader(
         train_dataset,
         shuffle=True,
-        collate_fn=data_collator,
+        collate_fn=data_collator(max_seq_length_after_padding, data_args.extra_padding_ratio),
         batch_size=training_args.per_device_train_batch_size,
     )
     eval_dataloader = DataLoader(
         eval_dataset,
-        collate_fn=data_collator,
+        collate_fn=data_collator(data_args.max_seq_length, 0.0),
         batch_size=training_args.per_device_eval_batch_size,
     )
-    if data_args.extra_padding_ratio:
-        # Updates the sequence length considering the added padding tokens.
-        num_special_tokens = tokenizer.num_special_tokens_to_add()
-        data_args.max_seq_length = data_args.max_seq_length + int(
-            data_args.extra_padding_ratio*(data_args.max_seq_length-num_special_tokens)
-        )
-
+   
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
