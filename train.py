@@ -325,8 +325,7 @@ def main():
                     span_mask=batch["span_mask"] if data_args.span_infilling else None)
                 loss = outputs.loss
                 accelerator.backward(loss)
-                if accelerator.is_main_process:
-                    norm_stats = get_norm_stats(accelerator.unwrap_model(model))
+                norm_stats = get_norm_stats(accelerator.unwrap_model(model))
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(model.parameters(), training_args.max_grad_norm)
                 optimizer.step()
