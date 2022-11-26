@@ -352,7 +352,8 @@ def main():
                         scheduler=inference_noise_scheduler,
                         simplex_value=diffusion_args.simplex_value,
                         top_p=diffusion_args.top_p,
-                        sampling_type=diffusion_args.sampling_type
+                        sampling_type=diffusion_args.sampling_type,
+                        span_infilling=data_args.span_infilling
                 )
                 with torch.no_grad():
                     eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None

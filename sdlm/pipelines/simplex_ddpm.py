@@ -31,17 +31,16 @@ class SimplexDDPMPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
     Parameters:
         model: Model architecture to denoise the latents (encoded token ids).
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `model` to denoise the encoded latent. Can be one of
-            [`DDPMScheduler`], or [`DDIMScheduler`].
+        scheduler ([`SchedulerMixin`]): A scheduler to denoise the encoded latent.
     """
 
-    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type):
+    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
         self.simplex_value = simplex_value
         self.top_p = top_p
         self.sampling_type = sampling_type
+        self.span_infilling = span_infilling
 
     def logits_projection(self, logits):
         # TODO(rabeeh): huggingface has different sampling, like constrastive one.
@@ -71,13 +70,20 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         """
         # Sample gaussian noise to begin loop
         vocab_size = self.model.config.vocab_size
+        if batch is not None:
+            # TODO(rabeeh): is giving the length cheating for this setting?
+            # Adapts the sequence length to the given `span_mask`'s length.
+            seq_length = batch["input_ids"].shape[1]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
             # 1. predict noise model_output
-            model_output = self.model(simplex=simplex, timesteps=t_scaled, input_ids=None)
+            model_output = self.model(simplex=simplex,
+                timesteps=t_scaled, 
+                input_ids=batch["input_ids"] if self.span_infilling else None,
+                span_mask=batch["span_mask"] if self.span_infilling else None)
             
             # Projection.
             projected_logits = self.logits_projection(model_output.logits)
