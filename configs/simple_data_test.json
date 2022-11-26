@@ -5,7 +5,7 @@
 	"learning_rate": 3e-5,
 	"weight_decay": 0.01,
 	"num_warmup_steps": 2000,
-	"output_dir": "/tmp/test",
+	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/test",
 	"train_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-train.txt",
 	"validation_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-test.txt",
         "checkpointing_steps": 10,

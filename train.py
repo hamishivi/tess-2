@@ -358,10 +358,14 @@ def main():
                 with torch.no_grad():
                     eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None
                     results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=eval_batch)
+                if data_args.span_infilling:
+                    # Adds the decoded original texts to the final results.
+                    results.update({'gold_texts': tokenizer.batch_decode(eval_batch["input_ids"], skip_special_tokens=False)})
                 if accelerator.is_main_process:
-                    for i, (pred_text_logits, pred_text_simplex) in enumerate(zip(results["pred_texts_from_logits"], results["pred_texts_from_simplex"])):
-                        total_text = "*** pred_text_from_logits ***: " + pred_text_logits + "  \n"
-                        total_text += "*** pred_text_from_simplex ***: " + pred_text_simplex + "  \n"
+                    for i in range(training_args.per_device_eval_batch_size):
+                        total_text = ""
+                        for k, v in results.items():
+                            total_text += f"*** {k} ***: {v[i]}"+"  \n"
                         accelerator.trackers[0].writer.add_text(f"sample_{i}", total_text, completed_steps)
                         logger.info(total_text)
                 accelerator.wait_for_everyone()
