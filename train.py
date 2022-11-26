@@ -89,8 +89,8 @@ def main():
 
     if data_args.span_infilling:
         assert data_args.pad_to_max_length is False, "`pad_to_max_length` with `span_infilling` is not implemented yet."
-    # if data_args.extra_padding_ratio:
-    #    assert data_args.span_infilling, "extra padding should only be used in the `span_infilling` setting."
+    if data_args.extra_padding_ratio:
+        assert data_args.span_infilling, "extra padding should only be used in the `span_infilling` setting."
     # Initialize the accelerator.
     accelerator = Accelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
