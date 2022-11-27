@@ -19,6 +19,7 @@ from sdlm.models import RobertaForDiffusionLM
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 import torch.nn.functional as F
 from sdlm.inference.inference_utils import process_text, split_into_masked_and_unmasked, concatenate_alternatively
+from sdlm.models.configuration import RobertaDiffusionConfig
 
 # check_min_version("4.24.0")
 logger = get_logger(__name__)
@@ -62,7 +63,8 @@ def main():
     if training_args.seed is not None:
         set_seed(training_args.seed)
     last_checkpoint = get_last_checkpoint(training_args.output_dir, prefix_checkpoint_dir="step")
-    config = AutoConfig.from_pretrained(last_checkpoint)
+    config = RobertaDiffusionConfig.from_pretrained(last_checkpoint,
+        self_conditioning=diffusion_args.self_conditioning)
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,

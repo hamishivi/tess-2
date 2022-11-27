@@ -76,6 +76,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             seq_length = batch["input_ids"].shape[1]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
+        if self.model.config.self_condition == "hidden_state":
+            previous_pred = torch.zeros((batch_size, seq_length, self.model.config.hidden_size), device=self.device)
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
@@ -83,7 +85,11 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             model_output = self.model(simplex=simplex,
                 timesteps=t_scaled, 
                 input_ids=batch["input_ids"] if self.span_infilling else None,
-                span_mask=batch["span_mask"] if self.span_infilling else None)
+                span_mask=batch["span_mask"] if self.span_infilling else None,
+                previous_pred=previous_pred if self.model.config.self_condition else None)
+            
+            if self.model.config.self_condition == "hidden_state":
+                previous_pred = model_output.hidden_states
             
             # Projection.
             projected_logits = self.logits_projection(model_output.logits)

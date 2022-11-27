@@ -6,6 +6,7 @@ import random
 from pathlib import Path
 import sys
 import datasets
+import numpy as np
 import torch
 import pdb
 import transformers
@@ -18,8 +19,6 @@ from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArgume
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import (
-    CONFIG_MAPPING,
-    AutoConfig,
     AutoTokenizer,
     # DataCollatorWithPadding,
     HfArgumentParser,
@@ -33,6 +32,7 @@ from sdlm.utils import convert_to_simplex, scale, get_norm_stats
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.data.data_collator import SpanInfillingDataCollator
+from sdlm.models.configuration import RobertaDiffusionConfig
 from eval import generate_text
 import sdlm.utils as utils
 
@@ -114,14 +114,9 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    if model_args.config_name:
-        config = AutoConfig.from_pretrained(model_args.config_name)
-    elif model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path)
-    else:
-        config = CONFIG_MAPPING[model_args.model_type]()
-        logger.warning("You are instantiating a new config instance from scratch.")
-
+    config = RobertaDiffusionConfig.from_pretrained(model_args.model_name_or_path, self_condition=diffusion_args.self_condition)
+    # TODO(rabeeh): we need to also correct this in the eval as well.
+    # TODO(rabeeh): we need to remove config_name.
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, use_fast=model_args.use_fast_tokenizer)
     elif model_args.model_name_or_path:
@@ -322,8 +317,25 @@ def main():
                 noisy_simplex = noise_scheduler.add_noise(simplex, noise, timesteps)
                 # TODO(rabeeh): shouldn't they scale it before using scheduler? SSDLM scales here.
                 timesteps = scale(timesteps, len(noise_scheduler))
+
+                if diffusion_args.self_condition is not None:
+                    # TODO(rabeeh): should this part goes through the steps inside the model.
+                    # TODO(rabeeh): maybe this should be on gpu?
+                    if diffusion_args.self_condition == "hidden_state":
+                        previous_pred = torch.zeros((bsz, noisy_simplex.shape[1], config.hidden_size),
+                            device=simplex.device)
+                    if np.random.rand(1) > 0.5:
+                        outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
+                            span_mask=batch["span_mask"] if data_args.span_infilling else None,
+                            previous_pred=previous_pred)
+                        if diffusion_args.self_condition == "hidden_state":
+                            previous_pred = outputs.hidden_states.detach()
+                        else:
+                            assert NotImplementedError(f"{diffusion_args.self_conditioning} is not implemented.")
+                    
                 outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
-                    span_mask=batch["span_mask"] if data_args.span_infilling else None)
+                    span_mask=batch["span_mask"] if data_args.span_infilling else None,
+                    previous_pred=previous_pred if config.self_condition is not None else None)
                 loss = outputs.loss
                 accelerator.backward(loss)
                 norm_stats = get_norm_stats(accelerator.unwrap_model(model))
