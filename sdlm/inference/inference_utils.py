@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import pdb
-
+from sdlm.utils import convert_to_simplex
 
 def sample_logits(sampling_type, logits, top_p):
     # top-p (nucleus) sampling.
@@ -93,3 +93,10 @@ def concatenate_alternatively(longer, shorter, mark=""):
     for l, s in zip(longer, shorter):
         concatenated_str += l + " " + mark + s + mark + " "
     return concatenated_str + longer[-1]
+
+
+def logits_projection(logits, sampling_type, top_p, simplex_value):
+    # TODO(rabeeh): huggingface has different sampling, like constrastive one.
+    # also there are more variant in diffusion-lm.
+    token_ids = sample_logits(sampling_type, logits, top_p)
+    return convert_to_simplex(token_ids, simplex_value, vocab_size=logits.shape[2])

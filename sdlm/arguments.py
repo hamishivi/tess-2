@@ -34,9 +34,6 @@ class ModelArguments:
             )
         },
     )
-    config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
-    )
     tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
@@ -231,3 +228,7 @@ class DiffusionArguments:
             "help": "Whether to clip predicted sample between -1 and 1 for numerical stability in the noise scheduler."
         },
     )
+    self_condition: Optional[str] = field(default=None, metadata={"help": ("If set, adds self-conditioning."
+        "we consider the following options: `hidden_state`: to consider the predicted hidden_state, `logits`"
+        "predicted logits, or `logits_with_projection`: to consider logits and apply the projection. After"
+        "concatenating the inputs, we project inputs back with a projection layer to the half dimension.")})
