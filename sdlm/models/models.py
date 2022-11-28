@@ -34,7 +34,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.vocab_to_hidden_dim_embed = nn.Linear(config.vocab_size, config.hidden_size, bias=False)
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
-        if self.config.self_condition == "hidden_state":
+        if self.config.self_condition is not None:
             self.project_to_half_dimension = nn.Linear(config.hidden_size*2, config.hidden_size, bias=False)
 
         # Initialize weights and apply final processing
@@ -83,7 +83,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
         
-        if self.config.self_condition == "hidden_state":
+        if self.config.self_condition in ["logits", "logits_with_projection"]:
+            previous_pred_probs = F.softmax(previous_pred, dim=-1)
+            previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
+            
+        if self.config.self_condition is not None:
             inputs_embeds = self.project_to_half_dimension(torch.cat([inputs_embeds, previous_pred], axis=-1))
         
         # TODO(rabeeh): here this timestep can be improved.

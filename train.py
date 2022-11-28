@@ -33,6 +33,7 @@ from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.models.configuration import RobertaDiffusionConfig
+from sdlm.inference.inference_utils import logits_projection
 from eval import generate_text
 import sdlm.utils as utils
 
@@ -319,19 +320,24 @@ def main():
                 timesteps = scale(timesteps, len(noise_scheduler))
 
                 if diffusion_args.self_condition is not None:
-                    # TODO(rabeeh): should this part goes through the steps inside the model.
-                    # TODO(rabeeh): maybe this should be on gpu?
-                    if diffusion_args.self_condition == "hidden_state":
-                        previous_pred = torch.zeros((bsz, noisy_simplex.shape[1], config.hidden_size),
-                            device=simplex.device)
+                    dimension = config.hidden_size if diffusion_args.self_condition == "hidden_state" else vocab_size 
+                    previous_pred = torch.zeros((bsz, noisy_simplex.shape[1], dimension), device=simplex.device)
                     if np.random.rand(1) > 0.5:
                         outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
                             span_mask=batch["span_mask"] if data_args.span_infilling else None,
                             previous_pred=previous_pred)
                         if diffusion_args.self_condition == "hidden_state":
                             previous_pred = outputs.hidden_states.detach()
+                        elif diffusion_args.self_condition == "logits":
+                            previous_pred = outputs.logits.detach()
+                        elif diffusion_args.self_condition == "logits_with_projection":
+                            previous_pred = logits_projection(
+                                outputs.logits.detach(), 
+                                diffusion_args.sampling_type, 
+                                diffusion_args.top_p, 
+                                diffusion_args.simplex_value)     
                         else:
-                            assert NotImplementedError(f"{diffusion_args.self_conditioning} is not implemented.")
+                            assert NotImplementedError(f"{diffusion_args.self_condition} is not implemented.")
                     
                 outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
                     span_mask=batch["span_mask"] if data_args.span_infilling else None,

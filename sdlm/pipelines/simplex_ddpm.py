@@ -3,8 +3,8 @@ from typing import Optional, Tuple, Union
 import torch
 import pdb
 from diffusers.pipeline_utils import DiffusionPipeline
-from sdlm.inference.inference_utils import sample_logits
-from sdlm.utils import convert_to_simplex, scale
+from sdlm.inference.inference_utils import logits_projection
+from sdlm.utils import scale
 from dataclasses import dataclass
 import numpy as np
 from diffusers.utils import BaseOutput
@@ -42,12 +42,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.sampling_type = sampling_type
         self.span_infilling = span_infilling
 
-    def logits_projection(self, logits):
-        # TODO(rabeeh): huggingface has different sampling, like constrastive one.
-        # also there are more variant in diffusion-lm.
-        token_ids = sample_logits(self.sampling_type, logits, self.top_p)
-        return convert_to_simplex(token_ids, self.simplex_value, vocab_size=logits.shape[2])
-
     @torch.no_grad()
     def __call__(
         self,
@@ -76,8 +70,9 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             seq_length = batch["input_ids"].shape[1]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
-        if self.model.config.self_condition == "hidden_state":
-            previous_pred = torch.zeros((batch_size, seq_length, self.model.config.hidden_size), device=self.device)
+        if self.model.config.self_condition is not None:
+            dimension = self.model.config.hidden_size if self.model.config.self_condition == "hidden_state" else vocab_size
+            previous_pred = torch.zeros((batch_size, seq_length, dimension), device=self.device)
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
@@ -90,9 +85,15 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             
             if self.model.config.self_condition == "hidden_state":
                 previous_pred = model_output.hidden_states
+            elif self.model.config.self_condition == "logits":
+                previous_pred = model_output.logits
+            elif self.model.config.self_condition == "logits_with_projection":
+                previous_pred = logits_projection(model_output.logits, self.sampling_type, self.top_p, self.simplex_value)
+            else:
+                raise NotImplementedError
             
             # Projection.
-            projected_logits = self.logits_projection(model_output.logits)
+            projected_logits = logits_projection(model_output.logits, self.sampling_type, self.top_p, self.simplex_value)
 
             # 2. compute previous logits: x_t -> x_t-1
             noise = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
