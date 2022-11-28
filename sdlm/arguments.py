@@ -229,6 +229,6 @@ class DiffusionArguments:
         },
     )
     self_condition: Optional[str] = field(default=None, metadata={"help": ("If set, adds self-conditioning."
-        "we consider the following options: `hidden_state`: in case, we would consider the predicted `hidden_state`"
-        "when conditioning. After concatenating the inputs, we project inputs back with a projection layer to the"
-        "half dimension.")})
+        "we consider the following options: `hidden_state`: to consider the predicted hidden_state, `logits`:
+        "predicted logits, or `logits_with_projection`: to consider logits and apply the projection. After"
+        "concatenating the inputs, we project inputs back with a projection layer to the half dimension.")})
