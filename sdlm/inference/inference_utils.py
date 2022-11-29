@@ -3,6 +3,9 @@ import torch.nn.functional as F
 import numpy as np
 import pdb
 from sdlm.utils import convert_to_simplex
+from sdlm.metrics.perplexity import perplexity
+from sdlm.metrics.metrics import distinct_n_grams
+
 
 def sample_logits(sampling_type, logits, top_p):
     # top-p (nucleus) sampling.
@@ -50,12 +53,14 @@ def process_text(texts):
     texts = [remove_first_occurrence(text, "<s>") for text in texts]
     return texts
 
+
 def split_into_masked_and_unmasked(token_ids, span_mask, return_masked=None):
     """Given an span_mask, splits the given token_ids into masked and unmasked parts.
-    
+
     If return_masked is set, only returns the masked parts, if this is set to False,
     only returns the unmasked parts, and If set to None, returns both parts.
     """
+
     def update_spans(span, masked, unmasked, mask):
         span = torch.stack(span)
         masked.append(span) if mask else unmasked.append(span)
@@ -78,7 +83,7 @@ def split_into_masked_and_unmasked(token_ids, span_mask, return_masked=None):
     if return_masked is None:
         return masked, unmasked
 
-    return masked if return_masked else unmasked 
+    return masked if return_masked else unmasked
 
 
 def concatenate_alternatively(longer, shorter, mark=""):
@@ -100,3 +105,28 @@ def logits_projection(logits, sampling_type, top_p, simplex_value):
     # also there are more variant in diffusion-lm.
     token_ids = sample_logits(sampling_type, logits, top_p)
     return convert_to_simplex(token_ids, simplex_value, vocab_size=logits.shape[2])
+
+
+def filter_empty(texts):
+    """Filters empty texts."""
+    return [text for text in texts if text != ""]
+
+
+def evaluate_generation(results, causal_model, causal_tokenizer):
+    metrics = {}
+    keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]
+    for key in keys:
+        key_metrics = {}
+        texts = results[key]
+        texts = process_text(texts)
+        texts = filter_empty(texts)
+        if len(texts) == 0:
+            continue
+        # Perplexity measured by a causal model.
+        key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
+        # Dist-1,2,3 measurements.
+        key_metrics.update(distinct_n_grams(texts))
+        # Adds the metrics.
+        key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
+        metrics.update(key_metrics)
+    return metrics

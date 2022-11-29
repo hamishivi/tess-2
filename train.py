@@ -11,19 +11,14 @@ import torch
 import pdb
 import transformers
 from itertools import cycle
-from accelerate import Accelerator, DistributedType
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from datasets import load_from_disk
 from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments, DiffusionArguments
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from transformers import (
-    AutoTokenizer,
-    # DataCollatorWithPadding,
-    HfArgumentParser,
-    get_scheduler,
-)
+from transformers import AutoTokenizer, HfArgumentParser, get_scheduler, AutoModelForCausalLM
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import tokenize_data, load_data, split_data_to_train_validation
@@ -33,7 +28,7 @@ from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.models.configuration import RobertaDiffusionConfig
-from sdlm.inference.inference_utils import logits_projection
+from sdlm.inference.inference_utils import logits_projection, evaluate_generation
 from eval import generate_text
 import sdlm.utils as utils
 
@@ -41,13 +36,15 @@ import sdlm.utils as utils
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
 
+
 def get_max_seq_length_after_extra_padding(data_args, tokenizer):
     max_seq_length = data_args.max_seq_length
     if data_args.extra_padding_ratio:
         # Updates the sequence length considering the added padding tokens.
         num_special_tokens = tokenizer.num_special_tokens_to_add()
-        max_seq_length = max_seq_length + int(data_args.extra_padding_ratio*(max_seq_length-num_special_tokens))
+        max_seq_length = max_seq_length + int(data_args.extra_padding_ratio * (max_seq_length - num_special_tokens))
     return max_seq_length
+
 
 def save_checkpoint(args, output_dir, accelerator, model, tokenizer):
     # Removes previous checkpoints.
@@ -115,9 +112,10 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = RobertaDiffusionConfig.from_pretrained(model_args.model_name_or_path, self_condition=diffusion_args.self_condition)
+    config = RobertaDiffusionConfig.from_pretrained(
+        model_args.model_name_or_path, self_condition=diffusion_args.self_condition
+    )
     # TODO(rabeeh): we need to also correct this in the eval as well.
-    # TODO(rabeeh): we need to remove config_name.
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, use_fast=model_args.use_fast_tokenizer)
     elif model_args.model_name_or_path:
@@ -137,6 +135,9 @@ def main():
     else:
         logger.info("Training new model from scratch")
         model = RobertaForDiffusionLM.from_config(config)
+    # Causal language model.
+    causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
+    causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
@@ -166,11 +167,14 @@ def main():
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     data_collator = lambda max_seq_length, extra_padding_ratio: SpanInfillingDataCollator(
-        tokenizer=tokenizer, 
+        tokenizer=tokenizer,
         max_length=max_seq_length,
-        span_infilling=data_args.span_infilling, mask_ratio=data_args.mask_ratio,
-        mean_mask_span_length=data_args.mean_mask_span_length, seed=training_args.seed,
-        extra_padding_ratio=extra_padding_ratio)
+        span_infilling=data_args.span_infilling,
+        mask_ratio=data_args.mask_ratio,
+        mean_mask_span_length=data_args.mean_mask_span_length,
+        seed=training_args.seed,
+        extra_padding_ratio=extra_padding_ratio,
+    )
 
     # DataLoaders creation.
     max_seq_length_after_padding = get_max_seq_length_after_extra_padding(data_args, tokenizer)
@@ -185,7 +189,7 @@ def main():
         collate_fn=data_collator(data_args.max_seq_length, 0.0),
         batch_size=training_args.per_device_eval_batch_size,
     )
-   
+
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
     no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
@@ -215,26 +219,44 @@ def main():
         name=training_args.lr_scheduler_type,
         optimizer=optimizer,
         num_warmup_steps=training_args.num_warmup_steps * training_args.gradient_accumulation_steps,
-        num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps
+        num_training_steps=training_args.max_train_steps * training_args.gradient_accumulation_steps,
     )
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
-        device=accelerator.device
+        device=accelerator.device,
     )
     inference_noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
-        device=accelerator.device
+        device=accelerator.device,
     )
 
     # Prepare everything with our `accelerator`.
-    (model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler, inference_noise_scheduler) = accelerator.prepare(
-        model, optimizer, train_dataloader, eval_dataloader, lr_scheduler, noise_scheduler, inference_noise_scheduler
+    (
+        model,
+        optimizer,
+        train_dataloader,
+        eval_dataloader,
+        lr_scheduler,
+        noise_scheduler,
+        inference_noise_scheduler,
+        causal_model,
+        causal_tokenizer,
+    ) = accelerator.prepare(
+        model,
+        optimizer,
+        train_dataloader,
+        eval_dataloader,
+        lr_scheduler,
+        noise_scheduler,
+        inference_noise_scheduler,
+        causal_model,
+        causal_tokenizer,
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -320,28 +342,37 @@ def main():
                 timesteps = scale(timesteps, len(noise_scheduler))
 
                 if diffusion_args.self_condition is not None:
-                    dimension = config.hidden_size if diffusion_args.self_condition == "hidden_state" else vocab_size 
+                    dimension = config.hidden_size if diffusion_args.self_condition == "hidden_state" else vocab_size
                     previous_pred = torch.zeros((bsz, noisy_simplex.shape[1], dimension), device=simplex.device)
                     if np.random.rand(1) > 0.5:
-                        outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
+                        outputs = model(
+                            simplex=noisy_simplex,
+                            timesteps=timesteps,
+                            input_ids=batch["input_ids"],
                             span_mask=batch["span_mask"] if data_args.span_infilling else None,
-                            previous_pred=previous_pred)
+                            previous_pred=previous_pred,
+                        )
                         if diffusion_args.self_condition == "hidden_state":
                             previous_pred = outputs.hidden_states.detach()
                         elif diffusion_args.self_condition == "logits":
                             previous_pred = outputs.logits.detach()
                         elif diffusion_args.self_condition == "logits_with_projection":
                             previous_pred = logits_projection(
-                                outputs.logits.detach(), 
-                                diffusion_args.sampling_type, 
-                                diffusion_args.top_p, 
-                                diffusion_args.simplex_value)     
+                                outputs.logits.detach(),
+                                diffusion_args.sampling_type,
+                                diffusion_args.top_p,
+                                diffusion_args.simplex_value,
+                            )
                         else:
                             assert NotImplementedError(f"{diffusion_args.self_condition} is not implemented.")
-                    
-                outputs = model(simplex=noisy_simplex, timesteps=timesteps, input_ids=batch["input_ids"],
+
+                outputs = model(
+                    simplex=noisy_simplex,
+                    timesteps=timesteps,
+                    input_ids=batch["input_ids"],
                     span_mask=batch["span_mask"] if data_args.span_infilling else None,
-                    previous_pred=previous_pred if config.self_condition is not None else None)
+                    previous_pred=previous_pred if config.self_condition is not None else None,
+                )
                 loss = outputs.loss
                 accelerator.backward(loss)
                 norm_stats = get_norm_stats(accelerator.unwrap_model(model))
@@ -362,40 +393,49 @@ def main():
                     "train_loss": loss.detach().item(),
                     "lr": lr_scheduler.get_last_lr()[0],
                     "step": completed_steps,
-                    **norm_stats
+                    **norm_stats,
                 }
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=completed_steps)
 
             # Saves a checkpoint every checkpoint steps or at the end of training phase.
-            if (completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps) and completed_steps != 0:
+            if (
+                completed_steps % checkpointing_steps == 0 or completed_steps == training_args.max_train_steps
+            ) and completed_steps != 0:
                 output_dir = f"step_{completed_steps}"
                 if training_args.output_dir is not None:
                     output_dir = os.path.join(training_args.output_dir, output_dir)
-                
+
                 # generates samples.
                 if accelerator.is_main_process:
                     logger.info("Generating sample texts and evaluating the generated texts.")
 
                 pipeline = SimplexDDPMPipeline(
-                        model=accelerator.unwrap_model(model),
-                        scheduler=inference_noise_scheduler,
-                        simplex_value=diffusion_args.simplex_value,
-                        top_p=diffusion_args.top_p,
-                        sampling_type=diffusion_args.sampling_type,
-                        span_infilling=data_args.span_infilling
+                    model=accelerator.unwrap_model(model),
+                    scheduler=inference_noise_scheduler,
+                    simplex_value=diffusion_args.simplex_value,
+                    top_p=diffusion_args.top_p,
+                    sampling_type=diffusion_args.sampling_type,
+                    span_infilling=data_args.span_infilling,
                 )
                 with torch.no_grad():
                     eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None
-                    results = generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=eval_batch)
+                    results = generate_text(
+                        pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=eval_batch
+                    )
                 if data_args.span_infilling:
                     # Adds the decoded original texts to the final results.
-                    results.update({'gold_texts': tokenizer.batch_decode(eval_batch["input_ids"], skip_special_tokens=False)})
+                    results.update(
+                        {"gold_texts": tokenizer.batch_decode(eval_batch["input_ids"], skip_special_tokens=False)}
+                    )
                 if accelerator.is_main_process:
+                    # Evaluates the generation.
+                    metrics = evaluate_generation(results, accelerator.unwrap_model(causal_model), causal_tokenizer)
+                    accelerator.log(metrics, step=completed_steps)
                     for i in range(training_args.per_device_eval_batch_size):
                         total_text = ""
                         for k, v in results.items():
-                            total_text += f"*** {k} ***: {v[i]}"+"  \n"
+                            total_text += f"*** {k} ***: {v[i]}" + "  \n"
                         accelerator.trackers[0].writer.add_text(f"sample_{i}", total_text, completed_steps)
                         logger.info(total_text)
                 accelerator.wait_for_everyone()

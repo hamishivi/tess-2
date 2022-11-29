@@ -58,10 +58,14 @@ class ModelArguments:
             )
         },
     )
+    autoregressive_eval_model: str = field(
+        default="EleutherAI/gpt-neo-1.3B",
+        metadata={"help": "The autoregressive model used to measure the evaluation perplexity."},
+    )
 
     def __post_init__(self):
-        if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
-            raise ValueError("--config_overrides can't be used in combination with --config_name or --model_name_or_path")
+        if self.config_overrides is not None and (self.model_name_or_path is not None):
+            raise ValueError("--config_overrides can't be used in combination with --model_name_or_path")
 
 
 @dataclass
@@ -101,7 +105,8 @@ class TrainingArguments(HFTrainingArguments):
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
     max_grad_norm: float = field(default=1.0)
-    
+
+
 @dataclass
 class DataTrainingArguments:
     """
@@ -169,11 +174,20 @@ class DataTrainingArguments:
             )
         },
     )
-    span_infilling: bool = field(default=False, metadata={"help": "If set, trains a conditional case with filling the spans."})
+    span_infilling: bool = field(
+        default=False, metadata={"help": "If set, trains a conditional case with filling the spans."}
+    )
     mask_ratio: float = field(default=0.15, metadata={"help": "Defines the ratio of mask tokens. A number between 0 and 1."})
     mean_mask_span_length: int = field(default=3, metadata={"help": "Defines the average mask length."})
-    extra_padding_ratio: float = field(default=0.0, metadata={"help": ("Defines the ratio for the extra padding"
-        "which are added only to the training data, in case of `span_infilling` uniformly.")})
+    extra_padding_ratio: float = field(
+        default=0.0,
+        metadata={
+            "help": (
+                "Defines the ratio for the extra padding"
+                "which are added only to the training data, in case of `span_infilling` uniformly."
+            )
+        },
+    )
 
     def __post_init__(self):
         if (
@@ -228,7 +242,14 @@ class DiffusionArguments:
             "help": "Whether to clip predicted sample between -1 and 1 for numerical stability in the noise scheduler."
         },
     )
-    self_condition: Optional[str] = field(default=None, metadata={"help": ("If set, adds self-conditioning."
-        "we consider the following options: `hidden_state`: to consider the predicted hidden_state, `logits`"
-        "predicted logits, or `logits_with_projection`: to consider logits and apply the projection. After"
-        "concatenating the inputs, we project inputs back with a projection layer to the half dimension.")})
+    self_condition: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "If set, adds self-conditioning."
+                "we consider the following options: `hidden_state`: to consider the predicted hidden_state, `logits`"
+                "predicted logits, or `logits_with_projection`: to consider logits and apply the projection. After"
+                "concatenating the inputs, we project inputs back with a projection layer to the half dimension."
+            )
+        },
+    )
