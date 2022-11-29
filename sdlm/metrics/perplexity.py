@@ -7,8 +7,9 @@ from evaluate import logging
 
 
 def perplexity(texts, model, tokenizer, batch_size: int = 16, add_start_token: bool = True, max_length=None):
-    """Perplexity (PPL) can be used for evaluating to what extent a dataset is similar to the distribution of text that a given model was trained on.
-    It is defined as the exponentiated average negative log-likelihood of a sequence, calculated with exponent base `e`.
+    """Perplexity (PPL) can be used for evaluating to what extent a dataset is similar to the distribution of text that
+    a given model was trained on. It is defined as the exponentiated average negative log-likelihood of a sequence,
+    calculated with exponent base `e`.
 
     For more information, see https://huggingface.co/docs/transformers/perplexity
 
