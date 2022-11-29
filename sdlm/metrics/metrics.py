@@ -12,7 +12,7 @@ MAX_TEXT_LENGTH = 256
 def mauve(predictions, references, featurize_model_name="gpt2-large"):
     """Computes MAUVE scores between two lists of generated text and reference text.
     Args:
-    predictions (list of str) of predicttions.
+    predictions (list of str) of predictions.
     reference (list of str) of references.
     """
     results = compute_mauve(
@@ -22,7 +22,7 @@ def mauve(predictions, references, featurize_model_name="gpt2-large"):
         featurize_model_name=featurize_model_name,
         verbose=False,
     )
-    return results.mauve
+    return {"muave": results.mauve}
 
 
 def distinct_n_grams(texts):
@@ -39,7 +39,7 @@ def distinct_n_grams(texts):
         dist_1.append(len(unigrams) / total_words)
         dist_2.append(len(bigrams) / total_words)
         dist_3.append(len(trigrams) / total_words)
-    return np.nanmean(dist_1), np.nanmean(dist_2), np.nanmean(dist_3)
+    return {"dist-1": np.nanmean(dist_1), "dist-2": np.nanmean(dist_2), "dist-3": np.nanmean(dist_3)}
 
 
 def zipf(tokenized_texts, N=5000):
@@ -56,4 +56,4 @@ def zipf(tokenized_texts, N=5000):
     xs = np.arange(1, min(len(cnt), N) + 1)
     ys = np.array(sorted(cnt.values(), key=operator.neg)[:N])
     a, b, r, p, std = stats.linregress(np.log(xs), np.log(ys))
-    return -a, -r, p
+    return {"zipf_minus_a": -a, "zipf_minus_r": -r, "zipf_p": p}
