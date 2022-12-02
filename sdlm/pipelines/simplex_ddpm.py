@@ -4,7 +4,7 @@ import torch
 import pdb
 from diffusers.pipeline_utils import DiffusionPipeline
 from sdlm.inference.inference_utils import logits_projection
-from sdlm.utils import scale
+from sdlm.utils import scale, self_condition_preds
 from dataclasses import dataclass
 import numpy as np
 from diffusers.utils import BaseOutput
@@ -22,7 +22,6 @@ class SimplexDiffusionPipelineOutput(BaseOutput):
 
     simplex: np.ndarray
     logits: np.ndarray
-
 
 
 class SimplexDDPMPipeline(DiffusionPipeline):
@@ -73,28 +72,22 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         if self.model.config.self_condition is not None:
             dimension = self.model.config.hidden_size if self.model.config.self_condition == "hidden_state" else vocab_size
             previous_pred = torch.zeros((batch_size, seq_length, dimension), device=self.device)
+        logits_projection_fct = lambda x: logits_projection(x, self.sampling_type, self.top_p, self.simplex_value)
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
             # 1. predict noise model_output
-            model_output = self.model(simplex=simplex,
-                timesteps=t_scaled, 
+            model_output = self.model(
+                simplex=simplex,
+                timesteps=t_scaled,
                 input_ids=batch["input_ids"] if self.span_infilling else None,
                 span_mask=batch["span_mask"] if self.span_infilling else None,
-                previous_pred=previous_pred if self.model.config.self_condition else None)
-            
-            # TODO: clean this up!
-            if self.model.config.self_condition == "hidden_state":
-                previous_pred = model_output.hidden_states
-            elif self.model.config.self_condition in ["logits", "logits_addition"]:
-                previous_pred = model_output.logits
-            elif self.model.config.self_condition in ["logits_with_projection", "logits_with_projection_addition"]:
-                previous_pred = logits_projection(model_output.logits, self.sampling_type, self.top_p, self.simplex_value)
-            else:
-                raise NotImplementedError
-            
+                previous_pred=previous_pred if self.model.config.self_condition else None,
+            )
+            if self.model.config.self_condition is not None:
+                previous_pred = self_condition_preds(self.model.config.self_condition, model_output, logits_projection_fct)
             # Projection.
-            projected_logits = logits_projection(model_output.logits, self.sampling_type, self.top_p, self.simplex_value)
+            projected_logits = logits_projection_fct(model_output.logits)
 
             # 2. compute previous logits: x_t -> x_t-1
             noise = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
