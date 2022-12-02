@@ -352,11 +352,12 @@ def main():
                             span_mask=batch["span_mask"] if data_args.span_infilling else None,
                             previous_pred=previous_pred,
                         )
+                        # TODO: make it one with the pipeline.
                         if diffusion_args.self_condition == "hidden_state":
                             previous_pred = outputs.hidden_states.detach()
-                        elif diffusion_args.self_condition == "logits":
+                        elif diffusion_args.self_condition in ["logits", "logits_addition"]:
                             previous_pred = outputs.logits.detach()
-                        elif diffusion_args.self_condition == "logits_with_projection":
+                        elif diffusion_args.self_condition in ["logits_with_projection", "logits_with_projection_addition"]:
                             previous_pred = logits_projection(
                                 outputs.logits.detach(),
                                 diffusion_args.sampling_type,

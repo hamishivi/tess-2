@@ -83,11 +83,12 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 span_mask=batch["span_mask"] if self.span_infilling else None,
                 previous_pred=previous_pred if self.model.config.self_condition else None)
             
+            # TODO: clean this up!
             if self.model.config.self_condition == "hidden_state":
                 previous_pred = model_output.hidden_states
-            elif self.model.config.self_condition == "logits":
+            elif self.model.config.self_condition in ["logits", "logits_addition"]:
                 previous_pred = model_output.logits
-            elif self.model.config.self_condition == "logits_with_projection":
+            elif self.model.config.self_condition in ["logits_with_projection", "logits_with_projection_addition"]:
                 previous_pred = logits_projection(model_output.logits, self.sampling_type, self.top_p, self.simplex_value)
             else:
                 raise NotImplementedError
