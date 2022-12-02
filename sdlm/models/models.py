@@ -35,7 +35,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
         if self.config.self_condition is not None:
-            self.project_to_half_dimension = nn.Linear(config.hidden_size*2, config.hidden_size, bias=False)
+            self.project_to_half_dimension = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -82,14 +82,22 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         inputs_probs = F.softmax(simplex, dim=-1)
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
-        
-        if self.config.self_condition in ["logits", "logits_with_projection"]:
-            previous_pred_probs = F.softmax(previous_pred, dim=-1)
-            previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
-            
+
         if self.config.self_condition is not None:
-            inputs_embeds = self.project_to_half_dimension(torch.cat([inputs_embeds, previous_pred], axis=-1))
-        
+            if self.config.self_condition in [
+                "logits_with_projection_addition",
+                "logits_addition",
+                "logits",
+                "logits_with_projection",
+            ]:
+                previous_pred_probs = F.softmax(previous_pred, dim=-1)
+                previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
+
+            if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
+                inputs_embeds = inputs_embeds + previous_pred
+            elif self.config.self_condition in ["logits", "hidden_state", "logits_with_projection"]:
+                inputs_embeds = self.project_to_half_dimension(torch.cat([inputs_embeds, previous_pred], axis=-1))
+
         # TODO(rabeeh): here this timestep can be improved.
         # TODO: remove conversion.
         timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float())
@@ -97,6 +105,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
 
         if span_mask is not None:
             # For the unmasked tokens, we only compute their original word embeddings.
+            # Note that we also set the self-conditioned inputs wich we are conditioning on
+            # to their original word embeddings values.
             inputs_word_embeds = self.get_input_embeddings()(input_ids)
             inputs_embeds = torch.where(span_mask.unsqueeze(-1), inputs_embeds, inputs_word_embeds)
 
