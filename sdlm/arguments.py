@@ -255,3 +255,5 @@ class DiffusionArguments:
             )
         },
     )
+    guidance_scale: float = field(default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."})
+    

@@ -67,6 +67,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         previous_pred: Optional[torch.FloatTensor] = None,
+        classifier_free_guidance: bool = False,
+        unconditional_simplex: torch.FloatTensor = None,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -83,6 +85,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
 
+        if classifier_free_guidance:
+            unconditional_probs = F.softmax(unconditional_simplex, dim=-1)
+            uncond_inputs_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
+        
         if self.config.self_condition is not None:
             if self.config.self_condition in [
                 "logits_with_projection_addition",
@@ -109,7 +115,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             # to their original word embeddings values.
             inputs_word_embeds = self.get_input_embeddings()(input_ids)
             inputs_embeds = torch.where(span_mask.unsqueeze(-1), inputs_embeds, inputs_word_embeds)
-
+            if classifier_free_guidance:
+                inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
+                
         outputs = self.roberta(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=attention_mask,
@@ -128,7 +136,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
 
         loss_fct = CrossEntropyLoss()
         masked_lm_loss = None
-        if input_ids is not None:
+        # In case of classifier-free guidance, since the number of output logits and input token ids do not match
+        # we do not compute the loss.
+        if input_ids is not None and not classifier_free_guidance:
             labels = torch.where(span_mask, input_ids, -100) if span_mask is not None else input_ids
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 

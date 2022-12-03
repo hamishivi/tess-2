@@ -9,7 +9,6 @@ from dataclasses import dataclass
 import numpy as np
 from diffusers.utils import BaseOutput
 
-
 @dataclass
 class SimplexDiffusionPipelineOutput(BaseOutput):
     """
@@ -48,6 +47,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
         batch: Optional[torch.FloatTensor] = None,
+        guidance_scale: float = 1.0,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         r"""
         Args:
@@ -61,6 +61,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         Returns:
             [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
         """
+        classifier_free_guidance = guidance_scale > 1.0
+        
         # Sample gaussian noise to begin loop
         vocab_size = self.model.config.vocab_size
         if batch is not None:
@@ -73,9 +75,11 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             dimension = self.model.config.hidden_size if self.model.config.self_condition == "hidden_state" else vocab_size
             previous_pred = torch.zeros((batch_size, seq_length, dimension), device=self.device)
         logits_projection_fct = lambda x: logits_projection(x, self.sampling_type, self.top_p, self.simplex_value)
+
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
+
             # 1. predict noise model_output
             model_output = self.model(
                 simplex=simplex,
@@ -83,14 +87,23 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 input_ids=batch["input_ids"] if self.span_infilling else None,
                 span_mask=batch["span_mask"] if self.span_infilling else None,
                 previous_pred=previous_pred if self.model.config.self_condition else None,
+                classifier_free_guidance = classifier_free_guidance,
+                unconditional_simplex = simplex
             )
             if self.model.config.self_condition is not None:
                 previous_pred = self_condition_preds(self.model.config.self_condition, model_output, logits_projection_fct)
+            model_output_logits = model_output.logits
+
+            # Performs classifier-free guidance.
+            if classifier_free_guidance:
+                logits_uncond, logits_pred = model_output_logits.chunk(2)
+                model_output_logits = logits_uncond + guidance_scale * (logits_pred - logits_uncond)
+
             # Projection.
-            projected_logits = logits_projection_fct(model_output.logits)
+            projected_logits = logits_projection_fct(model_output_logits)
 
             # 2. compute previous logits: x_t -> x_t-1
             noise = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
             simplex = self.scheduler.step(projected_logits, t, noise, generator=generator).prev_sample
 
-        return SimplexDiffusionPipelineOutput(simplex=simplex, logits=model_output.logits)
+        return SimplexDiffusionPipelineOutput(simplex=simplex, logits=model_output_logits)

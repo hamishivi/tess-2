@@ -106,7 +106,7 @@ def main():
 
 
 def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=None):
-    simplex = pipeline(batch_size=training_args.per_device_eval_batch_size, seq_length=data_args.max_seq_length, batch=batch)
+    simplex = pipeline(batch_size=training_args.per_device_eval_batch_size, seq_length=data_args.max_seq_length, batch=batch, guidance_scale=diffusion_args.guidance_scale)
     # Gathers results.
     simplex_results = accelerator.gather(simplex.simplex)
     logits_results = accelerator.gather(simplex.logits)
