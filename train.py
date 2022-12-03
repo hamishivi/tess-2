@@ -112,9 +112,7 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = RobertaDiffusionConfig.from_pretrained(
-        model_args.model_name_or_path, self_condition=diffusion_args.self_condition
-    )
+    config = RobertaDiffusionConfig.from_pretrained(model_args.model_name_or_path, self_condition=diffusion_args.self_condition)
     # TODO(rabeeh): we need to also correct this in the eval as well.
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, use_fast=model_args.use_fast_tokenizer)
@@ -352,19 +350,12 @@ def main():
                             span_mask=batch["span_mask"] if data_args.span_infilling else None,
                             previous_pred=previous_pred,
                         )
-                        if diffusion_args.self_condition == "hidden_state":
-                            previous_pred = outputs.hidden_states.detach()
-                        elif diffusion_args.self_condition == "logits":
-                            previous_pred = outputs.logits.detach()
-                        elif diffusion_args.self_condition == "logits_with_projection":
-                            previous_pred = logits_projection(
-                                outputs.logits.detach(),
-                                diffusion_args.sampling_type,
-                                diffusion_args.top_p,
-                                diffusion_args.simplex_value,
-                            )
-                        else:
-                            assert NotImplementedError(f"{diffusion_args.self_condition} is not implemented.")
+                        logits_projection_fct = lambda x: logits_projection(
+                            x, diffusion_args.sampling_type, diffusion_args.top_p, diffusion_args.simplex_value
+                        )
+                        previous_pred = utils.self_condition_preds(
+                            diffusion_args.self_condition, outputs, logits_projection_fct
+                        )
 
                 outputs = model(
                     simplex=noisy_simplex,
