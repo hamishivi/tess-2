@@ -34,7 +34,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.vocab_to_hidden_dim_embed = nn.Linear(config.vocab_size, config.hidden_size, bias=False)
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
-        if self.config.self_condition is not None:
+        if self.config.self_condition is not None and not self.config.self_condition in ["logits_addition", "logits_with_projection_addition"]:
             self.project_to_half_dimension = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
 
         # Initialize weights and apply final processing

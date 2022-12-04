@@ -21,6 +21,7 @@
 	"top_p": 0.99,
 	"span_infilling": true,
 	"mask_ratio": 0.5,
-	"mean_mask_span_length": 4
+	"mean_mask_span_length": 4,
+	"self_condition": "logits_addition"
 }
 
