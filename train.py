@@ -340,8 +340,7 @@ def main():
                 timesteps = scale(timesteps, len(noise_scheduler))
 
                 if diffusion_args.self_condition is not None:
-                    dimension = config.hidden_size if diffusion_args.self_condition == "hidden_state" else vocab_size
-                    previous_pred = torch.zeros((bsz, noisy_simplex.shape[1], dimension), device=simplex.device)
+                    previous_pred = torch.zeros((bsz, noisy_simplex.shape[1], vocab_size), device=simplex.device)
                     if np.random.rand(1) > 0.5:
                         outputs = model(
                             simplex=noisy_simplex,

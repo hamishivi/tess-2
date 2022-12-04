@@ -90,19 +90,14 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             uncond_inputs_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
         
         if self.config.self_condition is not None:
-            if self.config.self_condition in [
-                "logits_with_projection_addition",
-                "logits_addition",
-                "logits",
-                "logits_with_projection",
-            ]:
-                previous_pred_probs = F.softmax(previous_pred, dim=-1)
-                previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
-
+            previous_pred_probs = F.softmax(previous_pred, dim=-1)
+            previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
                 inputs_embeds = inputs_embeds + previous_pred
-            elif self.config.self_condition in ["logits", "hidden_state", "logits_with_projection"]:
+            elif self.config.self_condition in ["logits", "logits_with_projection"]:
                 inputs_embeds = self.project_to_half_dimension(torch.cat([inputs_embeds, previous_pred], axis=-1))
+            else:
+                raise NotImplementedError
 
         # TODO(rabeeh): here this timestep can be improved.
         # TODO: remove conversion.

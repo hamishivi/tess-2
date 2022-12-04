@@ -75,9 +75,7 @@ def get_norm_stats(model):
 
 
 def self_condition_preds(self_condition, outputs, logits_projection=None):
-    if self_condition == "hidden_state":
-        previous_pred = outputs.hidden_states.detach()
-    elif self_condition in ["logits", "logits_addition"]:
+    if self_condition in ["logits", "logits_addition"]:
         previous_pred = outputs.logits.detach()
     elif self_condition in ["logits_with_projection", "logits_with_projection_addition"]:
         previous_pred = logits_projection(outputs.logits.detach())

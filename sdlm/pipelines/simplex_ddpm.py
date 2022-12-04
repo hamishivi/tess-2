@@ -72,8 +72,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
         if self.model.config.self_condition is not None:
-            dimension = self.model.config.hidden_size if self.model.config.self_condition == "hidden_state" else vocab_size
-            previous_pred = torch.zeros((batch_size, seq_length, dimension), device=self.device)
+            previous_pred = torch.zeros((batch_size, seq_length, vocab_size), device=self.device)
         logits_projection_fct = lambda x: logits_projection(x, self.sampling_type, self.top_p, self.simplex_value)
 
         for t in self.progress_bar(self.scheduler.timesteps):
