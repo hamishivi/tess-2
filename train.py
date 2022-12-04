@@ -421,7 +421,7 @@ def main():
                     )
                 if accelerator.is_main_process:
                     # Evaluates the generation.
-                    metrics = evaluate_generation(results, accelerator.unwrap_model(causal_model), causal_tokenizer)
+                    metrics = evaluate_generation(results, accelerator.unwrap_model(causal_model), causal_tokenizer, data_args.span_infilling)
                     accelerator.log(metrics, step=completed_steps)
                     for i in range(training_args.per_device_eval_batch_size):
                         total_text = ""

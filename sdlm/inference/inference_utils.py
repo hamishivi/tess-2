@@ -4,7 +4,7 @@ import numpy as np
 import pdb
 from sdlm.utils import convert_to_simplex
 from sdlm.metrics.perplexity import perplexity
-from sdlm.metrics.metrics import distinct_n_grams
+from sdlm.metrics.metrics import distinct_n_grams, mauve
 
 
 def sample_logits(sampling_type, logits, top_p):
@@ -112,9 +112,11 @@ def filter_empty(texts):
     return [text for text in texts if text != ""]
 
 
-def evaluate_generation(results, causal_model, causal_tokenizer):
+def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling):
     metrics = {}
     keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]
+    if span_infilling:
+        gold_texts = process_text(results["gold_texts"])
     for key in keys:
         key_metrics = {}
         texts = results[key]
@@ -126,6 +128,10 @@ def evaluate_generation(results, causal_model, causal_tokenizer):
         key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
+        # Metrics requiring the gold text.
+        if span_infilling:
+            # Note that we need to pass both context and predicted texts to this metric.
+            key_metrics.update(mauve(predictions=texts, references=gold_texts))
         # Adds the metrics.
         key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
         metrics.update(key_metrics)
