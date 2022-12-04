@@ -108,8 +108,9 @@ def logits_projection(logits, sampling_type, top_p, simplex_value):
 
 
 def filter_empty(texts):
-    """Filters empty texts."""
-    return [text for text in texts if text != ""]
+    """Filters empty texts and return the remained texts and the their indices."""
+    list_of_tuples = [(text, i) for i, text in enumerate(texts) if text != ""]
+    return list(zip(*list_of_tuples))
 
 
 def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling):
@@ -121,7 +122,7 @@ def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling)
         key_metrics = {}
         texts = results[key]
         texts = process_text(texts)
-        texts = filter_empty(texts)
+        texts, remained_indices = filter_empty(texts)
         if len(texts) == 0:
             continue
         # Perplexity measured by a causal model.
@@ -131,7 +132,8 @@ def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling)
         # Metrics requiring the gold text.
         if span_infilling:
             # Note that we need to pass both context and predicted texts to this metric.
-            key_metrics.update(mauve(predictions=texts, references=gold_texts))
+            remained_gold_texts = [text  for i, text in enumerate(gold_texts) if i in remained_indices]
+            key_metrics.update(mauve(predictions=texts, references=remained_gold_texts))
         # Adds the metrics.
         key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
         metrics.update(key_metrics)

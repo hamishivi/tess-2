@@ -10,7 +10,7 @@
 	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/simple_data_conditional",
 	"train_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-train.txt",
 	"validation_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-test.txt",
-        "checkpointing_steps": 1000,
+        "checkpointing_steps": 10,
 	"max_seq_length": 25,
 	"simplex_value": 5.0,
 	"line_by_line": true,
