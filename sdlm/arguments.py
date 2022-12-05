@@ -247,13 +247,15 @@ class DiffusionArguments:
         metadata={
             "help": (
                 "If set, adds self-conditioning."
-                "we consider the following options: `hidden_state`: to consider the predicted hidden_state, `logits`"
-                "predicted logits, or `logits_with_projection`: to consider logits and apply the projection. After"
-                "concatenating the inputs, we project inputs back with a projection layer to the half dimension."
-                "We also consider the cases of `logits_addition` and `logits_with_projection_addition` where we"
-                "adds up the previous prediction to the logits, possibly with a projection operation."
+                "we consider the following options: `logits`: predicted logits, or `logits_with_projection`: to"
+                "consider logits and apply the projection. After concatenating the inputs, we project inputs back"
+                "with a projection layer to the half dimension. We also consider the cases of `logits_addition`"
+                " and `logits_with_projection_addition` where we adds up the previous prediction to the logits,"
+                "possibly with a projection operation."
             )
         },
     )
+    self_condition_zeros_after_softmax: bool = field(default=False, metadata={"help": "If set, makes the softmax of previous_logits,"
+        "in case previous_logits are zero, zero. This avoid extra bias introduced with using Linear[softmax(previous_logits), logits]"})
     guidance_scale: float = field(default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."})
     

@@ -34,7 +34,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.vocab_to_hidden_dim_embed = nn.Linear(config.vocab_size, config.hidden_size, bias=False)
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
-        if self.config.self_condition is not None:
+        if self.config.self_condition is not None and not self.config.self_condition in ["logits_addition", "logits_with_projection_addition"]:
             self.project_to_half_dimension = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
 
         # Initialize weights and apply final processing
@@ -90,19 +90,19 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             uncond_inputs_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
         
         if self.config.self_condition is not None:
-            if self.config.self_condition in [
-                "logits_with_projection_addition",
-                "logits_addition",
-                "logits",
-                "logits_with_projection",
-            ]:
+            if self.config.self_condition_zeros_after_softmax and previous_pred is None:
+                previous_pred_probs = torch.zeros_like(simplex, device=simplex.device)
+            else:
+                if previous_pred is None:
+                    previous_pred = torch.zeros_like(simplex, device=simplex.device)
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
-                previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
-
+            previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
                 inputs_embeds = inputs_embeds + previous_pred
-            elif self.config.self_condition in ["logits", "hidden_state", "logits_with_projection"]:
+            elif self.config.self_condition in ["logits", "logits_with_projection"]:
                 inputs_embeds = self.project_to_half_dimension(torch.cat([inputs_embeds, previous_pred], axis=-1))
+            else:
+                raise NotImplementedError
 
         # TODO(rabeeh): here this timestep can be improved.
         # TODO: remove conversion.
