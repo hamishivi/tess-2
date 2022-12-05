@@ -255,7 +255,21 @@ class DiffusionArguments:
             )
         },
     )
-    self_condition_zeros_after_softmax: bool = field(default=False, metadata={"help": "If set, makes the softmax of previous_logits,"
-        "in case previous_logits are zero, zero. This avoid extra bias introduced with using Linear[softmax(previous_logits), logits]"})
-    guidance_scale: float = field(default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."})
-    
+    self_condition_zeros_after_softmax: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, makes the softmax of previous_logits,"
+            "in case previous_logits are zero, zero. This avoid extra bias introduced with using Linear[softmax(previous_logits), logits]"
+        },
+    )
+    deepmind_conditional: bool = field(
+        default=False,
+        metadata={
+            "help": "This is the way conditional is explained in the DeepMind paper"
+            "https://arxiv.org/abs/2211.15089, figure 3. In this setup, we mask the self-conditioned, noisy, and original emebeddings,"
+            "then we concat mask to these, and project all of them, and then add timestep embeddings."
+        },
+    )
+    guidance_scale: float = field(
+        default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."}
+    )

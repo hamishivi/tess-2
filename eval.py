@@ -71,7 +71,12 @@ def main():
     if training_args.seed is not None:
         set_seed(training_args.seed)
     last_checkpoint = get_last_checkpoint(training_args.output_dir, prefix_checkpoint_dir="step")
-    config = RobertaDiffusionConfig.from_pretrained(last_checkpoint, self_conditioning=diffusion_args.self_conditioning, self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax)
+    config = RobertaDiffusionConfig.from_pretrained(
+        last_checkpoint,
+        self_conditioning=diffusion_args.self_conditioning,
+        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
+        deepmind_conditional=diffusion_args.deepmind_conditional,
+    )
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
@@ -106,7 +111,12 @@ def main():
 
 
 def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args, accelerator, batch=None):
-    simplex = pipeline(batch_size=training_args.per_device_eval_batch_size, seq_length=data_args.max_seq_length, batch=batch, guidance_scale=diffusion_args.guidance_scale)
+    simplex = pipeline(
+        batch_size=training_args.per_device_eval_batch_size,
+        seq_length=data_args.max_seq_length,
+        batch=batch,
+        guidance_scale=diffusion_args.guidance_scale,
+    )
     # Gathers results.
     simplex_results = accelerator.gather(simplex.simplex)
     logits_results = accelerator.gather(simplex.logits)

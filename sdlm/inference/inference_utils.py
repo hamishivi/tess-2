@@ -110,7 +110,8 @@ def logits_projection(logits, sampling_type, top_p, simplex_value):
 def filter_empty(texts):
     """Filters empty texts and return the remained texts and the their indices."""
     list_of_tuples = [(text, i) for i, text in enumerate(texts) if text != ""]
-    return list(zip(*list_of_tuples))
+    texts, remained_inds = list(zip(*list_of_tuples))
+    return list(texts), list(remained_inds)
 
 
 def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling):
@@ -132,7 +133,7 @@ def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling)
         # Metrics requiring the gold text.
         if span_infilling:
             # Note that we need to pass both context and predicted texts to this metric.
-            remained_gold_texts = [text  for i, text in enumerate(gold_texts) if i in remained_indices]
+            remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
             key_metrics.update(mauve(predictions=texts, references=remained_gold_texts))
         # Adds the metrics.
         key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}

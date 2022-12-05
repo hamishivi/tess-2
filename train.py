@@ -112,7 +112,12 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = RobertaDiffusionConfig.from_pretrained(model_args.model_name_or_path, self_condition=diffusion_args.self_condition, self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax)
+    config = RobertaDiffusionConfig.from_pretrained(
+        model_args.model_name_or_path,
+        self_condition=diffusion_args.self_condition,
+        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
+        deepmind_conditional=diffusion_args.deepmind_conditional,
+    )
     # TODO(rabeeh): we need to also correct this in the eval as well.
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, use_fast=model_args.use_fast_tokenizer)
@@ -420,7 +425,9 @@ def main():
                     )
                 if accelerator.is_main_process:
                     # Evaluates the generation.
-                    metrics = evaluate_generation(results, accelerator.unwrap_model(causal_model), causal_tokenizer, data_args.span_infilling)
+                    metrics = evaluate_generation(
+                        results, accelerator.unwrap_model(causal_model), causal_tokenizer, data_args.span_infilling
+                    )
                     accelerator.log(metrics, step=completed_steps)
                     for i in range(training_args.per_device_eval_batch_size):
                         total_text = ""
