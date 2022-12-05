@@ -90,7 +90,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             uncond_inputs_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
         
         if self.config.self_condition is not None:
-            previous_pred_probs = F.softmax(previous_pred, dim=-1)
+            if self.config.self_condition_zeros_after_softmax and previous_pred is None:
+                previous_pred_probs = torch.zeros_like(simplex, device=simplex.device)
+            else:
+                if previous_pred is None:
+                    previous_pred = torch.zeros_like(simplex, device=simplex.device)
+                previous_pred_probs = F.softmax(previous_pred, dim=-1)
             previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
                 inputs_embeds = inputs_embeds + previous_pred

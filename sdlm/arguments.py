@@ -255,5 +255,7 @@ class DiffusionArguments:
             )
         },
     )
+    self_condition_zeros_after_softmax: bool = field(default=False, metadata={"help": "If set, makes the softmax of previous_logits,"
+        "in case previous_logits are zero, zero. This avoid extra bias introduced with using Linear[softmax(previous_logits), logits]"})
     guidance_scale: float = field(default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."})
     

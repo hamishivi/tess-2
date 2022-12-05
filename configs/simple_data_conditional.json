@@ -19,9 +19,10 @@
 	"lr_scheduler_type": "cosine",
 	"beta_schedule": "squaredcos_improved_ddpm",
 	"top_p": 0.99,
-	"span_infilling": true,
+	"span_infilling": false,
 	"mask_ratio": 0.5,
 	"mean_mask_span_length": 4,
-	"self_condition": "logits_addition"
+	"self_condition": "logits_addition",
+	"self_condition_zeros_after_softmax": true
 }
 

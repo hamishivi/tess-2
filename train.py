@@ -112,7 +112,7 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = RobertaDiffusionConfig.from_pretrained(model_args.model_name_or_path, self_condition=diffusion_args.self_condition)
+    config = RobertaDiffusionConfig.from_pretrained(model_args.model_name_or_path, self_condition=diffusion_args.self_condition, self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax)
     # TODO(rabeeh): we need to also correct this in the eval as well.
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, use_fast=model_args.use_fast_tokenizer)
@@ -340,7 +340,7 @@ def main():
                 timesteps = scale(timesteps, len(noise_scheduler))
 
                 if diffusion_args.self_condition is not None:
-                    previous_pred = torch.zeros((bsz, noisy_simplex.shape[1], vocab_size), device=simplex.device)
+                    previous_pred = None
                     if np.random.rand(1) > 0.5:
                         outputs = model(
                             simplex=noisy_simplex,
