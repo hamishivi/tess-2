@@ -274,3 +274,4 @@ class DiffusionArguments:
         default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."}
     )
     classifier_free_uncond_input: str = field (default="empty_token", metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."})
+    classifier_free_guided_prev_outputs: bool = field(default=False, metadata={"help": "In case this is set to True, we would use the guided outputs as the previous outputs."})

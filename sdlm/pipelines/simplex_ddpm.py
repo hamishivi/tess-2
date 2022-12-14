@@ -34,7 +34,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]): A scheduler to denoise the encoded latent.
     """
 
-    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling, tokenizer, classifier_free_uncond_input):
+    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling, tokenizer, classifier_free_uncond_input, classifier_free_guided_prev_outputs):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
         self.simplex_value = simplex_value
@@ -43,6 +43,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.span_infilling = span_infilling
         self.tokenizer = tokenizer
         self.classifier_free_uncond_input = classifier_free_uncond_input
+        self.classifier_free_guided_prev_outputs = classifier_free_guided_prev_outputs
 
     @torch.no_grad()
     def __call__(
@@ -109,18 +110,25 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 unconditional_simplex=uncond_input if classifier_free_guidance else None,
             )
             model_output_logits = model_output.logits
-            if self.model.config.self_condition is not None:
-                prev_output_logits = model_output_logits.chunk(2)[1] if classifier_free_guidance else model_output_logits
-                # TODO: possibly we need to do this line after combination of logits below.
-                previous_pred = self_condition_preds(
-                    self.model.config.self_condition, prev_output_logits, logits_projection_fct
-                )
-
+            
             # Performs classifier-free guidance.
             if classifier_free_guidance:
                 logits_uncond, logits_pred = model_output_logits.chunk(2)
                 model_output_logits = logits_uncond + guidance_scale * (logits_pred - logits_uncond)
 
+            
+            if self.model.config.self_condition is not None:
+                if classifier_free_guidance and not self.classifier_free_guided_prev_outputs:
+                    prev_output_logits = model_output.logits.chunk(2)[1]
+                else:
+                    prev_output_logits = model_output_logits
+                
+                # TODO: possibly we need to do this line after combination of logits below.
+                previous_pred = self_condition_preds(
+                    self.model.config.self_condition, prev_output_logits, logits_projection_fct
+                )
+
+         
             # Projection.
             projected_logits = logits_projection_fct(model_output_logits)
 

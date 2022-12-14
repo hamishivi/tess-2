@@ -7,7 +7,7 @@
 	"num_diffusion_steps": 5000,
 	"num_inference_diffusion_steps": 1000,
 	"num_warmup_steps": 2000,
-	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/simple_data_conditional_guidance_4_noise",
+	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/simple_data_conditional_guidance_4_previous_is_guided_logits",
 	"train_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-train.txt",
 	"validation_file": "/net/nfs.cirrascale/s2-research/rabeehk/diffusion/small_data/simple-test.txt",
         "checkpointing_steps": 1000,
@@ -24,7 +24,6 @@
 	"mean_mask_span_length": 4,
 	"extra_padding_ratio": 0.0,
 	"self_condition": "logits_addition",
-	"guidance_scale": 4.0,
-	"classifier_free_uncond_input": "noisy_simplex"
+	"guidance_scale": 4.0
 }
 
