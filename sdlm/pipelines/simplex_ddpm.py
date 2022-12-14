@@ -34,7 +34,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]): A scheduler to denoise the encoded latent.
     """
 
-    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling, tokenizer):
+    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling, tokenizer, classifier_free_uncond_input):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
         self.simplex_value = simplex_value
@@ -42,6 +42,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.sampling_type = sampling_type
         self.span_infilling = span_infilling
         self.tokenizer = tokenizer
+        self.classifier_free_uncond_input = classifier_free_uncond_input
 
     @torch.no_grad()
     def __call__(
@@ -89,6 +90,14 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
 
+            if classifier_free_guidance:
+                if self.classifier_free_uncond_input == "empty_token":
+                    uncond_input = uncond_simplex[:, : batch["input_ids"].shape[1], :]
+                elif self.classifier_free_uncond_input == "noisy_simplex":
+                    uncond_input = self.simplex_value* torch.randn(simplex.shape, generator=generator, device=self.device)
+                else:
+                    raise NotImplementedError
+                
             # 1. predict noise model_output
             model_output = self.model(
                 simplex=simplex,
@@ -97,9 +106,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 span_mask=batch["span_mask"] if self.span_infilling else None,
                 previous_pred=previous_pred if self.model.config.self_condition else None,
                 classifier_free_guidance=classifier_free_guidance,
-                unconditional_simplex=uncond_simplex[:, : batch["input_ids"].shape[1], :]
-                if classifier_free_guidance
-                else None,
+                unconditional_simplex=uncond_input if classifier_free_guidance else None,
             )
             model_output_logits = model_output.logits
             if self.model.config.self_condition is not None:

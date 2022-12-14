@@ -415,7 +415,8 @@ def main():
                     top_p=diffusion_args.top_p,
                     sampling_type=diffusion_args.sampling_type,
                     span_infilling=data_args.span_infilling,
-                    tokenizer = tokenizer 
+                    tokenizer = tokenizer,
+                    classifier_free_uncond_input = diffusion_args.classifier_free_uncond_input 
                 )
                 with torch.no_grad():
                     eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None
