@@ -89,6 +89,9 @@ def main():
         assert data_args.pad_to_max_length is False, "`pad_to_max_length` with `span_infilling` is not implemented yet."
     if data_args.extra_padding_ratio:
         assert data_args.span_infilling, "extra padding should only be used in the `span_infilling` setting."
+    if diffusion_args.guidance_scale > 1.0:
+        assert data_args.span_infilling, "classifier-free guidance only should be applied for the conditional case."
+
     # Initialize the accelerator.
     accelerator = Accelerator(
         gradient_accumulation_steps=training_args.gradient_accumulation_steps,
@@ -412,6 +415,7 @@ def main():
                     top_p=diffusion_args.top_p,
                     sampling_type=diffusion_args.sampling_type,
                     span_infilling=data_args.span_infilling,
+                    tokenizer = tokenizer 
                 )
                 with torch.no_grad():
                     eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None

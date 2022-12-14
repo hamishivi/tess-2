@@ -8,6 +8,7 @@ from sdlm.utils import scale, self_condition_preds
 from dataclasses import dataclass
 import numpy as np
 from diffusers.utils import BaseOutput
+from sdlm.utils import convert_to_simplex
 
 @dataclass
 class SimplexDiffusionPipelineOutput(BaseOutput):
@@ -32,13 +33,14 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]): A scheduler to denoise the encoded latent.
     """
 
-    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling):
+    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling, tokenizer):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
         self.simplex_value = simplex_value
         self.top_p = top_p
         self.sampling_type = sampling_type
         self.span_infilling = span_infilling
+        self.tokenizer = tokenizer 
 
     @torch.no_grad()
     def __call__(
@@ -61,8 +63,15 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         Returns:
             [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
         """
-        classifier_free_guidance = guidance_scale > 1.0
-        
+        # Classifier_free guidance works only in the conditional generation case.
+        classifier_free_guidance = guidance_scale > 1.0 and self.span_infilling
+        if classifier_free_guidance:
+            # Makes unconditional input for max sequence length, later we truncate it.
+            uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=seq_length, return_tensors="pt").to(self.device)
+            # Converts this to a simplex (batch_size, max_seq, vocab_size)
+            uncond_simplex = convert_to_simplex(uncond_input["input_ids"], self.simplex_value, self.model.config.vocab_size) 
+
+
         # Sample gaussian noise to begin loop
         vocab_size = self.model.config.vocab_size
         if batch is not None:
@@ -70,11 +79,10 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # Adapts the sequence length to the given `span_mask`'s length.
             seq_length = batch["input_ids"].shape[1]
         simplex_shape = (batch_size, seq_length, vocab_size)
-        simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
+        simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)    
         if self.model.config.self_condition is not None:
             previous_pred = torch.zeros((batch_size, seq_length, vocab_size), device=self.device)
         logits_projection_fct = lambda x: logits_projection(x, self.sampling_type, self.top_p, self.simplex_value)
-
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
@@ -87,12 +95,14 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 span_mask=batch["span_mask"] if self.span_infilling else None,
                 previous_pred=previous_pred if self.model.config.self_condition else None,
                 classifier_free_guidance = classifier_free_guidance,
-                unconditional_simplex = simplex
+                unconditional_simplex = uncond_simplex[:, :batch["input_ids"].shape[1], :] if classifier_free_guidance else None
             )
-            if self.model.config.self_condition is not None:
-                previous_pred = self_condition_preds(self.model.config.self_condition, model_output, logits_projection_fct)
             model_output_logits = model_output.logits
-
+            if self.model.config.self_condition is not None:
+                prev_output_logits = model_output_logits.chunk(2)[1] if classifier_free_guidance else model_output_logits
+                # TODO: possibly we need to do this line after combination of logits below.
+                previous_pred = self_condition_preds(self.model.config.self_condition, prev_output_logits, logits_projection_fct)
+            
             # Performs classifier-free guidance.
             if classifier_free_guidance:
                 logits_uncond, logits_pred = model_output_logits.chunk(2)
