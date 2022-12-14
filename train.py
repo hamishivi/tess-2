@@ -361,7 +361,7 @@ def main():
                             x, diffusion_args.sampling_type, diffusion_args.top_p, diffusion_args.simplex_value
                         )
                         previous_pred = utils.self_condition_preds(
-                            diffusion_args.self_condition, outputs, logits_projection_fct
+                            diffusion_args.self_condition, outputs.logits, logits_projection_fct
                         )
 
                 outputs = model(

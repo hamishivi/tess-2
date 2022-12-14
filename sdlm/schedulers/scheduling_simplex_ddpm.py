@@ -8,8 +8,9 @@ import torch
 import numpy as np
 from diffusers.configuration_utils import register_to_config
 from diffusers.utils import BaseOutput
-import math 
+import math
 import pdb
+
 
 @dataclass
 class SimplexDDPMSchedulerOutput(BaseOutput):
@@ -43,11 +44,11 @@ def betas_for_alpha_bar(num_diffusion_timesteps, device, max_beta=0.999, improve
 
     def default_alpha_bar(time_step):
         return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
-    
+
     if improved_ddpm:
-        # Implements eqn. 17 in https://arxiv.org/pdf/2102.09672.pdf. 
-        alpha_bar = lambda x: (default_alpha_bar(x)/default_alpha_bar(0.0))
-        alphas_cumprod= []
+        # Implements eqn. 17 in https://arxiv.org/pdf/2102.09672.pdf.
+        alpha_bar = lambda x: (default_alpha_bar(x) / default_alpha_bar(0.0))
+        alphas_cumprod = []
     else:
         alpha_bar = default_alpha_bar
     betas = []
@@ -57,15 +58,15 @@ def betas_for_alpha_bar(num_diffusion_timesteps, device, max_beta=0.999, improve
         alpha_bar_t1 = alpha_bar(t1)
         betas.append(min(1 - alpha_bar(t2) / alpha_bar_t1, max_beta))
         if improved_ddpm:
-           alphas_cumprod.append(alpha_bar_t1)
+            alphas_cumprod.append(alpha_bar_t1)
     # TODO(rabeeh): maybe this cause memory issue.
     betas = torch.tensor(betas, dtype=torch.float32, device=device)
     if improved_ddpm:
-        return betas, torch.tensor(alphas_cumprod, dtype=torch.torch.float32, device=device)  
+        return betas, torch.tensor(alphas_cumprod, dtype=torch.torch.float32, device=device)
     return betas
 
+
 class SimplexDDPMScheduler(DDPMScheduler):
-    
     @register_to_config
     def __init__(
         self,
@@ -87,7 +88,8 @@ class SimplexDDPMScheduler(DDPMScheduler):
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
             self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32, device=device) ** 2
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32, device=device)
+                ** 2
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
@@ -102,11 +104,11 @@ class SimplexDDPMScheduler(DDPMScheduler):
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         if beta_schedule == "squaredcos_improved_ddpm":
-            self.alphas = None 
+            self.alphas = None
         else:
             self.alphas = 1.0 - self.betas
             self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        
+
         self.one = torch.tensor(1.0, device=device)
 
         # standard deviation of the initial noise distribution
@@ -116,7 +118,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         self.num_inference_steps = None
         # TODO(rabeeh): if memory issue, we can not add this to GPU and convert them iteratively.
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy()).to(device=device)
-        
+
         self.variance_type = variance_type
 
     def step(
@@ -141,14 +143,14 @@ class SimplexDDPMScheduler(DDPMScheduler):
 
         # 1. compute alphas, betas
         alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
-        
+
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
             projected_logits = torch.clamp(projected_logits, -1, 1)
 
         # See algorithm 2 in Figure 3 in https://arxiv.org/pdf/2210.17432.pdf.
         predicted_logits_coeff = alpha_prod_t_prev ** (0.5)
-        noise_coeff = (1-alpha_prod_t_prev) ** (0.5)
+        noise_coeff = (1 - alpha_prod_t_prev) ** (0.5)
         pred_prev_sample = predicted_logits_coeff * projected_logits + noise_coeff * noise
 
         return SimplexDDPMSchedulerOutput(prev_sample=pred_prev_sample, projected_logits=projected_logits)
@@ -164,7 +166,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         # timesteps = timesteps.to(original_samples.device)
 
         alphas_cumprod_timesteps = self.alphas_cumprod[timesteps].view(-1, 1, 1)
-        sqrt_alpha_prod = alphas_cumprod_timesteps ** 0.5
+        sqrt_alpha_prod = alphas_cumprod_timesteps**0.5
         sqrt_one_minus_alpha_prod = (1 - alphas_cumprod_timesteps) ** 0.5
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
