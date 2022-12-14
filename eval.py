@@ -95,7 +95,9 @@ def main():
         top_p=diffusion_args.top_p,
         sampling_type=diffusion_args.sampling_type,
         span_infilling=data_args.span_infilling,
-        tokenizer = tokenizer 
+        tokenizer = tokenizer,
+        classifier_free_uncond_input = diffusion_args.classifier_free_uncond_input,        
+        classifier_free_guided_prev_outputs = diffusion_args.classifier_free_guided_prev_outputs  
     )
     tokenizer = AutoTokenizer.from_pretrained(last_checkpoint, use_fast=model_args.use_fast_tokenizer)
     (model, tokenizer, pipeline, noise_scheduler) = accelerator.prepare(model, tokenizer, pipeline, noise_scheduler)
