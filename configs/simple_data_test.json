@@ -19,10 +19,10 @@
 	"lr_scheduler_type": "cosine",
 	"beta_schedule": "squaredcos_improved_ddpm",
 	"top_p": 0.99,
-	"span_infilling": true,
+	"mixed_pretrain_objectives": true,
 	"mask_ratio": 0.5,
 	"extra_padding_ratio": 0.0,
 	"self_condition": "logits_addition",
-	"guidance_scale": 5.0
+	"guidance_scale": 1.0
 }
 
