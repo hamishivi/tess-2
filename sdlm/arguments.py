@@ -188,6 +188,7 @@ class DataTrainingArguments:
             )
         },
     )
+    mixed_pretrain_objectives: bool = field(default=False, metadata={"help": "If sets considers the mixed pretraining objectives."})
 
     def __post_init__(self):
         if (

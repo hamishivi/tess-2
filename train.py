@@ -180,6 +180,7 @@ def main():
         mean_mask_span_length=data_args.mean_mask_span_length,
         seed=training_args.seed,
         extra_padding_ratio=extra_padding_ratio,
+        mixed_pretrain_objectives=data_args.mixed_pretrain_objectives
     )
 
     # DataLoaders creation.

@@ -2,6 +2,31 @@
 import numpy as np
 import itertools
 import pdb
+import torch 
+from enum import Enum 
+
+class Objective(Enum):
+    # Prefix language modeling like GPT style pretraining.
+    prefix = 1
+    # T5 objective with a range of 2 to 5 tokens as the span length, which masks about 15% of input tokens.
+    t5 = 2
+    # Aggressive denoising where approximately 50% of the input sequence is masked.
+    aggressive_t5 = 3
+    # Unconditional generation case.
+    unconditional = 4
+
+
+def gpt_span_mask(length, pad_length):
+    """Given the length and pad_length for an input generates a prefix (GPT-style) mask."""
+    prefix_size = np.random.randint(low=1, high=int(length/4)) 
+    return [True]*prefix_size + [False]*(length-prefix_size) + [False]*pad_length
+    
+def gpt_span_mask_batch(batch):
+    lengths = [len(feature["input_ids"]) for feature in batch]
+    max_length = max(lengths)
+    masks = [gpt_span_mask(length, max_length-length) for length in lengths]
+    return torch.tensor(masks)
+
 
 def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None, pad_length=None):
     """Noise mask consisting of random spans of mask tokens.
@@ -51,6 +76,14 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
     if pad_length is not None:
       mask += [False for _ in range(pad_length)]
     return mask 
+
+
+def t5_random_spans_mask_batch(batch, mask_ratio, mean_mask_span_length=3.0, rng=None):
+  """Given not padded inputs, generates the T5 mask for each input."""
+  lengths = [len(feature["input_ids"]) for feature in batch]
+  max_length = max(lengths)
+  masks = [t5_random_spans_mask(length, mask_ratio, mean_mask_span_length, rng, max_length-length) for length in lengths]
+  return torch.tensor(masks)
 
 def _random_segmentation(num_items, num_segments, rng=None):
     """Partition a sequence of items randomly into non-empty segments.

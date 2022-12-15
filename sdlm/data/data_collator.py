@@ -2,10 +2,12 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Union
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
-from sdlm.data.preprocessors import t5_random_spans_mask, insert_extra_paddings
+from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch, Objective
 import torch
 import numpy as np 
 import pdb 
+from random import choices
+
 
 @dataclass
 class SpanInfillingDataCollator:
@@ -37,6 +39,7 @@ class SpanInfillingDataCollator:
                 pad_to_multiple_of: Optional[int] = None,
                 return_tensors: str = "pt",
                 span_infilling: bool = False,
+                mixed_pretrain_objectives: bool = False,
                 mask_ratio: float = 0.15,
                 mean_mask_span_length: int = 3,
                 extra_padding_ratio = 0.0,
@@ -49,8 +52,16 @@ class SpanInfillingDataCollator:
         self.span_infilling = span_infilling
         self.extra_padding_ratio = extra_padding_ratio
         self.rng = np.random.default_rng(seed)
-        self.mask_generator = lambda length, pad_length : t5_random_spans_mask(length, mask_ratio, mean_mask_span_length, self.rng, pad_length)
-
+        self.mixed_pretrain_objectives = mixed_pretrain_objectives
+        if self.mixed_pretrain_objectives:
+            self.mask_generator = {}
+            self.mask_generator[Objective.t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio=0.15, mean_mask_span_length=3, rng=self.rng)
+            self.mask_generator[Objective.aggressive_t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio=0.5, mean_mask_span_length=8, rng=self.rng)
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
+            self.mask_generator[Objective.unconditional] = lambda batch: None
+        elif self.span_infilling:
+            self.mask_generator = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio, mean_mask_span_length, self.rng) 
+        
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         [f.pop("attention_mask") for f in features]
             
@@ -67,10 +78,12 @@ class SpanInfillingDataCollator:
         masks = {}
         if self.span_infilling:
             # Generates masks and pads them.
-            lengths = [len(feature["input_ids"]) for feature in features]
-            max_length = max(lengths)
-            masks = [self.mask_generator(length, max_length-length) for length in lengths]
-            masks = {"span_mask": torch.tensor(masks)}
+            masks = {"span_mask": self.mask_generator(features)}
+        elif self.mixed_pretrain_objectives:
+            objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
+            weights = [0.25, 0.25, 0.25, 0.25]
+            objective = choices(objectives, weights)[0]
+            masks = {"span_mask": self.mask_generator[objective](features)}
             
         batch = self.tokenizer.pad(
             features,
