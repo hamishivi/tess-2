@@ -55,8 +55,8 @@ class SpanInfillingDataCollator:
         self.mixed_pretrain_objectives = mixed_pretrain_objectives
         if self.mixed_pretrain_objectives:
             self.mask_generator = {}
-            self.mask_generator[Objective.t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio, mean_mask_span_length, self.rng)
-            self.mask_generator[Objective.aggressive_t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio, mean_mask_span_length, self.rng)
+            self.mask_generator[Objective.t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio=0.15, mean_mask_span_length=3, rng=self.rng)
+            self.mask_generator[Objective.aggressive_t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio=0.5, mean_mask_span_length=8, rng=self.rng)
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
             self.mask_generator[Objective.unconditional] = lambda batch: None
         elif self.span_infilling:
