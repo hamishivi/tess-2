@@ -3,10 +3,10 @@ from transformers.utils import is_apex_available
 from typing import Dict, Union, Any, Optional, List, Tuple
 import torch
 from torch import nn
-import numpy as np
 from sdlm.utils import convert_to_simplex, scale
 from transformers.trainer_pt_utils import nested_detach
-from transformers.trainer_utils import EvalLoopOutput, has_length, denumpify_detensorize, EvalPrediction
+from transformers.trainer_utils import EvalLoopOutput, has_length, denumpify_detensorize
+from sdlm.utils import EvalPrediction
 from transformers.trainer_pt_utils import nested_numpify
 from transformers.utils import logging
 from torch.utils.data import DataLoader
@@ -89,8 +89,6 @@ class DiffusionTrainer(Trainer):
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
 
         inputs = self._prepare_inputs(inputs)
-        labels = None
-
         with torch.no_grad():
             with self.compute_loss_context_manager():
                 outputs = pipeline(
@@ -99,14 +97,9 @@ class DiffusionTrainer(Trainer):
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
                 )
-
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
-
-        if len(logits) == 1:
-            logits = logits[0]
-
-        return (simplex, logits, labels)
+        return (simplex, logits)
 
     def evaluation_loop(
         self,
@@ -182,9 +175,8 @@ class DiffusionTrainer(Trainer):
         all_simplex = None
         all_labels = None
         all_inputs = None
-        # Will be useful when we have an iterable dataset so don't know its length.
-
         observed_num_examples = 0
+
         # Main evaluation loop
         for step, inputs in enumerate(dataloader):
             # Update the observed num examples
@@ -196,14 +188,10 @@ class DiffusionTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # Prediction step
-            simplex, logits, labels = self.prediction_step(inputs, pipeline=pipeline)
-            inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+            simplex, logits = self.prediction_step(inputs, pipeline=pipeline)
+            inputs_decode = self._prepare_input(inputs["input_ids"])
 
             # Update containers on host
-            if labels is not None:
-                labels = self._pad_across_processes(labels)
-                labels = self._nested_gather(labels)
-                labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
             if inputs_decode is not None:
                 inputs_decode = self._pad_across_processes(inputs_decode)
                 inputs_decode = self._nested_gather(inputs_decode)
@@ -214,13 +202,13 @@ class DiffusionTrainer(Trainer):
                 logits = self._pad_across_processes(logits)
                 logits = self._nested_gather(logits)
                 if self.preprocess_logits_for_metrics is not None:
-                    logits = self.preprocess_logits_for_metrics(logits, labels)
+                    logits = self.preprocess_logits_for_metrics(logits)
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
             if simplex is not None:
                 simplex = self._pad_across_processes(simplex)
                 simplex = self._nested_gather(simplex)
                 if self.preprocess_logits_for_metrics is not None:
-                    simplex = self.preprocess_logits_for_metrics(simplex, labels)
+                    simplex = self.preprocess_logits_for_metrics(simplex)
                 simplex_host = simplex if simplex_host is None else nested_concat(simplex_host, simplex, padding_index=-100)
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
@@ -237,9 +225,6 @@ class DiffusionTrainer(Trainer):
             all_inputs = (
                 inputs_decode if all_inputs is None else nested_concat(all_inputs, inputs_decode, padding_index=-100)
             )
-        if labels_host is not None:
-            labels = nested_numpify(labels_host)
-            all_labels = labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
 
         # Number of samples
         num_samples = len(eval_dataset)
@@ -252,8 +237,6 @@ class DiffusionTrainer(Trainer):
             all_simplex = nested_truncate(all_simplex, num_samples)
         if all_preds is not None:
             all_preds = nested_truncate(all_preds, num_samples)
-        if all_labels is not None:
-            all_labels = nested_truncate(all_labels, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
 
