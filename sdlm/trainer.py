@@ -114,32 +114,16 @@ class DiffusionTrainer(Trainer):
             else:
                 ignore_keys = []
 
-        # labels may be popped when computing the loss (label smoothing for instance) so we grab them first.
-        if has_labels or loss_without_labels:
-            labels = nested_detach(tuple(inputs.get(name) for name in self.label_names))
-            if len(labels) == 1:
-                labels = labels[0]
-        else:
-            labels = None
+        labels = None
 
         with torch.no_grad():
-            if has_labels or loss_without_labels:
-                with self.compute_loss_context_manager():
-                    loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
-                loss = loss.mean().detach()
-
-                if isinstance(outputs, dict):
-                    logits = tuple(v for k, v in outputs.items() if k not in ignore_keys + ["loss"])
-                else:
-                    logits = outputs[1:]
+            loss = None
+            with self.compute_loss_context_manager():
+                outputs = model(**inputs)
+            if isinstance(outputs, dict):
+                logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
             else:
-                loss = None
-                with self.compute_loss_context_manager():
-                    outputs = model(**inputs)
-                if isinstance(outputs, dict):
-                    logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
-                else:
-                    logits = outputs
+                logits = outputs
 
         if prediction_loss_only:
             return (loss, None, None)
