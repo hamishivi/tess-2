@@ -287,24 +287,8 @@ class DiffusionTrainer(Trainer):
 
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
-        metrics = evaluate_generation(results, self.causal_model, self.causal_tokenizer, self.data_args.span_infilling)
-        print(metrics)
         # TODO: we need to make sure metric for checkpoint is selected.
-        # TODO: this should be corrected with real metrics.
-        """
-        if (
-            self.compute_metrics is not None
-            and all_logits is not None
-            and all_labels is not None
-            and all_simplex is not None
-        ):
-            if args.include_inputs_for_metrics:
-                metrics = self.compute_metrics(EvalPrediction(logits=all_logits, simplex=all_simplex, inputs=all_inputs))
-            else:
-                metrics = self.compute_metrics(EvalPrediction(logits=all_logits, simplex=all_simplex))
-        else:
-            metrics = {}
-        """
+        metrics = evaluate_generation(results, self.causal_model, self.causal_tokenizer, self.data_args.span_infilling)
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
