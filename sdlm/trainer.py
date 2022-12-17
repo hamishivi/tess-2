@@ -92,7 +92,6 @@ class DiffusionTrainer(Trainer):
         labels = None
 
         with torch.no_grad():
-            loss = None
             with self.compute_loss_context_manager():
                 outputs = pipeline(
                     batch_size=self.args.per_device_eval_batch_size,
@@ -100,16 +99,14 @@ class DiffusionTrainer(Trainer):
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
                 )
-                simplex = outputs.simplex
-                logits = outputs.logits
 
-        logits = nested_detach(logits)
-        simplex = nested_detach(simplex)
+        logits = nested_detach(outputs.logits)
+        simplex = nested_detach(outputs.simplex)
 
         if len(logits) == 1:
             logits = logits[0]
 
-        return (loss, logits, labels)
+        return (simplex, logits, labels)
 
     def evaluation_loop(
         self,
@@ -174,15 +171,15 @@ class DiffusionTrainer(Trainer):
         eval_dataset = getattr(dataloader, "dataset", None)
 
         # Initialize containers
-        # losses/preds/labels on GPU/TPU (accumulated for eval_accumulation_steps)
-        losses_host = None
+        # preds/simplex/labels on GPU/TPU (accumulated for eval_accumulation_steps)
         preds_host = None
+        simplex_host = None
         labels_host = None
         inputs_host = None
 
-        # losses/preds/labels on CPU (final containers)
-        all_losses = None
+        # preds/simplex/labels on CPU (final containers)
         all_preds = None
+        all_simplex = None
         all_labels = None
         all_inputs = None
         # Will be useful when we have an iterable dataset so don't know its length.
@@ -199,13 +196,10 @@ class DiffusionTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # Prediction step
-            loss, logits, labels = self.prediction_step(inputs, pipeline=pipeline)
+            simplex, logits, labels = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Update containers on host
-            if loss is not None:
-                losses = self._nested_gather(loss.repeat(batch_size))
-                losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
             if labels is not None:
                 labels = self._pad_across_processes(labels)
                 labels = self._nested_gather(labels)
@@ -222,15 +216,22 @@ class DiffusionTrainer(Trainer):
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits, labels)
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+            if simplex is not None:
+                simplex = self._pad_across_processes(simplex)
+                simplex = self._nested_gather(simplex)
+                if self.preprocess_logits_for_metrics is not None:
+                    simplex = self.preprocess_logits_for_metrics(simplex, labels)
+                simplex_host = simplex if simplex_host is None else nested_concat(simplex_host, simplex, padding_index=-100)
+
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
         # Gather all remaining tensors and put them back on the CPU
-        if losses_host is not None:
-            losses = nested_numpify(losses_host)
-            all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
         if preds_host is not None:
             logits = nested_numpify(preds_host)
             all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+        if simplex_host is not None:
+            simplex = nested_numpify(simplex_host)
+            all_simplex = simplex if all_simplex is None else nested_concat(all_simplex, simplex, padding_index=-100)
         if inputs_host is not None:
             inputs_decode = nested_numpify(inputs_host)
             all_inputs = (
@@ -247,8 +248,8 @@ class DiffusionTrainer(Trainer):
 
         # Number of losses has been rounded to a multiple of batch_size and in a distributed training, the number of
         # samplers has been rounded to a multiple of batch_size, so we truncate.
-        if all_losses is not None:
-            all_losses = all_losses[:num_samples]
+        if all_simplex is not None:
+            all_simplex = nested_truncate(all_simplex, num_samples)
         if all_preds is not None:
             all_preds = nested_truncate(all_preds, num_samples)
         if all_labels is not None:
@@ -257,7 +258,7 @@ class DiffusionTrainer(Trainer):
             all_inputs = nested_truncate(all_inputs, num_samples)
 
         # Metrics!
-        if self.compute_metrics is not None and all_preds is not None and all_labels is not None:
+        if self.compute_metrics is not None and all_preds is not None and all_labels is not None and all_simplex is not None:
             if args.include_inputs_for_metrics:
                 metrics = self.compute_metrics(
                     EvalPrediction(predictions=all_preds, label_ids=all_labels, inputs=all_inputs)
@@ -270,8 +271,8 @@ class DiffusionTrainer(Trainer):
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
 
-        if all_losses is not None:
-            metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
+        # if all_losses is not None:
+        #    metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
