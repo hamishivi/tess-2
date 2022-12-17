@@ -84,52 +84,32 @@ class DiffusionTrainer(Trainer):
 
         return loss.detach()
 
-    ###############################################################################
-    # TODO: this is only for now and should be deleted later after adding pipeline.
     def prediction_step(
-        self,
-        model: nn.Module,
-        inputs: Dict[str, Union[torch.Tensor, Any]],
-        prediction_loss_only: bool,
-        ignore_keys: Optional[List[str]] = None,
+        self, inputs: Dict[str, Union[torch.Tensor, Any]], pipeline
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
 
         inputs = self._prepare_inputs(inputs)
-
-        #####################################
-        simplex = convert_to_simplex(inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size)
-        bsz = inputs["input_ids"].shape[0]
-        timesteps = torch.randint(0, len(self.noise_scheduler), (bsz,), device=simplex.device, dtype=torch.int64)
-        inputs.update({"timesteps": timesteps, "simplex": simplex})
-        #####################################
-
-        if ignore_keys is None:
-            if hasattr(self.model, "config"):
-                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
-            else:
-                ignore_keys = []
-
         labels = None
 
         with torch.no_grad():
             loss = None
             with self.compute_loss_context_manager():
-                outputs = model(**inputs)
-            if isinstance(outputs, dict):
-                logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
-            else:
-                logits = outputs
-
-        if prediction_loss_only:
-            return (loss, None, None)
+                outputs = pipeline(
+                    batch_size=self.args.per_device_eval_batch_size,
+                    seq_length=self.data_args.max_seq_length,
+                    batch=inputs,
+                    guidance_scale=self.diffusion_args.guidance_scale,
+                )
+                simplex = outputs.simplex
+                logits = outputs.logits
 
         logits = nested_detach(logits)
+        simplex = nested_detach(simplex)
+
         if len(logits) == 1:
             logits = logits[0]
 
         return (loss, logits, labels)
-
-    ###############################################################################
 
     def evaluation_loop(
         self,
@@ -146,19 +126,6 @@ class DiffusionTrainer(Trainer):
         args = self.args
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
-
-        pipeline = SimplexDDPMPipeline(
-            model=self.model,
-            scheduler=self.inference_noise_scheduler,
-            simplex_value=self.diffusion_args.simplex_value,
-            top_p=self.diffusion_args.top_p,
-            sampling_type=self.diffusion_args.sampling_type,
-            span_infilling=self.data_args.span_infilling,
-            tokenizer=self.tokenizer,
-            classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
-            classifier_free_guided_prev_outputs=self.diffusion_args.classifier_free_guided_prev_outputs,
-        )
-
         # if eval is called w/o train init deepspeed here
         if args.deepspeed and not self.deepspeed:
 
@@ -190,6 +157,18 @@ class DiffusionTrainer(Trainer):
 
         model.eval()
 
+        pipeline = SimplexDDPMPipeline(
+            model=model,
+            scheduler=self.inference_noise_scheduler,
+            simplex_value=self.diffusion_args.simplex_value,
+            top_p=self.diffusion_args.top_p,
+            sampling_type=self.diffusion_args.sampling_type,
+            span_infilling=self.data_args.span_infilling,
+            tokenizer=self.tokenizer,
+            classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
+            classifier_free_guided_prev_outputs=self.diffusion_args.classifier_free_guided_prev_outputs,
+        )
+
         self.callback_handler.eval_dataloader = dataloader
         # Do this before wrapping.
         eval_dataset = getattr(dataloader, "dataset", None)
@@ -220,7 +199,7 @@ class DiffusionTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # Prediction step
-            loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+            loss, logits, labels = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             # Update containers on host
