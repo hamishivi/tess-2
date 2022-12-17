@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from transformers.trainer_pt_utils import find_batch_size, nested_concat, nested_truncate
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
-from sdlm.inference.inference_utils import predict_conditional_generated
+from sdlm.inference.inference_utils import predict_conditional_generated, evaluate_generation
 
 if is_apex_available():
     from apex import amp
@@ -27,13 +27,25 @@ logger = logging.get_logger(__name__)
 
 
 class DiffusionTrainer(Trainer):
-    def __init__(self, noise_scheduler, inference_noise_scheduler, diffusion_args, data_args, *args, **kwargs):
+    def __init__(
+        self,
+        causal_model,
+        causal_tokenizer,
+        noise_scheduler,
+        inference_noise_scheduler,
+        diffusion_args,
+        data_args,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.noise_scheduler = noise_scheduler
         self.diffusion_args = diffusion_args
         self.data_args = data_args
         self.vocab_size = self.model.config.vocab_size
         self.inference_noise_scheduler = inference_noise_scheduler
+        self.causal_model = causal_model
+        self.causal_tokenizer = causal_tokenizer
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -269,8 +281,17 @@ class DiffusionTrainer(Trainer):
             results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
             results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
 
+        if self.data_args.span_infilling:
+            # Adds the decoded original texts to the final results.
+            results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
+
         # Metrics!
+        # TODO: make sure causal model is going through the same stuff as the model.
+        metrics = evaluate_generation(results, self.causal_model, self.causal_tokenizer, self.data_args.span_infilling)
+        print(metrics)
+        # TODO: we need to make sure metric for checkpoint is selected.
         # TODO: this should be corrected with real metrics.
+        """
         if (
             self.compute_metrics is not None
             and all_logits is not None
@@ -283,6 +304,7 @@ class DiffusionTrainer(Trainer):
                 metrics = self.compute_metrics(EvalPrediction(logits=all_logits, simplex=all_simplex))
         else:
             metrics = {}
+        """
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)

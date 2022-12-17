@@ -12,6 +12,7 @@ import transformers
 from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoTokenizer,
+    AutoModelForCausalLM,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
     TrainingArguments,
@@ -22,8 +23,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments, DiffusionArguments
-from sdlm.models import RobertaDiffusionConfig
-from sdlm.models import RobertaForDiffusionLM
+from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.trainer import DiffusionTrainer
 from sdlm.schedulers import SimplexDDPMScheduler
 
@@ -209,6 +209,10 @@ def main():
         logger.info("Training new model from scratch")
         model = RobertaForDiffusionLM.from_config(config)
 
+    # Causal language model.
+    causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
+    causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
+
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
@@ -389,6 +393,8 @@ def main():
         diffusion_args=diffusion_args,
         data_args=data_args,
         inference_noise_scheduler=inference_noise_scheduler,
+        causal_model=causal_model,
+        causal_tokenizer=causal_tokenizer,
     )
 
     # Training
