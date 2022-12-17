@@ -114,6 +114,20 @@ def filter_empty(texts):
     return list(texts), list(remained_inds)
 
 
+def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name):
+    masked = list(
+        map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=True), predicted_token_ids, span_masks)
+    )
+    unmasked = list(map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=False), input_ids, span_masks))
+    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in masked]
+    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in unmasked]
+    pred_texts = list(map(lambda x, y: concatenate_alternatively(x, y), pred_unmasked_texts, pred_masked_texts))
+    pred_texts_marked = list(
+        map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
+    )
+    return {prefix_name: pred_texts, prefix_name + "_marked": pred_texts_marked}
+
+
 def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling):
     metrics = {}
     keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]

@@ -3,6 +3,7 @@ from transformers.utils import is_apex_available
 from typing import Dict, Union, Any, Optional, List, Tuple
 import torch
 from torch import nn
+import torch.nn.functional as F
 from sdlm.utils import convert_to_simplex, scale
 from transformers.trainer_pt_utils import nested_detach
 from transformers.trainer_utils import EvalLoopOutput, has_length, denumpify_detensorize
@@ -13,6 +14,7 @@ from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from transformers.trainer_pt_utils import find_batch_size, nested_concat, nested_truncate
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from sdlm.inference.inference_utils import predict_conditional_generated
 
 if is_apex_available():
     from apex import amp
@@ -164,17 +166,19 @@ class DiffusionTrainer(Trainer):
         eval_dataset = getattr(dataloader, "dataset", None)
 
         # Initialize containers
-        # preds/simplex/labels on GPU/TPU (accumulated for eval_accumulation_steps)
-        preds_host = None
+        # logits/simplex/labels on GPU/TPU (accumulated for eval_accumulation_steps)
+        logits_host = None
         simplex_host = None
         labels_host = None
         inputs_host = None
+        masks_host = None
 
-        # preds/simplex/labels on CPU (final containers)
-        all_preds = None
+        # logits/simplex/labels on CPU (final containers)
+        all_logits = None
         all_simplex = None
         all_labels = None
         all_inputs = None
+        all_masks = None
         observed_num_examples = 0
 
         # Main evaluation loop
@@ -190,6 +194,7 @@ class DiffusionTrainer(Trainer):
             # Prediction step
             simplex, logits = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
+            masks = self._prepare_input(inputs["span_mask"]) if self.data_args.span_infilling else None
 
             # Update containers on host
             if inputs_decode is not None:
@@ -198,15 +203,22 @@ class DiffusionTrainer(Trainer):
                 inputs_host = (
                     inputs_decode if inputs_host is None else nested_concat(inputs_host, inputs_decode, padding_index=-100)
                 )
+            if masks is not None:
+                # TODO: check pad for masks.
+                masks = self._pad_across_processes(masks)
+                masks = self._nested_gather(masks)
+                masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=-100)
             if logits is not None:
                 logits = self._pad_across_processes(logits)
                 logits = self._nested_gather(logits)
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits)
-                preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+                logits_host = logits if logits_host is None else nested_concat(logits_host, logits, padding_index=-100)
             if simplex is not None:
                 simplex = self._pad_across_processes(simplex)
                 simplex = self._nested_gather(simplex)
+                # TODO: note that this is no more a simplex, but the processed one.
+                simplex = F.softmax(simplex, dim=-1)
                 if self.preprocess_logits_for_metrics is not None:
                     simplex = self.preprocess_logits_for_metrics(simplex)
                 simplex_host = simplex if simplex_host is None else nested_concat(simplex_host, simplex, padding_index=-100)
@@ -214,9 +226,9 @@ class DiffusionTrainer(Trainer):
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
         # Gather all remaining tensors and put them back on the CPU
-        if preds_host is not None:
-            logits = nested_numpify(preds_host)
-            all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+        if logits_host is not None:
+            logits = nested_numpify(logits_host)
+            all_logits = logits if all_logits is None else nested_concat(all_logits, logits, padding_index=-100)
         if simplex_host is not None:
             simplex = nested_numpify(simplex_host)
             all_simplex = simplex if all_simplex is None else nested_concat(all_simplex, simplex, padding_index=-100)
@@ -225,6 +237,9 @@ class DiffusionTrainer(Trainer):
             all_inputs = (
                 inputs_decode if all_inputs is None else nested_concat(all_inputs, inputs_decode, padding_index=-100)
             )
+        if masks_host is not None:
+            masks = nested_numpify(masks)
+            all_masks = masks if all_masks is None else nested_concat(all_masks, masks, padding_index=-100)
 
         # Number of samples
         num_samples = len(eval_dataset)
@@ -235,19 +250,37 @@ class DiffusionTrainer(Trainer):
         # samplers has been rounded to a multiple of batch_size, so we truncate.
         if all_simplex is not None:
             all_simplex = nested_truncate(all_simplex, num_samples)
-        if all_preds is not None:
-            all_preds = nested_truncate(all_preds, num_samples)
+        if all_logits is not None:
+            all_logits = nested_truncate(all_logits, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
 
+        # Generates the texts.
+        results = {}
+        if self.data_args.span_infilling:
+            # We predict the masked tokens only. Here, we compute the masked tokens.
+            results.update(
+                predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_simplex, "pred_texts_from_simplex")
+            )
+            results.update(
+                predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_logits, "pred_texts_from_logits")
+            )
+        else:
+            results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
+            results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
+
         # Metrics!
-        if self.compute_metrics is not None and all_preds is not None and all_labels is not None and all_simplex is not None:
+        # TODO: this should be corrected with real metrics.
+        if (
+            self.compute_metrics is not None
+            and all_logits is not None
+            and all_labels is not None
+            and all_simplex is not None
+        ):
             if args.include_inputs_for_metrics:
-                metrics = self.compute_metrics(
-                    EvalPrediction(predictions=all_preds, label_ids=all_labels, inputs=all_inputs)
-                )
+                metrics = self.compute_metrics(EvalPrediction(logits=all_logits, simplex=all_simplex, inputs=all_inputs))
             else:
-                metrics = self.compute_metrics(EvalPrediction(predictions=all_preds, label_ids=all_labels))
+                metrics = self.compute_metrics(EvalPrediction(logits=all_logits, simplex=all_simplex))
         else:
             metrics = {}
 
@@ -262,4 +295,4 @@ class DiffusionTrainer(Trainer):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
 
-        return EvalLoopOutput(predictions=all_preds, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
+        return EvalLoopOutput(predictions=all_logits, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
