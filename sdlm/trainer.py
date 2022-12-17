@@ -11,7 +11,7 @@ from transformers.trainer_pt_utils import nested_numpify
 from transformers.utils import logging
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
-from transformers.trainer_pt_utils import find_batch_size, nested_concat, nested_truncate, IterableDatasetShard
+from transformers.trainer_pt_utils import find_batch_size, nested_concat, nested_truncate
 
 if is_apex_available():
     from apex import amp
@@ -140,9 +140,6 @@ class DiffusionTrainer(Trainer):
                     logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
                 else:
                     logits = outputs
-                # TODO: this needs to be fixed and made cleaner later.
-                if self.args.past_index >= 0:
-                    self._past = outputs[self.args.past_index - 1]
 
         if prediction_loss_only:
             return (loss, None, None)
@@ -206,9 +203,6 @@ class DiffusionTrainer(Trainer):
         # Do this before wrapping.
         eval_dataset = getattr(dataloader, "dataset", None)
 
-        if args.past_index >= 0:
-            self._past = None
-
         # Initialize containers
         # losses/preds/labels on GPU/TPU (accumulated for eval_accumulation_steps)
         losses_host = None
@@ -260,30 +254,6 @@ class DiffusionTrainer(Trainer):
                 preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
-            # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-            if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
-                if losses_host is not None:
-                    losses = nested_numpify(losses_host)
-                    all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
-                if preds_host is not None:
-                    logits = nested_numpify(preds_host)
-                    all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
-                if inputs_host is not None:
-                    inputs_decode = nested_numpify(inputs_host)
-                    all_inputs = (
-                        inputs_decode if all_inputs is None else nested_concat(all_inputs, inputs_decode, padding_index=-100)
-                    )
-                if labels_host is not None:
-                    labels = nested_numpify(labels_host)
-                    all_labels = labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
-
-                # Set back to None to begin a new accumulation
-                losses_host, preds_host, inputs_host, labels_host = None, None, None, None
-
-        if args.past_index and hasattr(self, "_past"):
-            # Clean the state at the end of the evaluation loop
-            delattr(self, "_past")
-
         # Gather all remaining tensors and put them back on the CPU
         if losses_host is not None:
             losses = nested_numpify(losses_host)
@@ -301,17 +271,7 @@ class DiffusionTrainer(Trainer):
             all_labels = labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
 
         # Number of samples
-        if has_length(eval_dataset):
-            num_samples = len(eval_dataset)
-        # The instance check is weird and does not actually check for the type, but whether the dataset has the right
-        # methods. Therefore we need to make sure it also has the attribute.
-        elif isinstance(eval_dataset, IterableDatasetShard) and getattr(eval_dataset, "num_examples", 0) > 0:
-            num_samples = eval_dataset.num_examples
-        else:
-            if has_length(dataloader):
-                num_samples = self.num_examples(dataloader)
-            else:  # both len(dataloader.dataset) and len(dataloader) fail
-                num_samples = observed_num_examples
+        num_samples = len(eval_dataset)
         if num_samples == 0 and observed_num_examples > 0:
             num_samples = observed_num_examples
 
