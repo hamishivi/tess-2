@@ -12,6 +12,7 @@ from transformers.utils import logging
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from transformers.trainer_pt_utils import find_batch_size, nested_concat, nested_truncate
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 
 if is_apex_available():
     from apex import amp
@@ -24,11 +25,13 @@ logger = logging.get_logger(__name__)
 
 
 class DiffusionTrainer(Trainer):
-    def __init__(self, noise_scheduler, diffusion_args, *args, **kwargs):
+    def __init__(self, noise_scheduler, inference_noise_scheduler, diffusion_args, data_args, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.noise_scheduler = noise_scheduler
         self.diffusion_args = diffusion_args
+        self.data_args = data_args
         self.vocab_size = self.model.config.vocab_size
+        self.inference_noise_scheduler = inference_noise_scheduler
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -143,6 +146,18 @@ class DiffusionTrainer(Trainer):
         args = self.args
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
+
+        pipeline = SimplexDDPMPipeline(
+            model=self.model,
+            scheduler=self.inference_noise_scheduler,
+            simplex_value=self.diffusion_args.simplex_value,
+            top_p=self.diffusion_args.top_p,
+            sampling_type=self.diffusion_args.sampling_type,
+            span_infilling=self.data_args.span_infilling,
+            tokenizer=self.tokenizer,
+            classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
+            classifier_free_guided_prev_outputs=self.diffusion_args.classifier_free_guided_prev_outputs,
+        )
 
         # if eval is called w/o train init deepspeed here
         if args.deepspeed and not self.deepspeed:

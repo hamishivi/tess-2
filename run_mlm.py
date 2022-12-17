@@ -216,6 +216,13 @@ def main():
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
     )
+    inference_noise_scheduler = SimplexDDPMScheduler(
+        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
+        device=training_args.device,
+    )
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
@@ -384,6 +391,8 @@ def main():
         else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
+        data_args=data_args,
+        inference_noise_scheduler=inference_noise_scheduler,
     )
 
     # Training
