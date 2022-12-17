@@ -90,14 +90,13 @@ class DiffusionTrainer(Trainer):
         prediction_loss_only: bool,
         ignore_keys: Optional[List[str]] = None,
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        has_labels = False if len(self.label_names) == 0 else all(inputs.get(k) is not None for k in self.label_names)
+
         # For CLIP-like models capable of returning loss values.
         # If `return_loss` is not specified or being `None` in `inputs`, we check if the default value of `return_loss`
         # is `True` in `model.forward`.
         return_loss = inputs.get("return_loss", None)
         if return_loss is None:
             return_loss = self.can_return_loss
-        loss_without_labels = True if len(self.label_names) == 0 and return_loss else False
 
         inputs = self._prepare_inputs(inputs)
 
