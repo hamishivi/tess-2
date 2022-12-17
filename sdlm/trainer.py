@@ -1,25 +1,20 @@
 from transformers import Trainer
-from transformers.utils import is_sagemaker_mp_enabled, is_apex_available
+from transformers.utils import is_apex_available
 from typing import Dict, Union, Any, Optional, List, Tuple
 import torch
-from packaging import version
 from torch import nn
 import numpy as np
 from sdlm.utils import convert_to_simplex, scale
 from transformers.trainer_pt_utils import nested_detach
 from transformers.trainer_utils import EvalLoopOutput, has_length, denumpify_detensorize, EvalPrediction
 from transformers.trainer_pt_utils import nested_numpify
-from transformers.utils import logging, is_torch_tpu_available
+from transformers.utils import logging
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from transformers.trainer_pt_utils import find_batch_size, nested_concat, nested_truncate, IterableDatasetShard
 
 if is_apex_available():
     from apex import amp
-
-if is_torch_tpu_available(check_device=False):
-    import torch_xla.core.xla_model as xm
-    import torch_xla.distributed.parallel_loader as pl
 
 
 IS_SAGEMAKER_MP_POST_1_10 = False
@@ -211,9 +206,6 @@ class DiffusionTrainer(Trainer):
         # Do this before wrapping.
         eval_dataset = getattr(dataloader, "dataset", None)
 
-        if is_torch_tpu_available():
-            dataloader = pl.ParallelLoader(dataloader, [args.device]).per_device_loader(args.device)
-
         if args.past_index >= 0:
             self._past = None
 
@@ -245,9 +237,6 @@ class DiffusionTrainer(Trainer):
             # Prediction step
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
-
-            if is_torch_tpu_available():
-                xm.mark_step()
 
             # Update containers on host
             if loss is not None:
