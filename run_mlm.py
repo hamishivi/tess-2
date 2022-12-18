@@ -26,6 +26,7 @@ from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArgume
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.trainer import DiffusionTrainer
 from sdlm.schedulers import SimplexDDPMScheduler
+from sdlm.inference.inference_utils import evaluate_generation
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -355,19 +356,6 @@ def main():
         def preprocess_logits_for_metrics(logits):
             return logits.argmax(dim=-1)
 
-        """
-        metric = evaluate.load("accuracy")
-        def compute_metrics(eval_preds):
-            preds, labels = eval_preds
-            # preds have the same shape as the labels, after the argmax(-1) has been calculated
-            # by preprocess_logits_for_metrics
-            labels = labels.reshape(-1)
-            preds = preds.reshape(-1)
-            mask = labels != -100
-            labels = labels[mask]
-            preds = preds[mask]
-            return metric.compute(predictions=preds, references=labels)
-        """
     # Data collator
     # This one will take care of randomly masking the tokens.
     pad_to_multiple_of_8 = data_args.line_by_line and training_args.fp16 and not data_args.pad_to_max_length
@@ -385,7 +373,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        # compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+        compute_metrics=evaluate_generation if training_args.do_eval and not is_torch_tpu_available() else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
         if training_args.do_eval and not is_torch_tpu_available()
         else None,

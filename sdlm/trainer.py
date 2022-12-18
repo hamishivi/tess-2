@@ -5,16 +5,13 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from sdlm.utils import convert_to_simplex, scale
-from transformers.trainer_pt_utils import nested_detach
+from transformers.trainer_pt_utils import nested_detach, nested_numpify, find_batch_size, nested_concat, nested_truncate
 from transformers.trainer_utils import EvalLoopOutput, has_length, denumpify_detensorize
-from sdlm.utils import EvalPrediction
-from transformers.trainer_pt_utils import nested_numpify
 from transformers.utils import logging
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
-from transformers.trainer_pt_utils import find_batch_size, nested_concat, nested_truncate
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
-from sdlm.inference.inference_utils import predict_conditional_generated, evaluate_generation
+from sdlm.inference.inference_utils import predict_conditional_generated
 
 if is_apex_available():
     from apex import amp
@@ -181,7 +178,6 @@ class DiffusionTrainer(Trainer):
         # logits/simplex/labels on GPU/TPU (accumulated for eval_accumulation_steps)
         logits_host = None
         simplex_host = None
-        labels_host = None
         inputs_host = None
         masks_host = None
 
@@ -288,7 +284,7 @@ class DiffusionTrainer(Trainer):
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
         # TODO: we need to make sure metric for checkpoint is selected.
-        metrics = evaluate_generation(results, self.causal_model, self.causal_tokenizer, self.data_args.span_infilling)
+        metrics = self.compute_metrics(results, self.causal_model, self.causal_tokenizer, self.data_args.span_infilling)
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
