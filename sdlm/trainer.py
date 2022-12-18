@@ -230,7 +230,6 @@ class DiffusionTrainer(Trainer):
         # logits/simplex/labels on CPU (final containers)
         all_logits = None
         all_simplex = None
-        all_labels = None
         all_inputs = None
         all_masks = None
         observed_num_examples = 0
