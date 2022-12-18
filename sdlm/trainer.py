@@ -302,6 +302,8 @@ class DiffusionTrainer(Trainer):
             results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
             results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
 
+        print(results)
+
         if self.data_args.span_infilling:
             # Adds the decoded original texts to the final results.
             results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})

@@ -4,6 +4,7 @@ import sys
 import pdb
 import datasets
 from sdlm.data.data_utils import load_data_new, tokenize_data_new
+from datasets import load_from_disk, DatasetDict
 
 import transformers
 from transformers import (
@@ -90,7 +91,6 @@ def main():
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
-    raw_datasets = load_data_new(data_args, model_args)
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
@@ -157,7 +157,18 @@ def main():
         device=training_args.device,
     )
 
-    tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
+    if data_args.tokenized_data_path:
+        tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
+    else:
+        raw_datasets = load_data_new(data_args, model_args)
+        tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
+
+    # TODO: is this getting the same on each process?
+    if "validation" not in tokenized_datasets.keys():
+        train_testvalid = tokenized_datasets["train"].train_test_split(
+            test_size=data_args.validation_split_ratio, shuffle=True, seed=training_args.seed
+        )
+        tokenized_datasets = DatasetDict({"train": train_testvalid["train"], "validation": train_testvalid["test"]})
 
     if training_args.do_train:
         if "train" not in tokenized_datasets:
