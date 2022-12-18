@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from sdlm.utils import convert_to_simplex, scale
 from transformers.trainer_pt_utils import nested_detach, nested_numpify, find_batch_size, nested_concat, nested_truncate
 from transformers.integrations import is_fairscale_available, TensorBoardCallback
-from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, ShardedDDPOption  # EvalLoopOutput,
+from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, ShardedDDPOption
 from transformers.utils import logging
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
