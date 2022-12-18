@@ -1,20 +1,25 @@
 from transformers import Trainer
 from transformers.utils import is_apex_available
-from typing import Dict, Union, Any, Optional, List, Tuple
+from typing import Dict, Union, Any, Optional, List, Tuple, NamedTuple
+from torch.utils.data import Dataset
 import torch
+import pdb
+import math
+import time
 import numpy as np
 from torch import nn
 import torch.nn.functional as F
 from sdlm.utils import convert_to_simplex, scale
 from transformers.trainer_pt_utils import nested_detach, nested_numpify, find_batch_size, nested_concat, nested_truncate
-from transformers.integrations import is_fairscale_available
-from transformers.trainer_utils import EvalLoopOutput, has_length, denumpify_detensorize, ShardedDDPOption
+from transformers.integrations import is_fairscale_available, TensorBoardCallback
+from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, ShardedDDPOption  # EvalLoopOutput,
 from transformers.utils import logging
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
 from sdlm.utils import self_condition_preds
+
 
 if is_apex_available():
     from apex import amp
@@ -27,6 +32,15 @@ IS_SAGEMAKER_MP_POST_1_10 = False
 
 
 logger = logging.get_logger(__name__)
+
+
+class EvalLoopOutput(NamedTuple):
+    logits: Union[np.ndarray, Tuple[np.ndarray]]
+    simplex: Union[np.ndarray, Tuple[np.ndarray]]
+    input_ids: Optional[Union[np.ndarray, Tuple[np.ndarray]]]
+    metrics: Optional[Dict[str, float]]
+    results: Optional[Dict[str, List[str]]]
+    num_samples: Optional[int]
 
 
 class DiffusionTrainer(Trainer):
@@ -49,6 +63,13 @@ class DiffusionTrainer(Trainer):
         self.inference_noise_scheduler = inference_noise_scheduler
         self.causal_model = causal_model
         self.causal_tokenizer = causal_tokenizer
+        self.tb_writer = self.get_tb_writer()
+
+    def get_tb_writer(self):
+        for cb in self.callback_handler.callbacks:
+            if isinstance(cb, TensorBoardCallback):
+                return cb
+        return None
 
     def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
         """
@@ -302,8 +323,6 @@ class DiffusionTrainer(Trainer):
             results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
             results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
 
-        print(results)
-
         if self.data_args.span_infilling:
             # Adds the decoded original texts to the final results.
             results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
@@ -324,8 +343,82 @@ class DiffusionTrainer(Trainer):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
 
-        # TODO: correct this to keep important stuff.
-        return EvalLoopOutput(predictions=all_logits, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
+        return EvalLoopOutput(
+            logits=all_logits,
+            simplex=all_simplex,
+            input_ids=all_inputs,
+            metrics=metrics,
+            num_samples=num_samples,
+            results=results,
+        )
+
+    def evaluate(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+    ) -> Dict[str, float]:
+        """
+        Run evaluation and returns metrics.
+        The calling script will be responsible for providing a method to compute metrics, as they are task-dependent
+        (pass it to the init `compute_metrics` argument).
+        You can also subclass and override this method to inject custom behavior.
+        Args:
+            eval_dataset (`Dataset`, *optional*):
+                Pass a dataset if you wish to override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns
+                not accepted by the `model.forward()` method are automatically removed. It must implement the `__len__`
+                method.
+            ignore_keys (`Lst[str]`, *optional*):
+                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
+                gathering predictions.
+            metric_key_prefix (`str`, *optional*, defaults to `"eval"`):
+                An optional prefix to be used as the metrics key prefix. For example the metrics "bleu" will be named
+                "eval_bleu" if the prefix is "eval" (default)
+        Returns:
+            A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
+            dictionary also contains the epoch number which comes from the training state.
+        """
+        # memory metrics - must set up as early as possible
+        self._memory_tracker.start()
+
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        start_time = time.time()
+
+        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        output = eval_loop(
+            eval_dataloader,
+            description="Evaluation",
+            # No point gathering the predictions if there are no metrics, otherwise we defer to
+            # self.args.prediction_loss_only
+            prediction_loss_only=True if self.compute_metrics is None else None,
+            ignore_keys=ignore_keys,
+            metric_key_prefix=metric_key_prefix,
+        )
+
+        # Adds the generated texts to tensorboard.
+        if self.args.log_generated_texts:
+            self.log_results_to_tensorboard(self.state, output)
+
+        total_batch_size = self.args.eval_batch_size * self.args.world_size
+        output.metrics.update(
+            speed_metrics(
+                metric_key_prefix,
+                start_time,
+                num_samples=output.num_samples,
+                num_steps=math.ceil(output.num_samples / total_batch_size),
+            )
+        )
+        self.log(output.metrics)
+        self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
+        return output.metrics
+
+    def log_results_to_tensorboard(self, state, output):
+        for i in range(len(output.logits)):
+            total_text = ""
+            for k, v in output.results.items():
+                total_text += f"*** {k} ***: {v[i]}" + "  \n"
+            self.tb_writer.tb_writer.add_text(f"sample_{i}", total_text, state.global_step)
 
     '''
     # TODO: check with and without this.
