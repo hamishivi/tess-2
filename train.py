@@ -180,7 +180,7 @@ def main():
         mean_mask_span_length=data_args.mean_mask_span_length,
         seed=training_args.seed,
         extra_padding_ratio=extra_padding_ratio,
-        mixed_pretrain_objectives=data_args.mixed_pretrain_objectives
+        mixed_pretrain_objectives=data_args.mixed_pretrain_objectives,
     )
 
     # DataLoaders creation.
@@ -416,9 +416,9 @@ def main():
                     top_p=diffusion_args.top_p,
                     sampling_type=diffusion_args.sampling_type,
                     span_infilling=data_args.span_infilling,
-                    tokenizer = tokenizer,
-                    classifier_free_uncond_input = diffusion_args.classifier_free_uncond_input,
-                    classifier_free_guided_prev_outputs = diffusion_args.classifier_free_guided_prev_outputs 
+                    tokenizer=tokenizer,
+                    classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
+                    classifier_free_guided_prev_outputs=diffusion_args.classifier_free_guided_prev_outputs,
                 )
                 with torch.no_grad():
                     eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None

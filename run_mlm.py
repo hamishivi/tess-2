@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-
+import pdb
 import datasets
 from sdlm.data.data_utils import load_data_new, tokenize_data_new
 
@@ -133,6 +133,12 @@ def main():
         logger.info("Training new model from scratch")
         model = RobertaForDiffusionLM.from_config(config)
 
+    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
+    # on a small vocab and want a smaller embedding size, remove this test.
+    vocab_size = model.get_input_embeddings().weight.shape[0]
+    if len(tokenizer) > vocab_size:
+        model.resize_token_embeddings(len(tokenizer))
+
     # Causal language model.
     causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
     causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
@@ -151,12 +157,6 @@ def main():
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
     )
-
-    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    embedding_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > embedding_size:
-        model.resize_token_embeddings(len(tokenizer))
 
     tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
 
