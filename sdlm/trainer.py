@@ -413,6 +413,9 @@ class DiffusionTrainer(Trainer):
         return output.metrics
 
     def log_results_to_tensorboard(self, state, output):
+        # TODO: we need to fix this which happens during the only eval option.
+        if self.tb_writer.tb_writer is None:
+            return
         for i in range(len(output.logits)):
             total_text = ""
             for k, v in output.results.items():
