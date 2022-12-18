@@ -6,7 +6,7 @@ import pdb
 
 logger = logging.getLogger(__name__)
 
-
+# TODO: this version to be deleted after removing the train.py.
 def load_data(data_args):
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
@@ -21,6 +21,32 @@ def load_data(data_args):
         if extension == "txt":
             extension = "text"
         raw_datasets = load_dataset(extension, data_files=data_files)
+    return raw_datasets
+
+
+def load_data_new(data_args, model_args):
+    if data_args.dataset_name is not None:
+        raw_datasets = load_dataset(
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            cache_dir=model_args.cache_dir,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    else:
+        data_files = {}
+        if data_args.train_file is not None:
+            data_files["train"] = data_args.train_file
+        if data_args.validation_file is not None:
+            data_files["validation"] = data_args.validation_file
+        extension = data_args.train_file.split(".")[-1]
+        if extension == "txt":
+            extension = "text"
+        raw_datasets = load_dataset(
+            extension,
+            data_files=data_files,
+            cache_dir=model_args.cache_dir,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
     return raw_datasets
 
 
@@ -49,7 +75,7 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
     if data_args.line_by_line:
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
-        
+
         def tokenize_function(examples):
             # Remove empty lines
             examples[text_column_name] = [
@@ -127,10 +153,10 @@ def split_data_to_train_validation(data_args, data, seed):
     if data_args.max_eval_samples is not None:
         validation_size = min(validation_size, data_args.max_eval_samples)
 
-    remaining_size = total_size - train_size - validation_size 
+    remaining_size = total_size - train_size - validation_size
     train, validation, _ = torch.utils.data.random_split(
         data["train"], [train_size, validation_size, remaining_size], generator=torch.Generator().manual_seed(seed)
-    )    
-    data["train"], data["validation"] = train, validation 
+    )
+    data["train"], data["validation"] = train, validation
     assert len(data["train"]) == train_size and len(data["validation"]) == validation_size
     return data
