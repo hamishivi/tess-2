@@ -11,7 +11,6 @@ from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoTokenizer,
     AutoModelForCausalLM,
-    DataCollatorForLanguageModeling,
     HfArgumentParser,
     TrainingArguments,
     is_torch_tpu_available,
@@ -25,6 +24,7 @@ from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.trainer import DiffusionTrainer
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.inference.inference_utils import evaluate_generation
+from sdlm.data.data_collator import SpanInfillingDataCollator
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -181,11 +181,17 @@ def main():
             return logits.argmax(dim=-1)
 
     # Data collator
-    # This one will take care of randomly masking the tokens.
+    # TODO: fix lambda max_seq_length, extra_padding_ratio:
     pad_to_multiple_of_8 = data_args.line_by_line and training_args.fp16 and not data_args.pad_to_max_length
-    data_collator = DataCollatorForLanguageModeling(
+    data_collator = SpanInfillingDataCollator(
         tokenizer=tokenizer,
-        mlm_probability=0.15,
+        max_length=data_args.max_seq_length,
+        span_infilling=data_args.span_infilling,
+        mask_ratio=data_args.mask_ratio,
+        mean_mask_span_length=data_args.mean_mask_span_length,
+        seed=training_args.seed,
+        extra_padding_ratio=0.0,  # extra_padding_ratio,
+        mixed_pretrain_objectives=data_args.mixed_pretrain_objectives,
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
     )
 
