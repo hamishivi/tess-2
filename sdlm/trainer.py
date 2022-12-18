@@ -2,6 +2,7 @@ from transformers import Trainer
 from transformers.utils import is_apex_available
 from typing import Dict, Union, Any, Optional, List, Tuple
 import torch
+import numpy as np
 from torch import nn
 import torch.nn.functional as F
 from sdlm.utils import convert_to_simplex, scale
@@ -12,7 +13,8 @@ from transformers.utils import logging
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
-from sdlm.inference.inference_utils import predict_conditional_generated
+from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
+from sdlm.utils import self_condition_preds
 
 if is_apex_available():
     from apex import amp
@@ -74,6 +76,25 @@ class DiffusionTrainer(Trainer):
         # Adds noise to each simplex representation (Forward diffusion process).
         noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
         timesteps = scale(timesteps, len(self.noise_scheduler))
+
+        if self.diffusion_args.self_condition is not None:
+            previous_pred = None
+            if np.random.rand(1) > 0.5:
+                outputs = model(
+                    simplex=noisy_simplex,
+                    timesteps=timesteps,
+                    input_ids=inputs["input_ids"],
+                    span_mask=inputs["span_mask"] if self.data_args.span_infilling else None,
+                    previous_pred=previous_pred,
+                )
+                logits_projection_fct = lambda x: logits_projection(
+                    x, self.diffusion_args.sampling_type, self.diffusion_args.top_p, self.diffusion_args.simplex_value
+                )
+                previous_pred = self_condition_preds(
+                    self.diffusion_args.self_condition, outputs.logits, logits_projection_fct
+                )
+                inputs.update({"previous_pred": previous_pred})
+
         inputs.update({"timesteps": timesteps, "simplex": noisy_simplex})
 
         with self.autocast_smart_context_manager():
@@ -304,6 +325,7 @@ class DiffusionTrainer(Trainer):
         # TODO: correct this to keep important stuff.
         return EvalLoopOutput(predictions=all_logits, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
 
+    '''
     # TODO: check with and without this.
     def create_optimizer(self):
         """
@@ -346,3 +368,4 @@ class DiffusionTrainer(Trainer):
                             logger.debug(f"bitsandbytes: will optimize {module} in fp32")
 
         return self.optimizer
+    '''
