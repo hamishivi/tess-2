@@ -7,7 +7,6 @@ from itertools import chain
 import datasets
 from datasets import load_dataset
 
-import evaluate
 import transformers
 from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,

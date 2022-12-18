@@ -297,4 +297,5 @@ class DiffusionTrainer(Trainer):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
 
+        # TODO: correct this to keep important stuff.
         return EvalLoopOutput(predictions=all_logits, label_ids=all_labels, metrics=metrics, num_samples=num_samples)
