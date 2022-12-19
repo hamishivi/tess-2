@@ -429,8 +429,8 @@ class DiffusionTrainer(Trainer):
                 total_text += f"*** {k} ***: {v[i]}" + "  \n"
             self.tb_writer.tb_writer.add_text(f"sample_{i}", total_text, state.global_step)
 
-    '''
     # TODO: check with and without this.
+    '''
     def create_optimizer(self):
         """
         Setup the optimizer.
@@ -472,4 +472,4 @@ class DiffusionTrainer(Trainer):
                             logger.debug(f"bitsandbytes: will optimize {module} in fp32")
 
         return self.optimizer
-    '''
+        '''
