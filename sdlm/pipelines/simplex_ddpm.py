@@ -23,6 +23,7 @@ class SimplexDiffusionPipelineOutput(BaseOutput):
 
     simplex: np.ndarray
     logits: np.ndarray
+    loss: np.ndarray
 
 
 class SimplexDDPMPipeline(DiffusionPipeline):
@@ -110,9 +111,11 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 else:
                     raise NotImplementedError
 
-            # 1. predict noise model_output
+            # 1. predict noise model_output. Note we need not to pass the input_ids in case of
+            # unconditional generation since the loss would be computed and it should not.
             model_output = self.model(
-                **batch,
+                input_ids=batch["input_ids"] if self.is_conditional_generation else None,
+                span_mask=batch["span_mask"] if self.is_conditional_generation else None,
                 simplex=simplex,
                 timesteps=t_scaled,
                 previous_pred=previous_pred if self.model.config.self_condition else None,
@@ -144,4 +147,4 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             noise = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
             simplex = self.scheduler.step(projected_logits, t, noise, generator=generator).prev_sample
 
-        return SimplexDiffusionPipelineOutput(simplex=simplex, logits=model_output_logits)
+        return SimplexDiffusionPipelineOutput(simplex=simplex, logits=model_output_logits, loss=model_output.loss)

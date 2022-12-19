@@ -150,6 +150,7 @@ class DiffusionTrainer(Trainer):
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
 
         inputs = self._prepare_inputs(inputs)
+        is_conditional_generation = True if "span_mask" in inputs else False
         with torch.no_grad():
             with self.compute_loss_context_manager():
                 outputs = pipeline(
@@ -158,9 +159,13 @@ class DiffusionTrainer(Trainer):
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
                 )
+                if is_conditional_generation:
+                    loss = outputs.loss.mean().detach()
+                else:
+                    loss = None
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
-        return (simplex, logits)
+        return (simplex, logits, loss)
 
     def evaluation_loop(
         self,
@@ -227,12 +232,14 @@ class DiffusionTrainer(Trainer):
 
         # Initialize containers
         # logits/simplex/labels on GPU/TPU (accumulated for eval_accumulation_steps)
+        losses_host = None
         logits_host = None
         simplex_host = None
         inputs_host = None
         masks_host = None
 
         # logits/simplex/labels on CPU (final containers)
+        all_losses = None
         all_logits = None
         all_simplex = None
         all_inputs = None
@@ -251,7 +258,7 @@ class DiffusionTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # Prediction step
-            simplex, logits = self.prediction_step(inputs, pipeline=pipeline)
+            simplex, logits, loss = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
 
@@ -264,8 +271,10 @@ class DiffusionTrainer(Trainer):
                     if inputs_host is None
                     else nested_concat(inputs_host, inputs_decode, padding_index=self.pad_index)
                 )
-            # TODO: padd and nested gather should be corrected.
-            # TODO: we need to correct pad indices.
+
+            if loss is not None:
+                losses = self._nested_gather(loss.repeat(batch_size))
+                losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
             if masks is not None:
                 # TODO: check pad for masks.
                 masks = self._pad_across_processes(masks, pad_index=0)
@@ -293,6 +302,9 @@ class DiffusionTrainer(Trainer):
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
         # Gather all remaining tensors and put them back on the CPU
+        if losses_host is not None:
+            losses = nested_numpify(losses_host)
+            all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
         if logits_host is not None:
             logits = nested_numpify(logits_host)
             all_logits = logits if all_logits is None else nested_concat(all_logits, logits, padding_index=-100)
@@ -315,6 +327,8 @@ class DiffusionTrainer(Trainer):
 
         # Number of losses has been rounded to a multiple of batch_size and in a distributed training, the number of
         # samplers has been rounded to a multiple of batch_size, so we truncate.
+        if all_losses is not None:
+            all_losses = all_losses[:num_samples]
         if all_simplex is not None:
             all_simplex = nested_truncate(all_simplex, num_samples)
         if all_logits is not None:
@@ -348,8 +362,8 @@ class DiffusionTrainer(Trainer):
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
 
-        # if all_losses is not None:
-        #    metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
+        if all_losses is not None:
+            metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
