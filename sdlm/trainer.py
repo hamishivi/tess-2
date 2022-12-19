@@ -99,16 +99,11 @@ class DiffusionTrainer(Trainer):
         noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
         timesteps = scale(timesteps, len(self.noise_scheduler))
 
+        inputs.update({"timesteps": timesteps, "simplex": noisy_simplex})
         if self.diffusion_args.self_condition is not None:
             previous_pred = None
             if np.random.rand(1) > 0.5:
-                outputs = model(
-                    simplex=noisy_simplex,
-                    timesteps=timesteps,
-                    input_ids=inputs["input_ids"],
-                    span_mask=inputs["span_mask"] if self.data_args.span_infilling else None,
-                    previous_pred=previous_pred,
-                )
+                outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(
                     x, self.diffusion_args.sampling_type, self.diffusion_args.top_p, self.diffusion_args.simplex_value
                 )
@@ -116,8 +111,6 @@ class DiffusionTrainer(Trainer):
                     self.diffusion_args.self_condition, outputs.logits, logits_projection_fct
                 )
                 inputs.update({"previous_pred": previous_pred})
-
-        inputs.update({"timesteps": timesteps, "simplex": noisy_simplex})
 
         with self.autocast_smart_context_manager():
             loss = self.compute_loss(model, inputs)
