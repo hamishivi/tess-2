@@ -64,6 +64,7 @@ class DiffusionTrainer(Trainer):
         self.causal_model = causal_model
         self.causal_tokenizer = causal_tokenizer
         self.tb_writer = self.get_tb_writer()
+        self.pad_index = self.tokenizer.convert_tokens_to_ids("<pad>")
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -256,25 +257,31 @@ class DiffusionTrainer(Trainer):
                 inputs_host = (
                     inputs_decode if inputs_host is None else nested_concat(inputs_host, inputs_decode, padding_index=-100)
                 )
+            # TODO: padd and nested gather should be corrected.
+            # TODO: we need to correct pad indices.
             if masks is not None:
                 # TODO: check pad for masks.
                 masks = self._pad_across_processes(masks)
                 masks = self._nested_gather(masks)
                 masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=-100)
             if logits is not None:
-                logits = self._pad_across_processes(logits)
-                logits = self._nested_gather(logits)
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits)
-                logits_host = logits if logits_host is None else nested_concat(logits_host, logits, padding_index=-100)
+                logits = self._pad_across_processes(logits, pad_index=self.pad_index)
+                logits = self._nested_gather(logits)
+                logits_host = (
+                    logits if logits_host is None else nested_concat(logits_host, logits, padding_index=self.pad_index)
+                )
             if simplex is not None:
-                simplex = self._pad_across_processes(simplex)
-                simplex = self._nested_gather(simplex)
-                # TODO: note that this is no more a simplex, but the processed one.
                 simplex = F.softmax(simplex, dim=-1)
                 if self.preprocess_logits_for_metrics is not None:
                     simplex = self.preprocess_logits_for_metrics(simplex)
-                simplex_host = simplex if simplex_host is None else nested_concat(simplex_host, simplex, padding_index=-100)
+                simplex = self._pad_across_processes(simplex, pad_index=self.pad_index)
+                simplex = self._nested_gather(simplex)
+                # TODO: note that this is no more a simplex, but the processed one.
+                simplex_host = (
+                    simplex if simplex_host is None else nested_concat(simplex_host, simplex, padding_index=self.pad_index)
+                )
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 

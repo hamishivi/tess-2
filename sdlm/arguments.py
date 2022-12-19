@@ -81,7 +81,12 @@ class TrainingArguments(HFTrainingArguments):
     )
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay to use."})
     num_train_epochs: int = field(default=3, metadata={"help": "Total number of training epochs to perform."})
+    # TODO: remove this one later.
     max_train_steps: Optional[int] = field(
+        default=None,
+        metadata={"help": "Total number of training steps to perform. If provided, overrides num_train_epochs."},
+    )
+    max_steps: Optional[int] = field(
         default=None,
         metadata={"help": "Total number of training steps to perform. If provided, overrides num_train_epochs."},
     )
