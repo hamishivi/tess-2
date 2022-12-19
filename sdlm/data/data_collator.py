@@ -7,6 +7,19 @@ import numpy as np
 import pdb
 from random import choices
 
+# TODO: these are for sequence length of 100, adapt for 200.
+OBJECTIVE_SETTINGS = {
+    Objective.t5: [
+        {"mask_ratio": 0.15, "mean_mask_span_length": 8},
+        {"mask_ratio": 0.15, "mean_mask_span_length": 3},
+    ],
+    Objective.aggressive_t5: [
+        {"mask_ratio": 0.5, "mean_mask_span_length": 8},
+        {"mask_ratio": 0.5, "mean_mask_span_length": 3},
+        {"mask_ratio": 0.5, "mean_mask_span_length": 48},
+    ],
+}
+
 
 @dataclass
 class SpanInfillingDataCollator:
@@ -56,11 +69,11 @@ class SpanInfillingDataCollator:
         self.mode = mode
         if self.mixed_pretrain_objectives and mode == "train":
             self.mask_generator = {}
-            self.mask_generator[Objective.t5] = lambda batch: t5_random_spans_mask_batch(
-                batch, mask_ratio=0.15, mean_mask_span_length=3, rng=self.rng
+            self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
             )
-            self.mask_generator[Objective.aggressive_t5] = lambda batch: t5_random_spans_mask_batch(
-                batch, mask_ratio=0.5, mean_mask_span_length=8, rng=self.rng
+            self.mask_generator[Objective.aggressive_t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
             )
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
             self.mask_generator[Objective.unconditional] = lambda batch: None
@@ -90,7 +103,11 @@ class SpanInfillingDataCollator:
                 objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
                 weights = [0.25, 0.25, 0.25, 0.25]
                 objective = choices(objectives, weights)[0]
-                masks = {"span_mask": self.mask_generator[objective](features)}
+                if objective in [Objective.t5, Objective.aggressive_t5]:
+                    setting = choices(OBJECTIVE_SETTINGS[objective])[0]
+                    masks = {"span_mask": self.mask_generator[objective](features, setting)}
+                else:
+                    masks = {"span_mask": self.mask_generator[objective](features)}
             else:
                 masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
 

@@ -28,7 +28,7 @@ def gpt_span_mask(length, pad_length, use_half_length_as_prefix_size):
     else:
         prefix_size = int((length - 1) / 2)
     # The start token is not masked.
-    return [False] + [True] * prefix_size + [False] * (length - prefix_size - 1) + [False] * pad_length
+    return [False] + [False] * prefix_size + [True] * (length - prefix_size - 1) + [False] * pad_length
 
 
 def gpt_span_mask_batch(batch, use_half_length_as_prefix_size=False):
