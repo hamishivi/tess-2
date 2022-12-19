@@ -175,6 +175,7 @@ class DiffusionTrainer(Trainer):
         Works both with or without labels.
         """
         args = self.args
+        is_conditional_generation = self.data_args.span_infilling or self.data_args.mixed_pretrain_objectives
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
         # if eval is called w/o train init deepspeed here
@@ -214,7 +215,7 @@ class DiffusionTrainer(Trainer):
             simplex_value=self.diffusion_args.simplex_value,
             top_p=self.diffusion_args.top_p,
             sampling_type=self.diffusion_args.sampling_type,
-            span_infilling=self.data_args.span_infilling,
+            is_conditional_generation=is_conditional_generation,
             tokenizer=self.tokenizer,
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
             classifier_free_guided_prev_outputs=self.diffusion_args.classifier_free_guided_prev_outputs,
@@ -256,18 +257,20 @@ class DiffusionTrainer(Trainer):
 
             # Update containers on host
             if inputs_decode is not None:
-                inputs_decode = self._pad_across_processes(inputs_decode)
+                inputs_decode = self._pad_across_processes(inputs_decode, pad_index=self.pad_index)
                 inputs_decode = self._nested_gather(inputs_decode)
                 inputs_host = (
-                    inputs_decode if inputs_host is None else nested_concat(inputs_host, inputs_decode, padding_index=-100)
+                    inputs_decode
+                    if inputs_host is None
+                    else nested_concat(inputs_host, inputs_decode, padding_index=self.pad_index)
                 )
             # TODO: padd and nested gather should be corrected.
             # TODO: we need to correct pad indices.
             if masks is not None:
                 # TODO: check pad for masks.
-                masks = self._pad_across_processes(masks)
+                masks = self._pad_across_processes(masks, pad_index=0)
                 masks = self._nested_gather(masks)
-                masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=-100)
+                masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=0)
             if logits is not None:
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits)
@@ -321,7 +324,7 @@ class DiffusionTrainer(Trainer):
 
         # Generates the texts.
         results = {}
-        if self.data_args.span_infilling:
+        if is_conditional_generation:
             # We predict the masked tokens only. Here, we compute the masked tokens.
             results.update(
                 predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_simplex, "pred_texts_from_simplex")
@@ -333,14 +336,14 @@ class DiffusionTrainer(Trainer):
             results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
             results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
 
-        if self.data_args.span_infilling:
+        if is_conditional_generation:
             # Adds the decoded original texts to the final results.
             results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
 
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
         # TODO: we need to make sure metric for checkpoint is selected.
-        metrics = self.compute_metrics(results, self.causal_model, self.causal_tokenizer, self.data_args.span_infilling)
+        metrics = self.compute_metrics(results, self.causal_model, self.causal_tokenizer, is_conditional_generation)
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)

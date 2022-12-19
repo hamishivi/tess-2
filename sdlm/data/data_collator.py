@@ -3,7 +3,6 @@ from typing import Optional, List, Dict, Any, Union
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch, Objective
-import torch
 import numpy as np
 import pdb
 from random import choices
@@ -93,7 +92,7 @@ class SpanInfillingDataCollator:
                 objective = choices(objectives, weights)[0]
                 masks = {"span_mask": self.mask_generator[objective](features)}
             else:
-                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_prefix_size=True)}
+                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
 
         batch = self.tokenizer.pad(
             features,

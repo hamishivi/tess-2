@@ -41,7 +41,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         simplex_value,
         top_p,
         sampling_type,
-        span_infilling,
+        is_conditional_generation,
         tokenizer,
         classifier_free_uncond_input,
         classifier_free_guided_prev_outputs,
@@ -51,7 +51,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.simplex_value = simplex_value
         self.top_p = top_p
         self.sampling_type = sampling_type
-        self.span_infilling = span_infilling
+        self.is_conditional_generation = is_conditional_generation
         self.tokenizer = tokenizer
         self.classifier_free_uncond_input = classifier_free_uncond_input
         self.classifier_free_guided_prev_outputs = classifier_free_guided_prev_outputs
@@ -78,7 +78,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
         """
         # Classifier_free guidance works only in the conditional generation case.
-        classifier_free_guidance = guidance_scale > 1.0 and self.span_infilling
+        classifier_free_guidance = guidance_scale > 1.0 and self.is_conditional_generation
         if classifier_free_guidance:
             # Makes unconditional input for max sequence length, later we truncate it.
             uncond_input = self.tokenizer(
@@ -112,10 +112,9 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
             # 1. predict noise model_output
             model_output = self.model(
+                **batch,
                 simplex=simplex,
                 timesteps=t_scaled,
-                input_ids=batch["input_ids"] if self.span_infilling else None,
-                span_mask=batch["span_mask"] if self.span_infilling else None,
                 previous_pred=previous_pred if self.model.config.self_condition else None,
                 classifier_free_guidance=classifier_free_guidance,
                 unconditional_simplex=uncond_input if classifier_free_guidance else None,
