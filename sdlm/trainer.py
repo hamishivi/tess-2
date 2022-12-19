@@ -436,51 +436,6 @@ class DiffusionTrainer(Trainer):
                 total_text += f"*** {k} ***: {v[i]}" + "  \n"
             self.tb_writer.tb_writer.add_text(f"sample_{i}", total_text, state.global_step)
 
-    # TODO: check with and without this.
-    '''
-    def create_optimizer(self):
-        """
-        Setup the optimizer.
-        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
-        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
-        """
-        opt_model = self.model
-
-        if self.optimizer is None:
-            no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
-            optimizer_grouped_parameters = [
-                {
-                    "params": [p for n, p in opt_model.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": self.args.weight_decay,
-                },
-                {
-                    "params": [p for n, p in opt_model.named_parameters() if any(nd in n for nd in no_decay)],
-                    "weight_decay": 0.0,
-                },
-            ]
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
-                self.optimizer = OSS(
-                    params=optimizer_grouped_parameters,
-                    optim=optimizer_cls,
-                    **optimizer_kwargs,
-                )
-            else:
-                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-                if optimizer_cls.__name__ == "Adam8bit":
-                    import bitsandbytes
-
-                    manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
-
-                    for module in opt_model.modules():
-                        if isinstance(module, nn.Embedding):
-                            manager.register_module_override(module, "weight", {"optim_bits": 32})
-                            logger.debug(f"bitsandbytes: will optimize {module} in fp32")
-
-        return self.optimizer
-    '''
-
     def get_train_dataloader(self) -> DataLoader:
         """
         Returns the training [`~torch.utils.data.DataLoader`].

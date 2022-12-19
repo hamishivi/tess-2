@@ -91,14 +91,18 @@ def concatenate_alternatively(longer, shorter, mark=""):
     """Given two lists of strings, concatenates them alternatively.
 
     We assume that the concatenated string should starts from elements in the longer
-    list which has one extra element. The shorter text can optionally be embraced with
+    list (which has one extra element). The shorter text can optionally be embraced with
     a `mark` text on both sides.
     """
-    assert len(longer) == len(shorter) + 1
     concatenated_str = ""
     for l, s in zip(longer, shorter):
         concatenated_str += l + " " + mark + s + mark + " "
-    return concatenated_str + longer[-1]
+    if len(longer) == len(shorter) + 1:
+        return concatenated_str + longer[-1]
+    elif len(longer) == len(shorter):
+        return concatenated_str[:-1]
+    else:
+        raise ValueError
 
 
 def logits_projection(logits, sampling_type, top_p, simplex_value):
