@@ -24,10 +24,7 @@ def gpt_span_mask(length, pad_length, use_half_length_as_prefix_size):
     # TODO: we need an assert for length not be smaller than a value.
     if not use_half_length_as_prefix_size:
         # high should be higher than low, otherwise we set prefix_size=1.
-        if length >= 5:
-            prefix_size = np.random.randint(low=1, high=int((length - 1) / 2))
-        else:
-            prefix_size = 1
+        prefix_size = np.random.randint(low=1, high=int((length - 1) / 2)) if length >= 5 else 1
     else:
         prefix_size = int((length - 1) / 2)
     # The start token is not masked.
