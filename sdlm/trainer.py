@@ -16,7 +16,6 @@ from transformers.trainer_pt_utils import (
     find_batch_size,
     nested_concat,
     nested_truncate,
-    IterableDatasetShard,
 )
 from transformers.integrations import is_fairscale_available, TensorBoardCallback
 from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, ShardedDDPOption, seed_worker
