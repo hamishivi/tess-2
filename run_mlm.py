@@ -192,15 +192,12 @@ def main():
     # Data collator
     # TODO: fix lambda max_seq_length, extra_padding_ratio:
     pad_to_multiple_of_8 = data_args.line_by_line and training_args.fp16 and not data_args.pad_to_max_length
-    data_collator = SpanInfillingDataCollator(
+    data_collator = lambda mode: SpanInfillingDataCollator(
+        mode=mode,
+        data_args=data_args,
         tokenizer=tokenizer,
         max_length=data_args.max_seq_length,
-        span_infilling=data_args.span_infilling,
-        mask_ratio=data_args.mask_ratio,
-        mean_mask_span_length=data_args.mean_mask_span_length,
         seed=training_args.seed,
-        extra_padding_ratio=0.0,  # extra_padding_ratio,
-        mixed_pretrain_objectives=data_args.mixed_pretrain_objectives,
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
     )
 

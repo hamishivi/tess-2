@@ -36,16 +36,13 @@ class SpanInfillingDataCollator:
 
     def __init__(
         self,
+        mode,
+        data_args,
         tokenizer: PreTrainedTokenizerBase,
         padding: Union[bool, str, PaddingStrategy] = True,
         max_length: Optional[int] = None,
         pad_to_multiple_of: Optional[int] = None,
         return_tensors: str = "pt",
-        span_infilling: bool = False,
-        mixed_pretrain_objectives: bool = False,
-        mask_ratio: float = 0.15,
-        mean_mask_span_length: int = 3,
-        extra_padding_ratio=0.0,
         seed: int = 42,
     ):
         self.tokenizer = tokenizer
@@ -53,11 +50,12 @@ class SpanInfillingDataCollator:
         self.max_length = max_length
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
-        self.span_infilling = span_infilling
-        self.extra_padding_ratio = extra_padding_ratio
+        self.span_infilling = data_args.span_infilling
+        self.extra_padding_ratio = data_args.extra_padding_ratio
         self.rng = np.random.default_rng(seed)
-        self.mixed_pretrain_objectives = mixed_pretrain_objectives
-        if self.mixed_pretrain_objectives:
+        self.mixed_pretrain_objectives = data_args.mixed_pretrain_objectives
+        self.mode = mode
+        if self.mixed_pretrain_objectives and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch: t5_random_spans_mask_batch(
                 batch, mask_ratio=0.15, mean_mask_span_length=3, rng=self.rng
@@ -67,9 +65,10 @@ class SpanInfillingDataCollator:
             )
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
             self.mask_generator[Objective.unconditional] = lambda batch: None
+
         elif self.span_infilling:
             self.mask_generator = lambda batch: t5_random_spans_mask_batch(
-                batch, mask_ratio, mean_mask_span_length, self.rng
+                batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
             )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -88,10 +87,13 @@ class SpanInfillingDataCollator:
             # Generates masks and pads them.
             masks = {"span_mask": self.mask_generator(features)}
         elif self.mixed_pretrain_objectives:
-            objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
-            weights = [0.25, 0.25, 0.25, 0.25]
-            objective = choices(objectives, weights)[0]
-            masks = {"span_mask": self.mask_generator[objective](features)}
+            if self.mode == "train":
+                objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
+                weights = [0.25, 0.25, 0.25, 0.25]
+                objective = choices(objectives, weights)[0]
+                masks = {"span_mask": self.mask_generator[objective](features)}
+            else:
+                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_prefix_size=True)}
 
         batch = self.tokenizer.pad(
             features,
@@ -100,10 +102,6 @@ class SpanInfillingDataCollator:
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors=self.return_tensors,
         )
-        if "label" in batch:
-            batch["labels"] = batch["label"]
-            del batch["label"]
-        if "label_ids" in batch:
-            batch["labels"] = batch["label_ids"]
-            del batch["label_ids"]
+        if "attention_mask" in batch:
+            del batch["attention_mask"]
         return {**batch, **masks}

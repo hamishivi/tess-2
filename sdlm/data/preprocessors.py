@@ -17,16 +17,20 @@ class Objective(Enum):
     unconditional = 4
 
 
-def gpt_span_mask(length, pad_length):
+# TODO: here the max perhaps needs to be also the half-length.
+def gpt_span_mask(length, pad_length, use_half_length_prefix_size):
     """Given the length and pad_length for an input generates a prefix (GPT-style) mask."""
-    prefix_size = np.random.randint(low=1, high=int(length / 4))
+    if not use_half_length_prefix_size:
+        prefix_size = np.random.randint(low=1, high=int(length / 4))
+    else:
+        prefix_size = int(length / 2)
     return [True] * prefix_size + [False] * (length - prefix_size) + [False] * pad_length
 
 
-def gpt_span_mask_batch(batch):
+def gpt_span_mask_batch(batch, use_half_length_prefix_size=False):
     lengths = [len(feature["input_ids"]) for feature in batch]
     max_length = max(lengths)
-    masks = [gpt_span_mask(length, max_length - length) for length in lengths]
+    masks = [gpt_span_mask(length, max_length - length, use_half_length_prefix_size) for length in lengths]
     return torch.tensor(masks)
 
 

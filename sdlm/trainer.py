@@ -10,10 +10,17 @@ import numpy as np
 from torch import nn
 import torch.nn.functional as F
 from sdlm.utils import convert_to_simplex, scale
-from transformers.trainer_pt_utils import nested_detach, nested_numpify, find_batch_size, nested_concat, nested_truncate
+from transformers.trainer_pt_utils import (
+    nested_detach,
+    nested_numpify,
+    find_batch_size,
+    nested_concat,
+    nested_truncate,
+    IterableDatasetShard,
+)
 from transformers.integrations import is_fairscale_available, TensorBoardCallback
-from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, ShardedDDPOption
-from transformers.utils import logging
+from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, ShardedDDPOption, seed_worker
+from transformers.utils import logging, is_datasets_available
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
@@ -23,6 +30,9 @@ from sdlm.utils import self_condition_preds
 
 if is_apex_available():
     from apex import amp
+
+if is_datasets_available():
+    import datasets
 
 if is_fairscale_available():
     dep_version_check("fairscale")
@@ -230,6 +240,7 @@ class DiffusionTrainer(Trainer):
 
         # Main evaluation loop
         for step, inputs in enumerate(dataloader):
+            has_mask = True if "span_mask" in inputs else False
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
@@ -241,7 +252,7 @@ class DiffusionTrainer(Trainer):
             # Prediction step
             simplex, logits = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
-            masks = self._prepare_input(inputs["span_mask"]) if self.data_args.span_infilling else None
+            masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
 
             # Update containers on host
             if inputs_decode is not None:
@@ -465,4 +476,65 @@ class DiffusionTrainer(Trainer):
                             logger.debug(f"bitsandbytes: will optimize {module} in fp32")
 
         return self.optimizer
-        '''
+    '''
+
+    def get_train_dataloader(self) -> DataLoader:
+        """
+        Returns the training [`~torch.utils.data.DataLoader`].
+        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
+        training if necessary) otherwise.
+        Subclass and override this method if you want to inject some custom behavior.
+        """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        data_collator = self.data_collator("train")
+        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+            train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+
+        train_sampler = self._get_train_sampler()
+
+        return DataLoader(
+            train_dataset,
+            batch_size=self._train_batch_size,
+            sampler=train_sampler,
+            collate_fn=data_collator,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+            worker_init_fn=seed_worker,
+        )
+
+    def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+        """
+        Returns the evaluation [`~torch.utils.data.DataLoader`].
+        Subclass and override this method if you want to inject some custom behavior.
+        Args:
+            eval_dataset (`torch.utils.data.Dataset`, *optional*):
+                If provided, will override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns not accepted
+                by the `model.forward()` method are automatically removed. It must implement `__len__`.
+        """
+        if eval_dataset is None and self.eval_dataset is None:
+            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        data_collator = self.data_collator("eval")
+
+        if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
+            eval_dataset = self._remove_unused_columns(eval_dataset, description="evaluation")
+        else:
+            data_collator = self._get_collator_with_removed_columns(data_collator, description="evaluation")
+
+        eval_sampler = self._get_eval_sampler(eval_dataset)
+
+        return DataLoader(
+            eval_dataset,
+            sampler=eval_sampler,
+            batch_size=self.args.eval_batch_size,
+            collate_fn=data_collator,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+        )

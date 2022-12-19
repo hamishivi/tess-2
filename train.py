@@ -172,6 +172,7 @@ def main():
         for index in random.sample(range(len(train_dataset)), 3):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
+    # TODO: fix it based on the new shape.
     data_collator = lambda max_seq_length, extra_padding_ratio: SpanInfillingDataCollator(
         tokenizer=tokenizer,
         max_length=max_seq_length,

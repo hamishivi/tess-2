@@ -112,7 +112,7 @@ class TrainingArguments(HFTrainingArguments):
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
     max_grad_norm: float = field(default=1.0)
-    log_generated_texts: bool = field(default=False, metadata={"help": "If set, logs generated texts."})
+    log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
 
 
 @dataclass
