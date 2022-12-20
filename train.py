@@ -154,8 +154,10 @@ def main():
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
         # TODO(rabeeh): this can take time for a large data, and we need to do it once.
+        """
         if "validation" not in tokenized_datasets:
             tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
+        """
     else:
         raw_datasets = load_data(data_args)
         if "validation" not in raw_datasets:
@@ -164,13 +166,12 @@ def main():
             tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
-    # TODO(rabeeh): we need to add max_train samples for the non-tokenized examples with two splits as well.
 
-    # Conditional for small test subsets
-    if len(train_dataset) > 3:
-        # Log a few random samples from the training set:
-        for index in random.sample(range(len(train_dataset)), 3):
-            logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
+    if data_args.max_eval_samples is not None:
+        max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+        eval_dataset = eval_dataset.select(range(max_eval_samples))
+
+    # TODO(rabeeh): we need to add max_train samples for the non-tokenized examples with two splits as well.
 
     data_collator = lambda max_seq_length, extra_padding_ratio: SpanInfillingDataCollator(
         tokenizer=tokenizer,
@@ -180,7 +181,7 @@ def main():
         mean_mask_span_length=data_args.mean_mask_span_length,
         seed=training_args.seed,
         extra_padding_ratio=extra_padding_ratio,
-        mixed_pretrain_objectives=data_args.mixed_pretrain_objectives
+        mixed_pretrain_objectives=data_args.mixed_pretrain_objectives,
     )
 
     # DataLoaders creation.
@@ -416,9 +417,9 @@ def main():
                     top_p=diffusion_args.top_p,
                     sampling_type=diffusion_args.sampling_type,
                     span_infilling=data_args.span_infilling,
-                    tokenizer = tokenizer,
-                    classifier_free_uncond_input = diffusion_args.classifier_free_uncond_input,
-                    classifier_free_guided_prev_outputs = diffusion_args.classifier_free_guided_prev_outputs 
+                    tokenizer=tokenizer,
+                    classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
+                    classifier_free_guided_prev_outputs=diffusion_args.classifier_free_guided_prev_outputs,
                 )
                 with torch.no_grad():
                     eval_batch = next(infinite_eval_dataloader) if data_args.span_infilling else None
