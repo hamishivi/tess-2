@@ -1,9 +1,10 @@
 """Arguments used in training/inference/data processing."""
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
 from transformers import MODEL_MAPPING, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
+from transformers.training_args import OptimizerNames
 
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -81,11 +82,6 @@ class TrainingArguments(HFTrainingArguments):
     )
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay to use."})
     num_train_epochs: int = field(default=3, metadata={"help": "Total number of training epochs to perform."})
-    # TODO: remove this one later.
-    max_train_steps: Optional[int] = field(
-        default=None,
-        metadata={"help": "Total number of training steps to perform. If provided, overrides num_train_epochs."},
-    )
     max_steps: Optional[int] = field(
         default=None,
         metadata={"help": "Total number of training steps to perform. If provided, overrides num_train_epochs."},
@@ -102,8 +98,6 @@ class TrainingArguments(HFTrainingArguments):
             )
         },
     )
-    num_warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
-    # TODO: remove one of these.
     warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
     output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
     seed: Optional[int] = field(default=42, metadata={"help": "A seed for reproducible training."})
@@ -113,6 +107,11 @@ class TrainingArguments(HFTrainingArguments):
     )
     max_grad_norm: float = field(default=1.0)
     log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
+    ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses the SSDLM optimizer setting."})
+    optim: Union[OptimizerNames, str] = field(
+        default="adamw_hf",
+        metadata={"help": "The optimizer to use."},
+    )
 
 
 @dataclass

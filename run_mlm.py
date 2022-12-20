@@ -24,6 +24,7 @@ from sdlm.trainer import DiffusionTrainer
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.inference.inference_utils import evaluate_generation
 from sdlm.data.data_collator import SpanInfillingDataCollator
+from sdlm.data.data_utils import split_data_to_train_validation
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -36,10 +37,6 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 
 def main():
-    # See all possible arguments in src/transformers/training_args.py
-    # or by passing the --help flag to this script.
-    # We now keep distinct sets of args, for a cleaner separation of concerns.
-
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -47,6 +44,9 @@ def main():
         model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
+
+    if training_args.ssdlm_optimizer:
+        training_args.optim = "adamw_torch"
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -164,11 +164,16 @@ def main():
         tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
 
     # TODO: is this getting the same on each process?
+    '''
     if "validation" not in tokenized_datasets.keys():
+        tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
+        """
         train_testvalid = tokenized_datasets["train"].train_test_split(
             test_size=data_args.validation_split_ratio, shuffle=True, seed=training_args.seed
         )
         tokenized_datasets = DatasetDict({"train": train_testvalid["train"], "validation": train_testvalid["test"]})
+        """
+    '''
 
     if training_args.do_train:
         if "train" not in tokenized_datasets:
