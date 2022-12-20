@@ -181,9 +181,6 @@ class DataTrainingArguments:
             )
         },
     )
-    span_infilling: bool = field(
-        default=False, metadata={"help": "If set, trains a conditional case with filling the spans."}
-    )
     mask_ratio: float = field(default=0.15, metadata={"help": "Defines the ratio of mask tokens. A number between 0 and 1."})
     mean_mask_span_length: int = field(default=3, metadata={"help": "Defines the average mask length."})
     extra_padding_ratio: float = field(
@@ -195,6 +192,10 @@ class DataTrainingArguments:
             )
         },
     )
+    span_infilling: bool = field(
+        default=False, metadata={"help": "If set, trains a conditional case with filling the spans."}
+    )
+    prefix_lm: bool = field(default=False, metadata={"help": "If set, generates text conditioning on a prefix."})
     mixed_pretrain_objectives: bool = field(
         default=False, metadata={"help": "If sets considers the mixed pretraining objectives."}
     )
