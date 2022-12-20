@@ -66,6 +66,8 @@ class SpanInfillingDataCollator:
         self.extra_padding_ratio = data_args.extra_padding_ratio
         self.rng = np.random.default_rng(seed)
         self.mixed_pretrain_objectives = data_args.mixed_pretrain_objectives
+        self.ul2_objective = data_args.ul2_objective
+        self.prefix_lm = data_args.prefix_lm
         self.mode = mode
         if self.mixed_pretrain_objectives and mode == "train":
             self.mask_generator = {}
@@ -83,7 +85,16 @@ class SpanInfillingDataCollator:
             )
         elif self.prefix_lm:
             self.mask_generator = lambda batch: gpt_span_mask_batch(batch)
-
+        elif self.ul2_objective:
+            self.mask_generator = {}
+            self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
+            )
+            self.mask_generator[Objective.aggressive_t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
+            )
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
+            
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         [f.pop("attention_mask") for f in features]
 
@@ -113,7 +124,19 @@ class SpanInfillingDataCollator:
                     masks = {"span_mask": self.mask_generator[objective](features)}
             else:
                 masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
-
+        elif self.ul2_objective:
+            if self.mode == "train":
+                objectives = [Objective.t5, Objective.prefix, Objective.aggressive_t5]
+                weights = [0.25, 0.25, 0.25]
+                objective = choices(objectives, weights)[0]
+                if objective in [Objective.t5, Objective.aggressive_t5]:
+                    setting = choices(OBJECTIVE_SETTINGS[objective])[0]
+                    masks = {"span_mask": self.mask_generator[objective](features, setting)}
+                else:
+                    masks = {"span_mask": self.mask_generator[objective](features)}
+            else:
+                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
+       
         batch = self.tokenizer.pad(
             features,
             padding=self.padding,
