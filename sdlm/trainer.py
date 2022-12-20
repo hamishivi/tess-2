@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
-from sdlm.utils import self_condition_preds
+from sdlm.utils import self_condition_preds, get_norm_stats
 
 
 if is_apex_available():
@@ -71,6 +71,7 @@ class DiffusionTrainer(Trainer):
         self.vocab_size = self.model.config.vocab_size
         self.inference_noise_scheduler = inference_noise_scheduler
         self.causal_model = causal_model
+        self._move_model_to_device(self.causal_model, self.args.device)
         self.causal_tokenizer = causal_tokenizer
         self.tb_writer = self.get_tb_writer()
         self.pad_index = self.tokenizer.convert_tokens_to_ids("<pad>")
