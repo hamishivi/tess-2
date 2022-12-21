@@ -181,7 +181,10 @@ class DiffusionTrainer(Trainer):
         """
         args = self.args
         is_conditional_generation = (
-            self.data_args.span_infilling or self.data_args.mixed_pretrain_objectives or self.data_args.prefix_lm or self.data_args.ul2_objective
+            self.data_args.span_infilling
+            or self.data_args.mixed_pretrain_objectives
+            or self.data_args.prefix_lm
+            or self.data_args.ul2_objective
         )
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
@@ -322,7 +325,7 @@ class DiffusionTrainer(Trainer):
                 else nested_concat(all_inputs, inputs_decode, padding_index=self.pad_index)
             )
         if masks_host is not None:
-            masks = nested_numpify(masks)
+            masks = nested_numpify(masks_host)
             all_masks = masks if all_masks is None else nested_concat(all_masks, masks, padding_index=0)
 
         # Number of samples
@@ -334,6 +337,8 @@ class DiffusionTrainer(Trainer):
         # samplers has been rounded to a multiple of batch_size, so we truncate.
         if all_losses is not None:
             all_losses = all_losses[:num_samples]
+        if all_masks is not None:
+            all_masks = nested_truncate(all_masks, num_samples)
         if all_simplex is not None:
             all_simplex = nested_truncate(all_simplex, num_samples)
         if all_logits is not None:
