@@ -121,6 +121,7 @@ def main():
 
         # Compute the average length of prefixes (it should be all around the same length).
         average_prefix_length = math.ceil(prefixes_inputs["attention_mask"].sum(1).numpy().mean())
+        # TODO: myabe the more accurate one is to generate this separately for each one with its own length.
         # Mask half of the sequence.
         prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
         outputs = model.generate(
