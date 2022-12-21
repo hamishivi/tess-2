@@ -13,6 +13,7 @@ from sdlm.data.data_utils import load_data_new, tokenize_data_new
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.inference.inference_utils import evaluate_generation
 import pdb
+import numpy as np
 import itertools
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,9 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
     roberta_tokenizer = AutoTokenizer.from_pretrained("roberta-large", **tokenizer_kwargs)
     # Running the script requires the tokenizer to have the pad token and since gpt2 tokenizer
-    # does not have it, we add the pad_token here.
-    tokenizer.pad_token = roberta_tokenizer.pad_token
+    # does not have it, we add the pad_token here. Also, during the generation, they use the
+    # eos_token_id as the pad_token_id.
+    tokenizer.pad_token = tokenizer.eos_token
     # Huggingface requires this to be set.
     tokenizer.padding_side = "left"
 
@@ -120,11 +122,12 @@ def main():
         outputs = model.generate(
             input_ids=prefixes_inputs["input_ids"],
             attention_mask=prefixes_inputs["attention_mask"],
+            pad_token_id=tokenizer.eos_token_id,
             max_length=data_args.max_seq_length,
             min_length=data_args.max_seq_length,
             do_sample=True,
             top_p=diffusion_args.top_p,
-        )  # , typical_p=typical_p)
+        )
         all_outputs.append(outputs)
         if step == 10:
             break
@@ -142,6 +145,8 @@ def main():
     logger.info(metrics)
     for text in total_texts_marked:
         logger.info(text)
+    os.makedirs(training_args.output_dir, exist_ok=True)
+    np.save(f"{training_args.output_dir}/metrics.npy", metrics)
 
 
 if __name__ == "__main__":
