@@ -129,8 +129,6 @@ def main():
             top_p=diffusion_args.top_p,
         )
         all_outputs.append(outputs)
-        if step == 10:
-            break
 
     results = {}
     generated_texts = [tokenizer.batch_decode(output, skip_special_tokens=True) for output in all_outputs]
