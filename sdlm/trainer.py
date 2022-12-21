@@ -367,9 +367,7 @@ class DiffusionTrainer(Trainer):
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
         # TODO: we need to make sure metric for checkpoint is selected.
-        metrics = self.compute_metrics(
-            results, self.causal_model, self.causal_tokenizer, is_conditional_generation, self.data_args.prefix_lm
-        )
+        metrics = self.compute_metrics(results, self.causal_model, self.causal_tokenizer, is_conditional_generation)
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
