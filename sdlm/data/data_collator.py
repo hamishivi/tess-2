@@ -84,8 +84,8 @@ class SpanInfillingDataCollator:
                 batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
             )
         elif self.prefix_lm:
-            self.mask_generator = lambda batch: gpt_span_mask_batch(batch)
-        elif self.ul2_objective:
+            self.mask_generator = lambda batch: gpt_span_mask_batch(batch, use_half_length_as_prefix_size=(mode == "eval"))
+        elif self.ul2_objective and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
@@ -107,39 +107,28 @@ class SpanInfillingDataCollator:
                 )
 
         masks = {}
-        if self.span_infilling:
-            # Generates masks and pads them.
+        if self.span_infilling or self.prefix_lm:
             masks = {"span_mask": self.mask_generator(features)}
-        elif self.prefix_lm:
-            if self.mode == "train":
-                masks = {"span_mask": self.mask_generator(features)}
+        elif self.mixed_pretrain_objectives and self.mode == "train":
+            objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
+            weights = [0.25, 0.25, 0.25, 0.25]
+            objective = choices(objectives, weights)[0]
+            if objective in [Objective.t5, Objective.aggressive_t5]:
+                setting = choices(OBJECTIVE_SETTINGS[objective])[0]
+                masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
-                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
-        elif self.mixed_pretrain_objectives:
-            if self.mode == "train":
-                objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
-                weights = [0.25, 0.25, 0.25, 0.25]
-                objective = choices(objectives, weights)[0]
-                if objective in [Objective.t5, Objective.aggressive_t5]:
-                    setting = choices(OBJECTIVE_SETTINGS[objective])[0]
-                    masks = {"span_mask": self.mask_generator[objective](features, setting)}
-                else:
-                    masks = {"span_mask": self.mask_generator[objective](features)}
+                masks = {"span_mask": self.mask_generator[objective](features)}
+        elif self.ul2_objective and self.mode == "train":
+            objectives = [Objective.t5, Objective.prefix, Objective.aggressive_t5]
+            weights = [0.25, 0.25, 0.25]
+            objective = choices(objectives, weights)[0]
+            if objective in [Objective.t5, Objective.aggressive_t5]:
+                setting = choices(OBJECTIVE_SETTINGS[objective])[0]
+                masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
-                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
-        elif self.ul2_objective:
-            if self.mode == "train":
-                objectives = [Objective.t5, Objective.prefix, Objective.aggressive_t5]
-                weights = [0.25, 0.25, 0.25]
-                objective = choices(objectives, weights)[0]
-                if objective in [Objective.t5, Objective.aggressive_t5]:
-                    setting = choices(OBJECTIVE_SETTINGS[objective])[0]
-                    masks = {"span_mask": self.mask_generator[objective](features, setting)}
-                else:
-                    masks = {"span_mask": self.mask_generator[objective](features)}
-            else:
-                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
-
+                masks = {"span_mask": self.mask_generator[objective](features)}
+        elif self.mode == "eval" and (self.ul2_objective or self.mixed_pretrain_objectives):
+            masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
         batch = self.tokenizer.pad(
             features,
             padding=self.padding,
