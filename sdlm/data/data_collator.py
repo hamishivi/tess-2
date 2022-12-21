@@ -94,7 +94,7 @@ class SpanInfillingDataCollator:
                 batch, **setting, rng=self.rng
             )
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
-            
+
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         [f.pop("attention_mask") for f in features]
 
@@ -111,7 +111,10 @@ class SpanInfillingDataCollator:
             # Generates masks and pads them.
             masks = {"span_mask": self.mask_generator(features)}
         elif self.prefix_lm:
-            masks = {"span_mask": self.mask_generator(features)}
+            if self.mode == "train":
+                masks = {"span_mask": self.mask_generator(features)}
+            else:
+                masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
         elif self.mixed_pretrain_objectives:
             if self.mode == "train":
                 objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
@@ -136,7 +139,7 @@ class SpanInfillingDataCollator:
                     masks = {"span_mask": self.mask_generator[objective](features)}
             else:
                 masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
-       
+
         batch = self.tokenizer.pad(
             features,
             padding=self.padding,

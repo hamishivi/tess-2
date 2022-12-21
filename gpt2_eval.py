@@ -15,6 +15,7 @@ from sdlm.inference.inference_utils import evaluate_generation
 import pdb
 import numpy as np
 import itertools
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def main():
     # eos_token_id as the pad_token_id.
     tokenizer.pad_token = tokenizer.eos_token
     # Huggingface requires this to be set.
-    tokenizer.padding_side = "left"
+    tokenizer.padding_side = "right"
 
     model = AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
@@ -117,14 +118,17 @@ def main():
         prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
         all_prefixes.extend(prefixes)
         prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
+
+        # Compute the average length of prefixes (it should be all around the same length).
+        average_prefix_length = math.ceil(prefixes_inputs["attention_mask"].sum(1).numpy().mean())
         # Mask half of the sequence.
         prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
         outputs = model.generate(
             input_ids=prefixes_inputs["input_ids"],
             attention_mask=prefixes_inputs["attention_mask"],
             pad_token_id=tokenizer.eos_token_id,
-            max_length=data_args.max_seq_length,
-            min_length=data_args.max_seq_length,
+            max_length=data_args.max_seq_length - average_prefix_length,
+            min_length=data_args.max_seq_length - average_prefix_length,
             do_sample=True,
             top_p=diffusion_args.top_p,
         )
@@ -138,8 +142,8 @@ def main():
     total_texts_marked = [
         prefix + " ***" + generated_text + "***" for prefix, generated_text in zip(all_prefixes, generated_texts)
     ]
-    results = {"gpt2": total_texts, "gold_texts": gold_texts}
-    metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True)
+    results = {"gpt2_texts": total_texts, "gold_texts": gold_texts, "prefixes": all_prefixes}
+    metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True, prefix_lm=data_args.prefix_lm)
     logger.info(metrics)
     for text in total_texts_marked:
         logger.info(text)

@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 import pdb
 from sdlm.utils import convert_to_simplex
-from sdlm.metrics.perplexity import perplexity
+from sdlm.metrics.perplexity import perplexity, conditional_perplexity
 from sdlm.metrics.metrics import distinct_n_grams, mauve
 
 
@@ -133,12 +133,14 @@ def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_to
     return {prefix_name: pred_texts, prefix_name + "_marked": pred_texts_marked}
 
 
-def evaluate_generation(results, causal_model, causal_tokenizer, is_conditional_generation):
+def evaluate_generation(results, causal_model, causal_tokenizer, is_conditional_generation, prefix_lm=False):
     metrics = {}
     # In case of evaluating the results of gpt2, then we only have the gpt2 key.
     # For this case, we need to have the processed texts as well.
-    is_gpt2 = True if "gpt2" in results else False
-    keys = ["gpt2"] if is_gpt2 else ["pred_texts_from_simplex", "pred_texts_from_logits"]
+    is_gpt2 = True if "gpt2_texts" in results else False
+    keys = ["gpt2_texts"] if is_gpt2 else ["pred_texts_from_simplex", "pred_texts_from_logits"]
+    if prefix_lm:
+        prefixes = results["prefixes"]
     if is_conditional_generation:
         gold_texts = process_text(results["gold_texts"]) if not is_gpt2 else results["gold_texts"]
     for key in keys:
@@ -150,8 +152,13 @@ def evaluate_generation(results, causal_model, causal_tokenizer, is_conditional_
         if len(texts) == 0:
             continue
 
-        # Perplexity measured by a causal model.
-        key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
+        # Perplexity measured by a causal model. In case of prefix_lm, we compute the conditional perplexity.
+        if prefix_lm:
+            key_metrics.update(
+                {"perplexity": conditional_perplexity(texts, prefixes, causal_model, causal_tokenizer)["mean_perplexity"]}
+            )
+        else:
+            key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
         # Metrics requiring the gold text.
