@@ -199,7 +199,7 @@ class DataTrainingArguments:
     mixed_pretrain_objectives: bool = field(
         default=False, metadata={"help": "If sets considers the mixed pretraining objectives."}
     )
-    ul2_objective: field(default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."})
+    ul2_objective: bool = field(default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."})
 
     def __post_init__(self):
         if (
