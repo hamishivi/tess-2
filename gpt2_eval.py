@@ -144,7 +144,9 @@ def main():
         prefix + " ***" + generated_text + "***" for prefix, generated_text in zip(all_prefixes, generated_texts)
     ]
     results = {"gpt2_texts": total_texts, "gold_texts": gold_texts, "prefixes": all_prefixes}
-    metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True, prefix_lm=data_args.prefix_lm)
+    metrics = evaluate_generation(
+        results, model, tokenizer, is_conditional_generation=True, skip_special_tokens=True, prefix_lm=data_args.prefix_lm
+    )
     logger.info(metrics)
     for text in total_texts_marked:
         logger.info(text)

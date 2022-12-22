@@ -133,20 +133,26 @@ def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_to
     return {prefix_name: pred_texts, prefix_name + "_marked": pred_texts_marked}
 
 
-def evaluate_generation(results, causal_model, causal_tokenizer, is_conditional_generation, prefix_lm=False):
+def evaluate_generation(
+    results,
+    causal_model,
+    causal_tokenizer,
+    is_conditional_generation,
+    skip_special_tokens,
+    prefix_lm=False,
+):
     metrics = {}
-    # In case of evaluating the results of gpt2, then we only have the gpt2 key.
-    # For this case, we need to have the processed texts as well.
-    is_gpt2 = True if "gpt2_texts" in results else False
-    keys = ["gpt2_texts"] if is_gpt2 else ["pred_texts_from_simplex", "pred_texts_from_logits"]
+    # In case of evaluating the results of gpt2, then we only have the "gpt2_texts".
+    keys = ["gpt2_texts"] if "gpt2_texts" in results else ["pred_texts_from_simplex", "pred_texts_from_logits"]
+    require_process = True if not skip_special_tokens else False
     if prefix_lm:
         prefixes = results["prefixes"]
     if is_conditional_generation:
-        gold_texts = process_text(results["gold_texts"]) if not is_gpt2 else results["gold_texts"]
+        gold_texts = process_text(results["gold_texts"]) if require_process else results["gold_texts"]
     for key in keys:
         key_metrics = {}
         texts = results[key]
-        if not is_gpt2:
+        if require_process:
             texts = process_text(texts)
         texts, remained_indices = filter_empty(texts)
         if len(texts) == 0:

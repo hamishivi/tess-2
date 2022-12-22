@@ -61,7 +61,8 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
     """
     # By default, we do not maks start and end of sequence.
     # TODO: we need to put assert for this!
-    length -= 2
+    # NOTE: this only works if we use line_by_line which we do not. So I had to remove it.
+    # length -= 2
     orig_length = length
     # Increase length to avoid degeneracy.
     length = max(length, 2)
@@ -81,8 +82,9 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
             [[False] * nonmask_span_lengths[k] + [True] * mask_span_lengths[k] for k in range(num_mask_spans)]
         )
     )[:orig_length]
-    # Start and end of the sequence mask are set to False.
-    mask = [False] + mask + [False]
+    # Start and end of the sequence mask are set to False. Again since this is not line_by_line, we
+    # remove this.
+    # mask = [False] + mask + [False]
     if pad_length is not None:
         mask += [False for _ in range(pad_length)]
     return mask

@@ -135,7 +135,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 else:
                     prev_output_logits = model_output_logits
 
-                # TODO: possibly we need to do this line after combination of logits below.
                 previous_pred = self_condition_preds(
                     self.model.config.self_condition, prev_output_logits, logits_projection_fct
                 )

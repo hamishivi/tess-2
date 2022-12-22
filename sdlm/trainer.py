@@ -75,6 +75,11 @@ class DiffusionTrainer(Trainer):
         self.causal_tokenizer = causal_tokenizer
         self.tb_writer = self.get_tb_writer()
         self.pad_index = self.tokenizer.convert_tokens_to_ids("<pad>")
+        # In case of line_by_line, we have start and end of sequence tokens, and we can process
+        # and correct the results, but in case of concatenating the input texts, we do not have
+        # these info, and have to remove the special tokens.
+        # TODO: perhaps in case of fine-tuning on a downsteam tasks, we need to have this back.
+        self.skip_special_tokens = False if self.data_args.line_by_line else True
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -280,7 +285,6 @@ class DiffusionTrainer(Trainer):
                 losses = self._nested_gather(loss.repeat(batch_size))
                 losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
             if masks is not None:
-                # TODO: check pad for masks.
                 masks = self._pad_across_processes(masks, pad_index=0)
                 masks = self._nested_gather(masks)
                 masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=0)
@@ -357,17 +361,44 @@ class DiffusionTrainer(Trainer):
                 predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_logits, "pred_texts_from_logits")
             )
         else:
-            results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
-            results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
+            results.update(
+                {
+                    "pred_texts_from_simplex": self.tokenizer.batch_decode(
+                        all_simplex, skip_special_tokens=self.skip_special_tokens
+                    )
+                }
+            )
+            results.update(
+                {
+                    "pred_texts_from_logits": self.tokenizer.batch_decode(
+                        all_logits, skip_special_tokens=self.skip_special_tokens
+                    )
+                }
+            )
 
         if is_conditional_generation:
             # Adds the decoded original texts to the final results.
-            results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
+            results.update(
+                {"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=self.skip_special_tokens)}
+            )
+
+        if self.data_args.prefix_lm:
+            # We need to pass the prefixes in this case.
+            prefixes = [input[~mask] for input, mask in zip(all_inputs, all_masks)]
+            prefixes = self.tokenizer.batch_decode(prefixes, skip_special_tokens=True)
+            results.update({"prefixes": prefixes})
 
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
         # TODO: we need to make sure metric for checkpoint is selected.
-        metrics = self.compute_metrics(results, self.causal_model, self.causal_tokenizer, is_conditional_generation)
+        metrics = self.compute_metrics(
+            results,
+            self.causal_model,
+            self.causal_tokenizer,
+            is_conditional_generation,
+            self.skip_special_tokens,
+            self.data_args.prefix_lm,
+        )
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
