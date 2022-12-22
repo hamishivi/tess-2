@@ -182,6 +182,7 @@ def evaluate_generation(
         key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
+
         # Metrics requiring the gold text.
         if is_conditional_generation:
             # Note that we need to pass both context and predicted texts to this metric.
