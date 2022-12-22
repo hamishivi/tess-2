@@ -105,6 +105,15 @@ def concatenate_alternatively(longer, shorter, mark=""):
         raise ValueError
 
 
+def aggregate_list(x):
+    str = ""
+    if len(x) == 0:
+        return str
+    for l in x:
+        str += l + " "
+    return str[:-1]
+
+
 def logits_projection(logits, sampling_type, top_p, simplex_value):
     # TODO(rabeeh): huggingface has different sampling, like constrastive one.
     # also there are more variant in diffusion-lm.
@@ -130,7 +139,12 @@ def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_to
     pred_texts_marked = list(
         map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
     )
-    return {prefix_name: pred_texts, prefix_name + "_marked": pred_texts_marked}
+    aggregated_masked_texts = list(map(lambda x: aggregate_list(x), pred_masked_texts))
+    return {
+        prefix_name: pred_texts,
+        prefix_name + "_marked": pred_texts_marked,
+        prefix_name + "_masked": aggregated_masked_texts,
+    }
 
 
 def evaluate_generation(
@@ -138,15 +152,24 @@ def evaluate_generation(
     causal_model,
     causal_tokenizer,
     is_conditional_generation,
-    prefix_lm=False,
+    prefix_lm_eval=False,
 ):
     metrics = {}
-    # In case of evaluating the results of gpt2, then we only have the "gpt2_texts".
-    keys = ["gpt2_texts"] if "gpt2_texts" in results else ["pred_texts_from_simplex", "pred_texts_from_logits"]
-    if prefix_lm:
-        prefixes = results["prefixes"]
+    # In case of prefix_lm since the generated text is unified, we can evaluate only the masked parts.
+    if prefix_lm_eval:
+        gold_text_key = "gold_texts_masked"
+        # In case of gpt2, we only have the key of `generated_texts_masked`.
+        keys = (
+            ["generated_texts_masked"]
+            if "generated_texts_masked" in results
+            else ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
+        )
+    else:
+        keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]
+        gold_text_key = "gold_texts"
+
     if is_conditional_generation:
-        gold_texts = process_text(results["gold_texts"])
+        gold_texts = process_text(results[gold_text_key])
     for key in keys:
         key_metrics = {}
         texts = results[key]
@@ -155,13 +178,8 @@ def evaluate_generation(
         if len(texts) == 0:
             continue
 
-        # Perplexity measured by a causal model. In case of prefix_lm, we compute the conditional perplexity.
-        if prefix_lm:
-            key_metrics.update(
-                {"perplexity": conditional_perplexity(texts, prefixes, causal_model, causal_tokenizer)["mean_perplexity"]}
-            )
-        else:
-            key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
+        # Perplexity measured by a causal model.
+        key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
         # Metrics requiring the gold text.

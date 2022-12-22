@@ -74,7 +74,10 @@ class DiffusionTrainer(Trainer):
         self._move_model_to_device(self.causal_model, self.args.device)
         self.causal_tokenizer = causal_tokenizer
         self.tb_writer = self.get_tb_writer()
-        self.pad_index = self.tokenizer.convert_tokens_to_ids("<pad>")
+        self.eos_token_id = self.tokenizer.eos_token_id
+        self.prefix_lm_eval = (
+            True if (data_args.prefix_lm or data_args.mixed_pretrain_objectives or data_args.ul2_objective) else False
+        )
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -269,12 +272,12 @@ class DiffusionTrainer(Trainer):
 
             # Update containers on host
             if inputs_decode is not None:
-                inputs_decode = self._pad_across_processes(inputs_decode, pad_index=self.pad_index)
+                inputs_decode = self._pad_across_processes(inputs_decode, pad_index=self.eos_token_id)
                 inputs_decode = self._nested_gather(inputs_decode)
                 inputs_host = (
                     inputs_decode
                     if inputs_host is None
-                    else nested_concat(inputs_host, inputs_decode, padding_index=self.pad_index)
+                    else nested_concat(inputs_host, inputs_decode, padding_index=self.eos_token_id)
                 )
             if loss is not None:
                 losses = self._nested_gather(loss.repeat(batch_size))
@@ -286,20 +289,22 @@ class DiffusionTrainer(Trainer):
             if logits is not None:
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits)
-                logits = self._pad_across_processes(logits, pad_index=self.pad_index)
+                logits = self._pad_across_processes(logits, pad_index=self.eos_token_id)
                 logits = self._nested_gather(logits)
                 logits_host = (
-                    logits if logits_host is None else nested_concat(logits_host, logits, padding_index=self.pad_index)
+                    logits if logits_host is None else nested_concat(logits_host, logits, padding_index=self.eos_token_id)
                 )
             if simplex is not None:
                 simplex = F.softmax(simplex, dim=-1)
                 if self.preprocess_logits_for_metrics is not None:
                     simplex = self.preprocess_logits_for_metrics(simplex)
-                simplex = self._pad_across_processes(simplex, pad_index=self.pad_index)
+                simplex = self._pad_across_processes(simplex, pad_index=self.eos_token_id)
                 simplex = self._nested_gather(simplex)
                 # TODO: note that this is no more a simplex, but the processed one.
                 simplex_host = (
-                    simplex if simplex_host is None else nested_concat(simplex_host, simplex, padding_index=self.pad_index)
+                    simplex
+                    if simplex_host is None
+                    else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
                 )
 
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
@@ -310,18 +315,18 @@ class DiffusionTrainer(Trainer):
             all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
         if logits_host is not None:
             logits = nested_numpify(logits_host)
-            all_logits = logits if all_logits is None else nested_concat(all_logits, logits, padding_index=self.pad_index)
+            all_logits = logits if all_logits is None else nested_concat(all_logits, logits, padding_index=self.eos_token_id)
         if simplex_host is not None:
             simplex = nested_numpify(simplex_host)
             all_simplex = (
-                simplex if all_simplex is None else nested_concat(all_simplex, simplex, padding_index=self.pad_index)
+                simplex if all_simplex is None else nested_concat(all_simplex, simplex, padding_index=self.eos_token_id)
             )
         if inputs_host is not None:
             inputs_decode = nested_numpify(inputs_host)
             all_inputs = (
                 inputs_decode
                 if all_inputs is None
-                else nested_concat(all_inputs, inputs_decode, padding_index=self.pad_index)
+                else nested_concat(all_inputs, inputs_decode, padding_index=self.eos_token_id)
             )
         if masks_host is not None:
             masks = nested_numpify(masks_host)
@@ -358,15 +363,22 @@ class DiffusionTrainer(Trainer):
         else:
             results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
             results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
-
         if is_conditional_generation:
+            results.update(
+                {
+                    "gold_texts_masked": [
+                        self.tokenizer.decode(input[mask], skip_special_tokens=False)
+                        for mask, input in zip(all_masks, all_inputs)
+                    ]
+                }
+            )
             results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
 
-        if self.data_args.prefix_lm:
-            # We need to pass the prefixes in this case.
-            prefixes = [input[~mask] for input, mask in zip(all_inputs, all_masks)]
-            prefixes = self.tokenizer.batch_decode(prefixes, skip_special_tokens=True)
-            results.update({"prefixes": prefixes})
+        # if self.data_args.prefix_lm:
+        #    # We need to pass the prefixes in this case.
+        #    prefixes = [input[~mask] for input, mask in zip(all_inputs, all_masks)]
+        #    prefixes = self.tokenizer.batch_decode(prefixes, skip_special_tokens=True)
+        #    results.update({"prefixes": prefixes})
 
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
@@ -376,7 +388,7 @@ class DiffusionTrainer(Trainer):
             self.causal_model,
             self.causal_tokenizer,
             is_conditional_generation,
-            self.data_args.prefix_lm,
+            prefix_lm_eval=self.prefix_lm_eval,
         )
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors

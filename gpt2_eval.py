@@ -113,10 +113,12 @@ def main():
     all_outputs = []
     all_inputs = []
     all_prefixes = []
+    all_masks = []
     for step, batch in enumerate(eval_dataloader):
         # De-tokenize with the roberta tokenizer.
         inputs, span_mask = batch["input_ids"], batch["span_mask"]
-        all_inputs.append(inputs)
+        all_masks.extend(span_mask)
+        all_inputs.extend(inputs)
         prefixes = [input[~mask] for input, mask in zip(inputs, span_mask)]
         prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
         all_prefixes.extend(prefixes)
@@ -136,18 +138,18 @@ def main():
             do_sample=True,
             top_p=diffusion_args.top_p,
         )
-        all_outputs.append(outputs)
+        all_outputs.extend(outputs)
 
     results = {}
-    generated_texts = [tokenizer.batch_decode(output, skip_special_tokens=True) for output in all_outputs]
-    gold_texts = [roberta_tokenizer.batch_decode(input, skip_special_tokens=True) for input in all_inputs]
-    generated_texts, gold_texts = list(itertools.chain(*generated_texts)), list(itertools.chain(*gold_texts))
-    total_texts = [prefix + " " + generated_text for prefix, generated_text in zip(all_prefixes, generated_texts)]
+    generated_texts = [tokenizer.decode(output, skip_special_tokens=True) for output in all_outputs]
+    gold_texts = [
+        roberta_tokenizer.decode(input[mask], skip_special_tokens=True) for input, mask in zip(all_inputs, all_masks)
+    ]
     total_texts_marked = [
         prefix + " ***" + generated_text + "***" for prefix, generated_text in zip(all_prefixes, generated_texts)
     ]
-    results = {"gpt2_texts": total_texts, "gold_texts": gold_texts, "prefixes": all_prefixes}
-    metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True, prefix_lm=data_args.prefix_lm)
+    results = {"generated_texts_masked": generated_texts, "gold_texts_masked": gold_texts}
+    metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True, prefix_lm_eval=True)
     logger.info(metrics)
     for text in total_texts_marked:
         logger.info(text)
