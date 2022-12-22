@@ -183,12 +183,13 @@ def evaluate_generation(
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
 
+        """
         # Metrics requiring the gold text.
         if is_conditional_generation:
             # Note that we need to pass both context and predicted texts to this metric.
             remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
             key_metrics.update(mauve(predictions=texts, references=remained_gold_texts))
-
+        """
         # Adds the metrics.
         key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
         metrics.update(key_metrics)
