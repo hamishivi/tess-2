@@ -2,8 +2,9 @@
 import numpy as np
 import itertools
 import pdb
-import torch 
-from enum import Enum 
+import torch
+from enum import Enum
+
 
 class Objective(Enum):
     # Prefix language modeling like GPT style pretraining.
@@ -16,15 +17,24 @@ class Objective(Enum):
     unconditional = 4
 
 
-def gpt_span_mask(length, pad_length):
+# TODO: here the max perhaps needs to be also the half-length.
+def gpt_span_mask(length, pad_length, use_half_length_as_prefix_size):
     """Given the length and pad_length for an input generates a prefix (GPT-style) mask."""
-    prefix_size = np.random.randint(low=1, high=int(length/4)) 
-    return [True]*prefix_size + [False]*(length-prefix_size) + [False]*pad_length
-    
-def gpt_span_mask_batch(batch):
+    # Start of the sequence is not masked, so we consider length-1.
+    # TODO: we need an assert for length not be smaller than a value.
+    if not use_half_length_as_prefix_size:
+        # high should be higher than low, otherwise we set prefix_size=1.
+        prefix_size = np.random.randint(low=1, high=int((length - 1) / 2)) if length >= 5 else 1
+    else:
+        prefix_size = int((length - 1) / 2)
+    # The start token is not masked.
+    return [False] + [False] * prefix_size + [True] * (length - prefix_size - 1) + [False] * pad_length
+
+
+def gpt_span_mask_batch(batch, use_half_length_as_prefix_size=False):
     lengths = [len(feature["input_ids"]) for feature in batch]
     max_length = max(lengths)
-    masks = [gpt_span_mask(length, max_length-length) for length in lengths]
+    masks = [gpt_span_mask(length, max_length - length, use_half_length_as_prefix_size) for length in lengths]
     return torch.tensor(masks)
 
 
@@ -51,7 +61,8 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
     """
     # By default, we do not maks start and end of sequence.
     # TODO: we need to put assert for this!
-    length -= 2
+    # NOTE: this only works if we use line_by_line which we do not. So I had to remove it.
+    # length -= 2
     orig_length = length
     # Increase length to avoid degeneracy.
     length = max(length, 2)
@@ -71,19 +82,21 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
             [[False] * nonmask_span_lengths[k] + [True] * mask_span_lengths[k] for k in range(num_mask_spans)]
         )
     )[:orig_length]
-    # Start and end of the sequence mask are set to False.
-    mask = [False] + mask + [False]
+    # Start and end of the sequence mask are set to False. Again since this is not line_by_line, we
+    # remove this.
+    # mask = [False] + mask + [False]
     if pad_length is not None:
-      mask += [False for _ in range(pad_length)]
-    return mask 
+        mask += [False for _ in range(pad_length)]
+    return mask
 
 
 def t5_random_spans_mask_batch(batch, mask_ratio, mean_mask_span_length=3.0, rng=None):
-  """Given not padded inputs, generates the T5 mask for each input."""
-  lengths = [len(feature["input_ids"]) for feature in batch]
-  max_length = max(lengths)
-  masks = [t5_random_spans_mask(length, mask_ratio, mean_mask_span_length, rng, max_length-length) for length in lengths]
-  return torch.tensor(masks)
+    """Given not padded inputs, generates the T5 mask for each input."""
+    lengths = [len(feature["input_ids"]) for feature in batch]
+    max_length = max(lengths)
+    masks = [t5_random_spans_mask(length, mask_ratio, mean_mask_span_length, rng, max_length - length) for length in lengths]
+    return torch.tensor(masks)
+
 
 def _random_segmentation(num_items, num_segments, rng=None):
     """Partition a sequence of items randomly into non-empty segments.
@@ -115,32 +128,31 @@ def insert_extra_paddings(rng, token_ids, pad_token_id, padding_ratio):
     length = len(token_ids) - 2
     num_padding_tokens = int(length * padding_ratio)
     if num_padding_tokens == 0:
-      # In this case, the rate of padding tokens was not enough to add extra tokens.
-      return token_ids
+        # In this case, the rate of padding tokens was not enough to add extra tokens.
+        return token_ids
     length = length + num_padding_tokens
     # We do not modify the start token.
-    all_ids = np.arange(1, length+1)
+    all_ids = np.arange(1, length + 1)
     # This is without shuffling.
     # original_ids = np.arange(1, length+1)
     rng = rng or np.random.default_rng()
     rng.shuffle(all_ids)
     # padding tokens positions.
-    padding_ids = np.array(all_ids)[:num_padding_tokens]+1
+    padding_ids = np.array(all_ids)[:num_padding_tokens] + 1
     token_ids_extended = []
     current_id = 0
-    for i in range(length+2):
-      if i not in padding_ids:
-        token_ids_extended.append(pad_token_id)
-      else:
-        token_ids_extended.append(token_ids[current_id])
-        current_id += 1 
+    for i in range(length + 2):
+        if i not in padding_ids:
+            token_ids_extended.append(pad_token_id)
+        else:
+            token_ids_extended.append(token_ids[current_id])
+            current_id += 1
     return token_ids_extended
-    '''
+    """
     # Other tokens positions, we do not change the start and end of sequence tokens.
     other_tokens_ids = [0]+[x for x in original_ids if x not in padding_ids]+[length+1]
     # Considers the start and end of sequence tokens in the final length.
     token_ids_extended = np.full((length+2), pad_token_id, dtype=int)
     token_ids_extended[other_tokens_ids] = token_ids
     return token_ids_extended.tolist()
-    '''
-    
+    """

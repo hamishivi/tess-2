@@ -23,6 +23,7 @@ class SimplexDiffusionPipelineOutput(BaseOutput):
 
     simplex: np.ndarray
     logits: np.ndarray
+    loss: np.ndarray
 
 
 class SimplexDDPMPipeline(DiffusionPipeline):
@@ -34,13 +35,24 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]): A scheduler to denoise the encoded latent.
     """
 
-    def __init__(self, model, scheduler, simplex_value, top_p, sampling_type, span_infilling, tokenizer, classifier_free_uncond_input, classifier_free_guided_prev_outputs):
+    def __init__(
+        self,
+        model,
+        scheduler,
+        simplex_value,
+        top_p,
+        sampling_type,
+        is_conditional_generation,
+        tokenizer,
+        classifier_free_uncond_input,
+        classifier_free_guided_prev_outputs,
+    ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
         self.simplex_value = simplex_value
         self.top_p = top_p
         self.sampling_type = sampling_type
-        self.span_infilling = span_infilling
+        self.is_conditional_generation = is_conditional_generation
         self.tokenizer = tokenizer
         self.classifier_free_uncond_input = classifier_free_uncond_input
         self.classifier_free_guided_prev_outputs = classifier_free_guided_prev_outputs
@@ -67,7 +79,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             [`~pipeline_utils.SimplexDiffusionPipelineOutput`]: returns the generated simplex.
         """
         # Classifier_free guidance works only in the conditional generation case.
-        classifier_free_guidance = guidance_scale > 1.0 and self.span_infilling
+        classifier_free_guidance = guidance_scale > 1.0 and self.is_conditional_generation
         if classifier_free_guidance:
             # Makes unconditional input for max sequence length, later we truncate it.
             uncond_input = self.tokenizer(
@@ -95,40 +107,38 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 if self.classifier_free_uncond_input == "empty_token":
                     uncond_input = uncond_simplex[:, : batch["input_ids"].shape[1], :]
                 elif self.classifier_free_uncond_input == "noisy_simplex":
-                    uncond_input = self.simplex_value* torch.randn(simplex.shape, generator=generator, device=self.device)
+                    uncond_input = self.simplex_value * torch.randn(simplex.shape, generator=generator, device=self.device)
                 else:
                     raise NotImplementedError
-                
-            # 1. predict noise model_output
+
+            # 1. predict noise model_output. Note we need not to pass the input_ids in case of
+            # unconditional generation since the loss would be computed and it should not.
             model_output = self.model(
+                input_ids=batch["input_ids"] if self.is_conditional_generation else None,
+                span_mask=batch["span_mask"] if self.is_conditional_generation else None,
                 simplex=simplex,
                 timesteps=t_scaled,
-                input_ids=batch["input_ids"] if self.span_infilling else None,
-                span_mask=batch["span_mask"] if self.span_infilling else None,
                 previous_pred=previous_pred if self.model.config.self_condition else None,
                 classifier_free_guidance=classifier_free_guidance,
                 unconditional_simplex=uncond_input if classifier_free_guidance else None,
             )
             model_output_logits = model_output.logits
-            
+
             # Performs classifier-free guidance.
             if classifier_free_guidance:
                 logits_uncond, logits_pred = model_output_logits.chunk(2)
                 model_output_logits = logits_uncond + guidance_scale * (logits_pred - logits_uncond)
 
-            
             if self.model.config.self_condition is not None:
                 if classifier_free_guidance and not self.classifier_free_guided_prev_outputs:
                     prev_output_logits = model_output.logits.chunk(2)[1]
                 else:
                     prev_output_logits = model_output_logits
-                
-                # TODO: possibly we need to do this line after combination of logits below.
+
                 previous_pred = self_condition_preds(
                     self.model.config.self_condition, prev_output_logits, logits_projection_fct
                 )
 
-         
             # Projection.
             projected_logits = logits_projection_fct(model_output_logits)
 
@@ -136,4 +146,4 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             noise = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
             simplex = self.scheduler.step(projected_logits, t, noise, generator=generator).prev_sample
 
-        return SimplexDiffusionPipelineOutput(simplex=simplex, logits=model_output_logits)
+        return SimplexDiffusionPipelineOutput(simplex=simplex, logits=model_output_logits, loss=model_output.loss)

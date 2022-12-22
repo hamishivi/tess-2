@@ -88,7 +88,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             Used to hide legacy arguments that have been deprecated.
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         inputs_probs = F.softmax(simplex, dim=-1)
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)

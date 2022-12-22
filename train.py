@@ -173,6 +173,7 @@ def main():
 
     # TODO(rabeeh): we need to add max_train samples for the non-tokenized examples with two splits as well.
 
+    # TODO: fix it based on the new shape.
     data_collator = lambda max_seq_length, extra_padding_ratio: SpanInfillingDataCollator(
         tokenizer=tokenizer,
         max_length=max_seq_length,

@@ -4,9 +4,12 @@ import numpy as np
 import torch
 from torch.nn import CrossEntropyLoss
 from evaluate import logging
+import pdb
 
 
-def perplexity(texts, model, tokenizer, batch_size: int = 16, add_start_token: bool = True, max_length=None):
+def perplexity(
+    texts, model, tokenizer, batch_size: int = 16, add_start_token: bool = True, max_length=None, only_return_loss=False
+):
     """Perplexity (PPL) can be used for evaluating to what extent a dataset is similar to the distribution of text that
     a given model was trained on. It is defined as the exponentiated average negative log-likelihood of a sequence,
     calculated with exponent base `e`.
@@ -62,7 +65,6 @@ def perplexity(texts, model, tokenizer, batch_size: int = 16, add_start_token: b
         return_tensors="pt",
         return_attention_mask=True,
     ).to(device)
-
     encoded_texts = encodings["input_ids"]
     attn_masks = encodings["attention_mask"]
 
@@ -76,7 +78,8 @@ def perplexity(texts, model, tokenizer, batch_size: int = 16, add_start_token: b
 
     ppls = []
     loss_fct = CrossEntropyLoss(reduction="none")
-
+    if only_return_loss:
+        all_losses, all_lengths = [], []
     for start_index in logging.tqdm(range(0, len(encoded_texts), batch_size)):
         end_index = min(start_index + batch_size, len(encoded_texts))
         encoded_batch = encoded_texts[start_index:end_index]
@@ -96,11 +99,32 @@ def perplexity(texts, model, tokenizer, batch_size: int = 16, add_start_token: b
         shift_labels = labels[..., 1:].contiguous()
         shift_attention_mask_batch = attn_mask[..., 1:].contiguous()
 
-        perplexity_batch = torch.exp(
-            (loss_fct(shift_logits.transpose(1, 2), shift_labels) * shift_attention_mask_batch).sum(1)
-            / shift_attention_mask_batch.sum(1)
-        )
+        loss = (loss_fct(shift_logits.transpose(1, 2), shift_labels) * shift_attention_mask_batch).sum(1)
+        lengths = shift_attention_mask_batch.sum(1)
+        if only_return_loss:
+            all_losses.append(loss)
+            all_lengths.append(lengths)
+        else:
+            perplexity_batch = torch.exp(loss / lengths)
+            ppls += perplexity_batch.tolist()
 
+    if only_return_loss:
+        return all_losses, all_lengths
+    else:
+        return {"perplexities": ppls, "mean_perplexity": np.mean(ppls)}
+
+
+def conditional_perplexity(
+    texts, prefixes, model, tokenizer, batch_size: int = 16, add_start_token: bool = True, max_length=None
+):
+    """Computes the conditional perplexity for the case of prefix language modeling."""
+    loss, lengths = perplexity(texts, model, tokenizer, batch_size, add_start_token, max_length, only_return_loss=True)
+    prefix_loss, prefix_lengths = perplexity(
+        prefixes, model, tokenizer, batch_size, add_start_token, max_length, only_return_loss=True
+    )
+    # Computing the perplexity over the whole examples.
+    ppls = []
+    for i in range(len(loss)):
+        perplexity_batch = torch.exp((loss[i] - prefix_loss[i]) / (lengths[i] - prefix_lengths[i]))
         ppls += perplexity_batch.tolist()
-
     return {"perplexities": ppls, "mean_perplexity": np.mean(ppls)}

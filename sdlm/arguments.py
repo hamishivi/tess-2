@@ -1,9 +1,10 @@
 """Arguments used in training/inference/data processing."""
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
 from transformers import MODEL_MAPPING, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
+from transformers.training_args import OptimizerNames
 
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -81,7 +82,7 @@ class TrainingArguments(HFTrainingArguments):
     )
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay to use."})
     num_train_epochs: int = field(default=3, metadata={"help": "Total number of training epochs to perform."})
-    max_train_steps: Optional[int] = field(
+    max_steps: Optional[int] = field(
         default=None,
         metadata={"help": "Total number of training steps to perform. If provided, overrides num_train_epochs."},
     )
@@ -97,7 +98,7 @@ class TrainingArguments(HFTrainingArguments):
             )
         },
     )
-    num_warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
+    warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
     output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
     seed: Optional[int] = field(default=42, metadata={"help": "A seed for reproducible training."})
     checkpointing_steps: int = field(default=1000, metadata={"help": "Specifies the checkpoint step."})
@@ -105,6 +106,12 @@ class TrainingArguments(HFTrainingArguments):
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
     max_grad_norm: float = field(default=1.0)
+    log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
+    ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses the SSDLM optimizer setting."})
+    optim: Union[OptimizerNames, str] = field(
+        default="adamw_hf",
+        metadata={"help": "The optimizer to use."},
+    )
 
 
 @dataclass
@@ -174,9 +181,6 @@ class DataTrainingArguments:
             )
         },
     )
-    span_infilling: bool = field(
-        default=False, metadata={"help": "If set, trains a conditional case with filling the spans."}
-    )
     mask_ratio: float = field(default=0.15, metadata={"help": "Defines the ratio of mask tokens. A number between 0 and 1."})
     mean_mask_span_length: int = field(default=3, metadata={"help": "Defines the average mask length."})
     extra_padding_ratio: float = field(
@@ -188,7 +192,14 @@ class DataTrainingArguments:
             )
         },
     )
-    mixed_pretrain_objectives: bool = field(default=False, metadata={"help": "If sets considers the mixed pretraining objectives."})
+    span_infilling: bool = field(
+        default=False, metadata={"help": "If set, trains a conditional case with filling the spans."}
+    )
+    prefix_lm: bool = field(default=False, metadata={"help": "If set, generates text conditioning on a prefix."})
+    mixed_pretrain_objectives: bool = field(
+        default=False, metadata={"help": "If sets considers the mixed pretraining objectives."}
+    )
+    ul2_objective: bool = field(default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."})
 
     def __post_init__(self):
         if (
@@ -274,5 +285,10 @@ class DiffusionArguments:
     guidance_scale: float = field(
         default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."}
     )
-    classifier_free_uncond_input: str = field (default="empty_token", metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."})
-    classifier_free_guided_prev_outputs: bool = field(default=False, metadata={"help": "In case this is set to True, we would use the guided outputs as the previous outputs."})
+    classifier_free_uncond_input: str = field(
+        default="empty_token", metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."}
+    )
+    classifier_free_guided_prev_outputs: bool = field(
+        default=False,
+        metadata={"help": "In case this is set to True, we would use the guided outputs as the previous outputs."},
+    )

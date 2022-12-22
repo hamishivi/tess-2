@@ -3,10 +3,22 @@ from typing import Optional, List, Dict, Any, Union
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch, Objective
-import torch
-import numpy as np 
-import pdb 
+import numpy as np
+import pdb
 from random import choices
+
+# TODO: these are for sequence length of 100, adapt for 200.
+OBJECTIVE_SETTINGS = {
+    Objective.t5: [
+        {"mask_ratio": 0.15, "mean_mask_span_length": 8},
+        {"mask_ratio": 0.15, "mean_mask_span_length": 3},
+    ],
+    Objective.aggressive_t5: [
+        {"mask_ratio": 0.5, "mean_mask_span_length": 8},
+        {"mask_ratio": 0.5, "mean_mask_span_length": 3},
+        {"mask_ratio": 0.5, "mean_mask_span_length": 48},
+    ],
+}
 
 
 @dataclass
@@ -33,58 +45,90 @@ class SpanInfillingDataCollator:
         return_tensors (`str`):
             The type of Tensor to return. Allowable values are "np", "pt" and "tf".
     """
-    def __init__(self, tokenizer: PreTrainedTokenizerBase, 
-                padding: Union[bool, str, PaddingStrategy] = True,
-                max_length: Optional[int] = None,
-                pad_to_multiple_of: Optional[int] = None,
-                return_tensors: str = "pt",
-                span_infilling: bool = False,
-                mixed_pretrain_objectives: bool = False,
-                mask_ratio: float = 0.15,
-                mean_mask_span_length: int = 3,
-                extra_padding_ratio = 0.0,
-                seed: int = 42):
-        self.tokenizer = tokenizer 
-        self.padding = padding 
-        self.max_length = max_length 
+
+    def __init__(
+        self,
+        mode,
+        data_args,
+        tokenizer: PreTrainedTokenizerBase,
+        padding: Union[bool, str, PaddingStrategy] = True,
+        max_length: Optional[int] = None,
+        pad_to_multiple_of: Optional[int] = None,
+        return_tensors: str = "pt",
+        seed: int = 42,
+    ):
+        self.tokenizer = tokenizer
+        self.padding = padding
+        self.max_length = max_length
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
-        self.span_infilling = span_infilling
-        self.extra_padding_ratio = extra_padding_ratio
+        self.span_infilling = data_args.span_infilling
+        self.extra_padding_ratio = data_args.extra_padding_ratio
         self.rng = np.random.default_rng(seed)
-        self.mixed_pretrain_objectives = mixed_pretrain_objectives
-        if self.mixed_pretrain_objectives:
+        self.mixed_pretrain_objectives = data_args.mixed_pretrain_objectives
+        self.ul2_objective = data_args.ul2_objective
+        self.prefix_lm = data_args.prefix_lm
+        self.mode = mode
+        if self.mixed_pretrain_objectives and mode == "train":
             self.mask_generator = {}
-            self.mask_generator[Objective.t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio=0.15, mean_mask_span_length=3, rng=self.rng)
-            self.mask_generator[Objective.aggressive_t5] = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio=0.5, mean_mask_span_length=8, rng=self.rng)
+            self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
+            )
+            self.mask_generator[Objective.aggressive_t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
+            )
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
             self.mask_generator[Objective.unconditional] = lambda batch: None
         elif self.span_infilling:
-            self.mask_generator = lambda batch: t5_random_spans_mask_batch(batch, mask_ratio, mean_mask_span_length, self.rng) 
-        
+            self.mask_generator = lambda batch: t5_random_spans_mask_batch(
+                batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
+            )
+        elif self.prefix_lm:
+            self.mask_generator = lambda batch: gpt_span_mask_batch(batch, use_half_length_as_prefix_size=(mode == "eval"))
+        elif self.ul2_objective and mode == "train":
+            self.mask_generator = {}
+            self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
+            )
+            self.mask_generator[Objective.aggressive_t5] = lambda batch, setting: t5_random_spans_mask_batch(
+                batch, **setting, rng=self.rng
+            )
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
+
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         [f.pop("attention_mask") for f in features]
-            
+
         if self.extra_padding_ratio:
-            # Inserting random tokens uniformly, we do not modify start and end of 
+            # Inserting random tokens uniformly, we do not modify start and end of
             # sequence tokens.
             for i in range(len(features)):
-                features[i]['input_ids'] = insert_extra_paddings(
-                self.rng, 
-                features[i]["input_ids"], 
-                self.tokenizer.pad_token_id, 
-                self.extra_padding_ratio)
+                features[i]["input_ids"] = insert_extra_paddings(
+                    self.rng, features[i]["input_ids"], self.tokenizer.pad_token_id, self.extra_padding_ratio
+                )
 
         masks = {}
-        if self.span_infilling:
-            # Generates masks and pads them.
+        if self.span_infilling or self.prefix_lm:
             masks = {"span_mask": self.mask_generator(features)}
-        elif self.mixed_pretrain_objectives:
+        elif self.mixed_pretrain_objectives and self.mode == "train":
             objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
             weights = [0.25, 0.25, 0.25, 0.25]
             objective = choices(objectives, weights)[0]
-            masks = {"span_mask": self.mask_generator[objective](features)}
-            
+            if objective in [Objective.t5, Objective.aggressive_t5]:
+                setting = choices(OBJECTIVE_SETTINGS[objective])[0]
+                masks = {"span_mask": self.mask_generator[objective](features, setting)}
+            else:
+                masks = {"span_mask": self.mask_generator[objective](features)}
+        elif self.ul2_objective and self.mode == "train":
+            objectives = [Objective.t5, Objective.prefix, Objective.aggressive_t5]
+            weights = [0.25, 0.25, 0.25]
+            objective = choices(objectives, weights)[0]
+            if objective in [Objective.t5, Objective.aggressive_t5]:
+                setting = choices(OBJECTIVE_SETTINGS[objective])[0]
+                masks = {"span_mask": self.mask_generator[objective](features, setting)}
+            else:
+                masks = {"span_mask": self.mask_generator[objective](features)}
+        elif self.mode == "eval" and (self.ul2_objective or self.mixed_pretrain_objectives):
+            masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
         batch = self.tokenizer.pad(
             features,
             padding=self.padding,
@@ -92,10 +136,6 @@ class SpanInfillingDataCollator:
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors=self.return_tensors,
         )
-        if "label" in batch:
-            batch["labels"] = batch["label"]
-            del batch["label"]
-        if "label_ids" in batch:
-            batch["labels"] = batch["label_ids"]
-            del batch["label_ids"]
+        if "attention_mask" in batch:
+            del batch["attention_mask"]
         return {**batch, **masks}

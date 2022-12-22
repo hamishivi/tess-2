@@ -18,28 +18,12 @@ from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.models import RobertaForDiffusionLM
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 import torch.nn.functional as F
-from sdlm.inference.inference_utils import process_text, split_into_masked_and_unmasked, concatenate_alternatively
+from sdlm.inference.inference_utils import predict_conditional_generated
 from sdlm.models.configuration import RobertaDiffusionConfig
 
 # check_min_version("4.24.0")
 logger = get_logger(__name__)
 require_version("datasets>=1.8.0")
-
-
-def predict_conditional_generated(batch, tokenizer, predicted_token_ids, prefix_name):
-    masked = list(
-        map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=True), predicted_token_ids, batch["span_mask"])
-    )
-    unmasked = list(
-        map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=False), batch["input_ids"], batch["span_mask"])
-    )
-    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in masked]
-    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in unmasked]
-    pred_texts = list(map(lambda x, y: concatenate_alternatively(x, y), pred_unmasked_texts, pred_masked_texts))
-    pred_texts_marked = list(
-        map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
-    )
-    return {prefix_name: pred_texts, prefix_name + "_marked": pred_texts_marked}
 
 
 def main():
@@ -95,9 +79,9 @@ def main():
         top_p=diffusion_args.top_p,
         sampling_type=diffusion_args.sampling_type,
         span_infilling=data_args.span_infilling,
-        tokenizer = tokenizer,
-        classifier_free_uncond_input = diffusion_args.classifier_free_uncond_input,        
-        classifier_free_guided_prev_outputs = diffusion_args.classifier_free_guided_prev_outputs  
+        tokenizer=tokenizer,
+        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
+        classifier_free_guided_prev_outputs=diffusion_args.classifier_free_guided_prev_outputs,
     )
     tokenizer = AutoTokenizer.from_pretrained(last_checkpoint, use_fast=model_args.use_fast_tokenizer)
     (model, tokenizer, pipeline, noise_scheduler) = accelerator.prepare(model, tokenizer, pipeline, noise_scheduler)
@@ -130,8 +114,16 @@ def generate_text(pipeline, tokenizer, diffusion_args, training_args, data_args,
     results = {}
     if data_args.span_infilling:
         # We predict the masked tokens only. Here, we compute the masked tokens.
-        results.update(predict_conditional_generated(batch, tokenizer, token_ids_from_simplex, "pred_texts_from_simplex"))
-        results.update(predict_conditional_generated(batch, tokenizer, token_ids_from_logits, "pred_texts_from_logits"))
+        results.update(
+            predict_conditional_generated(
+                batch["span_mask"], batch["input_ids"], tokenizer, token_ids_from_simplex, "pred_texts_from_simplex"
+            )
+        )
+        results.update(
+            predict_conditional_generated(
+                batch["span_mask"], batch["input_ids"], tokenizer, token_ids_from_logits, "pred_texts_from_logits"
+            )
+        )
     else:
         results.update(
             {"pred_texts_from_simplex": tokenizer.batch_decode(token_ids_from_simplex, skip_special_tokens=False)}

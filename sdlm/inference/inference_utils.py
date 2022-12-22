@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 import pdb
 from sdlm.utils import convert_to_simplex
-from sdlm.metrics.perplexity import perplexity
+from sdlm.metrics.perplexity import perplexity, conditional_perplexity
 from sdlm.metrics.metrics import distinct_n_grams, mauve
 
 
@@ -62,7 +62,8 @@ def split_into_masked_and_unmasked(token_ids, span_mask, return_masked=None):
     """
 
     def update_spans(span, masked, unmasked, mask):
-        span = torch.stack(span)
+        # TODO: this needs to be here for previous version of the codes.
+        # span = torch.stack(span)
         masked.append(span) if mask else unmasked.append(span)
 
     masked = []
@@ -90,14 +91,27 @@ def concatenate_alternatively(longer, shorter, mark=""):
     """Given two lists of strings, concatenates them alternatively.
 
     We assume that the concatenated string should starts from elements in the longer
-    list which has one extra element. The shorter text can optionally be embraced with
+    list (which has one extra element). The shorter text can optionally be embraced with
     a `mark` text on both sides.
     """
-    assert len(longer) == len(shorter) + 1
     concatenated_str = ""
     for l, s in zip(longer, shorter):
         concatenated_str += l + " " + mark + s + mark + " "
-    return concatenated_str + longer[-1]
+    if len(longer) == len(shorter) + 1:
+        return concatenated_str + longer[-1]
+    elif len(longer) == len(shorter):
+        return concatenated_str[:-1]
+    else:
+        raise ValueError
+
+
+def aggregate_list(x):
+    str = ""
+    if len(x) == 0:
+        return str
+    for l in x:
+        str += l + " "
+    return str[:-1]
 
 
 def logits_projection(logits, sampling_type, top_p, simplex_value):
@@ -114,11 +128,48 @@ def filter_empty(texts):
     return list(texts), list(remained_inds)
 
 
-def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling):
+def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name):
+    masked = list(
+        map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=True), predicted_token_ids, span_masks)
+    )
+    unmasked = list(map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=False), input_ids, span_masks))
+    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in masked]
+    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in unmasked]
+    pred_texts = list(map(lambda x, y: concatenate_alternatively(x, y), pred_unmasked_texts, pred_masked_texts))
+    pred_texts_marked = list(
+        map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
+    )
+    aggregated_masked_texts = list(map(lambda x: aggregate_list(x), pred_masked_texts))
+    return {
+        prefix_name: pred_texts,
+        prefix_name + "_marked": pred_texts_marked,
+        prefix_name + "_masked": aggregated_masked_texts,
+    }
+
+
+def evaluate_generation(
+    results,
+    causal_model,
+    causal_tokenizer,
+    is_conditional_generation,
+    prefix_lm_eval=False,
+):
     metrics = {}
-    keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]
-    if span_infilling:
-        gold_texts = process_text(results["gold_texts"])
+    # In case of prefix_lm since the generated text is unified, we can evaluate only the masked parts.
+    if prefix_lm_eval:
+        gold_text_key = "gold_texts_masked"
+        # In case of gpt2, we only have the key of `generated_texts_masked`.
+        keys = (
+            ["generated_texts_masked"]
+            if "generated_texts_masked" in results
+            else ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
+        )
+    else:
+        keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]
+        gold_text_key = "gold_texts"
+
+    if is_conditional_generation:
+        gold_texts = process_text(results[gold_text_key])
     for key in keys:
         key_metrics = {}
         texts = results[key]
@@ -126,16 +177,21 @@ def evaluate_generation(results, causal_model, causal_tokenizer, span_infilling)
         texts, remained_indices = filter_empty(texts)
         if len(texts) == 0:
             continue
+
         # Perplexity measured by a causal model.
         key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
+
+        """
         # Metrics requiring the gold text.
-        if span_infilling:
+        if is_conditional_generation:
             # Note that we need to pass both context and predicted texts to this metric.
             remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
             key_metrics.update(mauve(predictions=texts, references=remained_gold_texts))
+        """
         # Adds the metrics.
         key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
         metrics.update(key_metrics)
+
     return metrics

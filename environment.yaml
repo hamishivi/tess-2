@@ -7,11 +7,12 @@ dependencies:
   - pytorch=1.12.0=py3.8_cuda11.3_cudnn8.3.2_0
   - pytorch-mutex=1.0=cuda
   - pip:
+    - rouge_score
     - accelerate==0.12.0
     - ipython==8.4.0
     - tensorboard==2.9.1
     - datasets
-    - transformers==4.24.0
+    - transformers==4.25.1
     - diffusers==v0.7.2
     - mauve-text
     - nltk
