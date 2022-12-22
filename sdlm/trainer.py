@@ -75,11 +75,6 @@ class DiffusionTrainer(Trainer):
         self.causal_tokenizer = causal_tokenizer
         self.tb_writer = self.get_tb_writer()
         self.pad_index = self.tokenizer.convert_tokens_to_ids("<pad>")
-        # In case of line_by_line, we have start and end of sequence tokens, and we can process
-        # and correct the results, but in case of concatenating the input texts, we do not have
-        # these info, and have to remove the special tokens.
-        # TODO: perhaps in case of fine-tuning on a downsteam tasks, we need to have this back.
-        self.skip_special_tokens = False if self.data_args.line_by_line else True
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -361,26 +356,11 @@ class DiffusionTrainer(Trainer):
                 predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_logits, "pred_texts_from_logits")
             )
         else:
-            results.update(
-                {
-                    "pred_texts_from_simplex": self.tokenizer.batch_decode(
-                        all_simplex, skip_special_tokens=self.skip_special_tokens
-                    )
-                }
-            )
-            results.update(
-                {
-                    "pred_texts_from_logits": self.tokenizer.batch_decode(
-                        all_logits, skip_special_tokens=self.skip_special_tokens
-                    )
-                }
-            )
+            results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
+            results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
 
         if is_conditional_generation:
-            # Adds the decoded original texts to the final results.
-            results.update(
-                {"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=self.skip_special_tokens)}
-            )
+            results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
 
         if self.data_args.prefix_lm:
             # We need to pass the prefixes in this case.
@@ -396,7 +376,6 @@ class DiffusionTrainer(Trainer):
             self.causal_model,
             self.causal_tokenizer,
             is_conditional_generation,
-            self.skip_special_tokens,
             self.data_args.prefix_lm,
         )
 

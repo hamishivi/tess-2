@@ -138,22 +138,19 @@ def evaluate_generation(
     causal_model,
     causal_tokenizer,
     is_conditional_generation,
-    skip_special_tokens,
     prefix_lm=False,
 ):
     metrics = {}
     # In case of evaluating the results of gpt2, then we only have the "gpt2_texts".
     keys = ["gpt2_texts"] if "gpt2_texts" in results else ["pred_texts_from_simplex", "pred_texts_from_logits"]
-    require_process = True if not skip_special_tokens else False
     if prefix_lm:
         prefixes = results["prefixes"]
     if is_conditional_generation:
-        gold_texts = process_text(results["gold_texts"]) if require_process else results["gold_texts"]
+        gold_texts = process_text(results["gold_texts"])
     for key in keys:
         key_metrics = {}
         texts = results[key]
-        if require_process:
-            texts = process_text(texts)
+        texts = process_text(texts)
         texts, remained_indices = filter_empty(texts)
         if len(texts) == 0:
             continue

@@ -67,6 +67,9 @@ def main():
     # Running the script requires the tokenizer to have the pad token and since gpt2 tokenizer
     # does not have it, we add the pad_token here. Also, during the generation, they use the
     # eos_token_id as the pad_token_id.
+    # We need to modify the bos/eos tokens to help with process function.
+    tokenizer.bos_token = roberta_tokenizer.bos_token
+    tokenizer.eos_token = roberta_tokenizer.eos_token
     tokenizer.pad_token = tokenizer.eos_token
     # Huggingface requires this to be set.
     tokenizer.padding_side = "right"
@@ -144,9 +147,7 @@ def main():
         prefix + " ***" + generated_text + "***" for prefix, generated_text in zip(all_prefixes, generated_texts)
     ]
     results = {"gpt2_texts": total_texts, "gold_texts": gold_texts, "prefixes": all_prefixes}
-    metrics = evaluate_generation(
-        results, model, tokenizer, is_conditional_generation=True, skip_special_tokens=True, prefix_lm=data_args.prefix_lm
-    )
+    metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True, prefix_lm=data_args.prefix_lm)
     logger.info(metrics)
     for text in total_texts_marked:
         logger.info(text)
