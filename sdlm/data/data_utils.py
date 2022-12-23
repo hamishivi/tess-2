@@ -1,30 +1,13 @@
 from itertools import chain
-from datasets import load_dataset, Dataset
+from datasets import load_dataset
 import logging
 import torch
 import pdb
 
 logger = logging.getLogger(__name__)
 
-# TODO: this version to be deleted after removing the train.py.
-def load_data(data_args):
-    if data_args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
-        raw_datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name)
-    else:
-        data_files = {}
-        if data_args.train_file is not None:
-            data_files["train"] = data_args.train_file
-        if data_args.validation_file is not None:
-            data_files["validation"] = data_args.validation_file
-        extension = data_args.train_file.split(".")[-1]
-        if extension == "txt":
-            extension = "text"
-        raw_datasets = load_dataset(extension, data_files=data_files)
-    return raw_datasets
 
-
-def load_data_new(data_args, model_args):
+def load_data(data_args, model_args):
     if data_args.dataset_name is not None:
         raw_datasets = load_dataset(
             data_args.dataset_name,

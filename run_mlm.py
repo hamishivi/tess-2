@@ -3,7 +3,7 @@ import os
 import sys
 import pdb
 import datasets
-from sdlm.data.data_utils import load_data_new, tokenize_data_new
+from sdlm.data.data_utils import load_data, tokenize_data_new
 from datasets import load_from_disk, DatasetDict
 
 import transformers
@@ -160,7 +160,7 @@ def main():
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
     else:
-        raw_datasets = load_data_new(data_args, model_args)
+        raw_datasets = load_data(data_args, model_args)
         tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
 
     # TODO: is this getting the same on each process?
