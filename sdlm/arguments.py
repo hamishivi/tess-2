@@ -63,6 +63,15 @@ class ModelArguments:
         default="EleutherAI/gpt-neo-1.3B",
         metadata={"help": "The autoregressive model used to measure the evaluation perplexity."},
     )
+    resize_position_embeddings: Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Whether to automatically resize the position embeddings if `max_source_length` exceeds "
+                "the model's position embeddings."
+            )
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
@@ -199,7 +208,9 @@ class DataTrainingArguments:
     mixed_pretrain_objectives: bool = field(
         default=False, metadata={"help": "If sets considers the mixed pretraining objectives."}
     )
-    ul2_objective: bool = field(default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."})
+    ul2_objective: bool = field(
+        default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."}
+    )
 
     def __post_init__(self):
         if (
