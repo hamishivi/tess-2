@@ -14,7 +14,7 @@ from sdlm.data.data_utils import load_data
 import evaluate
 import transformers
 from filelock import FileLock
-from transformers import AutoTokenizer, DataCollatorForSeq2Seq, HfArgumentParser, set_seed, AutoModelForCausalLM
+from transformers import AutoTokenizer, HfArgumentParser, set_seed, AutoModelForCausalLM
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
@@ -25,6 +25,7 @@ from sdlm.schedulers import SimplexDDPMScheduler
 import pdb
 from sdlm.trainer import DiffusionTrainer
 from sdlm.inference.inference_utils import evaluate_generation
+from sdlm.data.data_collator import DataCollatorForSeq2Seq
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -64,6 +65,8 @@ def main():
         model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
+
+    assert data_args.max_target_length + data_args.max_source_length <= data_args.max_seq_length
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -193,10 +196,9 @@ def main():
                 inputs.append(examples[text_column][i])
                 targets.append(examples[summary_column][i])
 
-        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
-
+        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=False, truncation=True)
         # Tokenize targets with the `text_target` keyword argument
-        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
+        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=False, truncation=True)
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
@@ -258,11 +260,10 @@ def main():
             )
     """
 
-    # Data collator
-    data_collator = DataCollatorForSeq2Seq(
+    # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
+    data_collator = lambda mode: DataCollatorForSeq2Seq(
         tokenizer,
-        model=model,
-        label_pad_token_id=tokenizer.pad_token_id,
+        max_length=data_args.max_seq_length,
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
 

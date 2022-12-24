@@ -6,6 +6,7 @@ from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_pad
 import numpy as np
 import pdb
 from random import choices
+import torch
 
 # TODO: these are for sequence length of 100, adapt for 200.
 OBJECTIVE_SETTINGS = {
@@ -139,3 +140,51 @@ class SpanInfillingDataCollator:
         if "attention_mask" in batch:
             del batch["attention_mask"]
         return {**batch, **masks}
+
+
+@dataclass
+class DataCollatorForSeq2Seq:
+    """
+    Data collator that will dynamically pad the inputs received, as well as the labels.
+    Args:
+        tokenizer ([`PreTrainedTokenizer`] or [`PreTrainedTokenizerFast`]):
+            The tokenizer used for encoding the data.
+        padding (`bool`, `str` or [`~utils.PaddingStrategy`], *optional*, defaults to `True`):
+            Select a strategy to pad the returned sequences (according to the model's padding side and padding index)
+            among:
+            - `True` or `'longest'`: Pad to the longest sequence in the batch (or no padding if only a single sequence
+              is provided).
+            - `'max_length'`: Pad to a maximum length specified with the argument `max_length` or to the maximum
+              acceptable input length for the model if that argument is not provided.
+            - `False` or `'do_not_pad'` (default): No padding (i.e., can output a batch with sequences of different
+              lengths).
+        max_length (`int`, *optional*):
+            Maximum length of the returned list and optionally padding length (see above).
+        pad_to_multiple_of (`int`, *optional*):
+            If set will pad the sequence to a multiple of the provided value.
+            This is especially useful to enable the use of Tensor Cores on NVIDIA hardware with compute capability >=
+            7.5 (Volta).
+    """
+
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        input_ids = [feature["input_ids"] for feature in features]
+        labels = [feature["labels"] for feature in features]
+        input_target = [input + target for input, target in zip(input_ids, labels)]
+
+        features = self.tokenizer.pad(
+            {"input_ids": input_target},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+        )
+
+        batch_length = features["input_ids"].shape[1]
+        masks = [len(input) * [False] + (batch_length - len(input)) * [True] for input in input_ids]
+        features["span_masks"] = torch.tensor(masks)
+        return features
