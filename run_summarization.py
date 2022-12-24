@@ -177,7 +177,6 @@ def main():
 
     # Temporarily set max_target_length for training.
     max_target_length = data_args.max_target_length
-    padding = "max_length" if data_args.pad_to_max_length else False
 
     """
     if training_args.label_smoothing_factor > 0 and not hasattr(model, "prepare_decoder_input_ids_from_labels"):
@@ -263,6 +262,7 @@ def main():
     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
     data_collator = lambda mode: DataCollatorForSeq2Seq(
         tokenizer,
+        padding="max_length" if data_args.pad_to_max_length else True,
         max_length=data_args.max_seq_length,
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
