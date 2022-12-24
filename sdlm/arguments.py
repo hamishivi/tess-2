@@ -4,7 +4,6 @@ from typing import Optional, Union
 
 from transformers import MODEL_MAPPING, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
-from transformers.training_args import OptimizerNames
 
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -107,10 +106,6 @@ class TrainingArguments(HFTrainingArguments):
     )
     max_grad_norm: float = field(default=1.0)
     log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
-    optim: Union[OptimizerNames, str] = field(
-        default="adamw_hf",
-        metadata={"help": "The optimizer to use."},
-    )
 
 
 @dataclass

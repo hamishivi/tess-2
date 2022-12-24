@@ -45,9 +45,6 @@ def main():
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
-    if training_args.ssdlm_optimizer:
-        training_args.optim = "adamw_torch"
-
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_mlm", model_args, data_args)
