@@ -186,5 +186,5 @@ class DataCollatorForSeq2Seq:
 
         batch_length = features["input_ids"].shape[1]
         masks = [len(input) * [False] + (batch_length - len(input)) * [True] for input in input_ids]
-        features["span_masks"] = torch.tensor(masks)
+        features["span_mask"] = torch.tensor(masks)
         return features
