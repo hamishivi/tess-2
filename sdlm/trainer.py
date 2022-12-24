@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
-from sdlm.utils import self_condition_preds, get_norm_stats
+from sdlm.utils import self_condition_preds
 
 
 if is_apex_available():
@@ -363,12 +363,6 @@ class DiffusionTrainer(Trainer):
             )
             results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
 
-        # if self.data_args.prefix_lm:
-        #    # We need to pass the prefixes in this case.
-        #    prefixes = [input[~mask] for input, mask in zip(all_inputs, all_masks)]
-        #    prefixes = self.tokenizer.batch_decode(prefixes, skip_special_tokens=True)
-        #    results.update({"prefixes": prefixes})
-
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
         # TODO: we need to make sure metric for checkpoint is selected.
@@ -426,8 +420,7 @@ class DiffusionTrainer(Trainer):
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         start_time = time.time()
 
-        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
-        output = eval_loop(
+        output = self.evaluation_loop(
             eval_dataloader,
             description="Evaluation",
             # No point gathering the predictions if there are no metrics, otherwise we defer to

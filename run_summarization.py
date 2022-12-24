@@ -14,7 +14,7 @@ from sdlm.data.data_utils import load_data
 import evaluate
 import transformers
 from filelock import FileLock
-from transformers import AutoTokenizer, HfArgumentParser, set_seed, AutoModelForCausalLM
+from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
@@ -266,11 +266,6 @@ def main():
         max_length=data_args.max_seq_length,
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
-
-    # Causal language model.
-    causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
-    causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
-
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
@@ -329,8 +324,6 @@ def main():
         diffusion_args=diffusion_args,
         data_args=data_args,
         inference_noise_scheduler=inference_noise_scheduler,
-        causal_model=causal_model,
-        causal_tokenizer=causal_tokenizer,
     )
 
     # Training
