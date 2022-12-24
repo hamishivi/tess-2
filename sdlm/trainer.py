@@ -52,8 +52,6 @@ class EvalLoopOutput(NamedTuple):
 class DiffusionTrainer(Trainer):
     def __init__(
         self,
-        causal_model,
-        causal_tokenizer,
         noise_scheduler,
         inference_noise_scheduler,
         diffusion_args,
@@ -67,14 +65,8 @@ class DiffusionTrainer(Trainer):
         self.data_args = data_args
         self.vocab_size = self.model.config.vocab_size
         self.inference_noise_scheduler = inference_noise_scheduler
-        self.causal_model = causal_model
-        self._move_model_to_device(self.causal_model, self.args.device)
-        self.causal_tokenizer = causal_tokenizer
         self.tb_writer = self.get_tb_writer()
         self.eos_token_id = self.tokenizer.eos_token_id
-        self.prefix_lm_eval = (
-            True if (data_args.prefix_lm or data_args.mixed_pretrain_objectives or data_args.ul2_objective) else False
-        )
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -380,13 +372,7 @@ class DiffusionTrainer(Trainer):
         # Metrics!
         # TODO: make sure causal model is going through the same stuff as the model.
         # TODO: we need to make sure metric for checkpoint is selected.
-        metrics = self.compute_metrics(
-            results,
-            self.causal_model,
-            self.causal_tokenizer,
-            is_conditional_generation,
-            prefix_lm_eval=self.prefix_lm_eval,
-        )
+        metrics = self.compute_metrics(results)
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)

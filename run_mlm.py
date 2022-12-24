@@ -137,6 +137,7 @@ def main():
 
     # Causal language model.
     causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
+    causal_model = causal_model.to(training_args.device)
     causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
 
     noise_scheduler = SimplexDDPMScheduler(
@@ -203,6 +204,21 @@ def main():
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
     )
 
+    if training_args.do_eval:
+        is_conditional_generation = (
+            data_args.span_infilling or data_args.mixed_pretrain_objectives or data_args.prefix_lm or data_args.ul2_objective
+        )
+        prefix_lm_eval = (
+            True if (data_args.prefix_lm or data_args.mixed_pretrain_objectives or data_args.ul2_objective) else False
+        )
+        compute_metrics = lambda results: evaluate_generation(
+            results,
+            causal_model,
+            causal_tokenizer,
+            is_conditional_generation,
+            prefix_lm_eval=prefix_lm_eval,
+        )
+
     # Initialize our Trainer
     trainer = DiffusionTrainer(
         model=model,
@@ -211,14 +227,12 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=evaluate_generation if training_args.do_eval else None,
+        compute_metrics=compute_metrics if training_args.do_eval else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
         inference_noise_scheduler=inference_noise_scheduler,
-        causal_model=causal_model,
-        causal_tokenizer=causal_tokenizer,
     )
 
     # Training
