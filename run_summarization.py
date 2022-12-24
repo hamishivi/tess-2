@@ -5,8 +5,6 @@ Fine-tuning the library models for sequence to sequence.
 import logging
 import os
 import sys
-from dataclasses import dataclass, field
-from typing import Optional
 
 import datasets
 import nltk
