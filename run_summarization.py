@@ -24,8 +24,8 @@ from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
 import pdb
 from sdlm.trainer import DiffusionTrainer
-from sdlm.inference.inference_utils import evaluate_generation
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
+from sdlm.inference.inference_utils import process_text
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -294,21 +294,19 @@ def main():
 
         return preds, labels
 
-    def compute_metrics(eval_preds):
-        preds, labels = eval_preds
-        if isinstance(preds, tuple):
-            preds = preds[0]
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-
-        # Some simple post-processing
-        decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-
-        result = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
-        result = {k: round(v * 100, 4) for k, v in result.items()}
-        prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds]
-        result["gen_len"] = np.mean(prediction_lens)
-        return result
+    def compute_metrics(results):
+        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
+        decoded_labels = process_text(results["gold_texts_masked"])
+        metrics = {}
+        for key in keys:
+            decoded_preds = process_text(results[key])
+            # Some simple post-processing
+            decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
+            key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+            key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
+            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
+            metrics.update(key_metrics)
+        return metrics
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
@@ -318,7 +316,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=evaluate_generation if training_args.do_eval else None,
+        compute_metrics=compute_metrics if training_args.do_eval else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
