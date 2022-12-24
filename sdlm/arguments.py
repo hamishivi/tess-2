@@ -63,15 +63,6 @@ class ModelArguments:
         default="EleutherAI/gpt-neo-1.3B",
         metadata={"help": "The autoregressive model used to measure the evaluation perplexity."},
     )
-    resize_position_embeddings: Optional[bool] = field(
-        default=None,
-        metadata={
-            "help": (
-                "Whether to automatically resize the position embeddings if `max_source_length` exceeds "
-                "the model's position embeddings."
-            )
-        },
-    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
@@ -254,10 +245,12 @@ class DataTrainingArguments:
         default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."}
     )
     # Parameters used in seq2seq training for summarization.
+    """
     test_file: Optional[str] = field(
         default=None,
         metadata={"help": "An optional input test data file to evaluate the metrics (rouge) on (a jsonlines or csv file)."},
     )
+    """
     max_source_length: Optional[int] = field(
         default=1024,
         metadata={
@@ -287,6 +280,7 @@ class DataTrainingArguments:
             )
         },
     )
+    """
     max_predict_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -296,6 +290,7 @@ class DataTrainingArguments:
             )
         },
     )
+    """
     num_beams: Optional[int] = field(
         default=None,
         metadata={
@@ -304,10 +299,6 @@ class DataTrainingArguments:
                 "which is used during ``evaluate`` and ``predict``."
             )
         },
-    )
-    ignore_pad_token_for_loss: bool = field(
-        default=True,
-        metadata={"help": "Whether to ignore the tokens corresponding to padded labels in the loss computation or not."},
     )
 
     def __post_init__(self):

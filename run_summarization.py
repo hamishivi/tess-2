@@ -14,21 +14,17 @@ from sdlm.data.data_utils import load_data
 import evaluate
 import transformers
 from filelock import FileLock
-from transformers import (
-    AutoConfig,
-    AutoModelForSeq2SeqLM,
-    AutoTokenizer,
-    DataCollatorForSeq2Seq,
-    HfArgumentParser,
-    Seq2SeqTrainer,
-    set_seed,
-)
+from transformers import AutoTokenizer, DataCollatorForSeq2Seq, HfArgumentParser, set_seed, AutoModelForCausalLM
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import load_data
-from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments
+from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
+from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
+from sdlm.schedulers import SimplexDDPMScheduler
 import pdb
+from sdlm.trainer import DiffusionTrainer
+from sdlm.inference.inference_utils import evaluate_generation
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -63,11 +59,11 @@ summarization_name_mapping = {
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -113,8 +109,11 @@ def main():
 
     raw_datasets = load_data(data_args, model_args)
 
-    config = AutoConfig.from_pretrained(
+    config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
+        self_condition=diffusion_args.self_condition,
+        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
+        deepmind_conditional=diffusion_args.deepmind_conditional,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
@@ -126,43 +125,35 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
+    if model_args.model_name_or_path:
+        model = RobertaForDiffusionLM.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    else:
+        logger.info("Training new model from scratch")
+        model = RobertaForDiffusionLM.from_config(config)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
-    embedding_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > embedding_size:
+    vocab_size = model.get_input_embeddings().weight.shape[0]
+    if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
-
-    if model.config.decoder_start_token_id is None:
-        raise ValueError("Make sure that `config.decoder_start_token_id` is correctly defined")
 
     if (
         hasattr(model.config, "max_position_embeddings")
         and model.config.max_position_embeddings < data_args.max_source_length
     ):
-        if model_args.resize_position_embeddings is None:
-            logger.warning(
-                "Increasing the model's number of position embedding vectors from"
-                f" {model.config.max_position_embeddings} to {data_args.max_source_length}."
-            )
-            model.resize_position_embeddings(data_args.max_source_length)
-        elif model_args.resize_position_embeddings:
-            model.resize_position_embeddings(data_args.max_source_length)
-        else:
-            raise ValueError(
-                f"`--max_source_length` is set to {data_args.max_source_length}, but the model only has"
-                f" {model.config.max_position_embeddings} position encodings. Consider either reducing"
-                f" `--max_source_length` to {model.config.max_position_embeddings} or to automatically resize the"
-                " model's position encodings by passing `--resize_position_embeddings`."
-            )
+        raise ValueError(
+            f"`--max_source_length` is set to {data_args.max_source_length}, but the model only has"
+            f" {model.config.max_position_embeddings} position encodings. Consider either reducing"
+            f" `--max_source_length` to {model.config.max_position_embeddings} or implement the"
+            "`resize_position_embeddings` function."
+        )
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -185,11 +176,13 @@ def main():
     max_target_length = data_args.max_target_length
     padding = "max_length" if data_args.pad_to_max_length else False
 
+    """
     if training_args.label_smoothing_factor > 0 and not hasattr(model, "prepare_decoder_input_ids_from_labels"):
         logger.warning(
             "label_smoothing is enabled but the `prepare_decoder_input_ids_from_labels` method is not defined for"
             f"`{model.__class__.__name__}`. This will lead to loss being calculated twice and will take up more memory"
         )
+    """
 
     def preprocess_function(examples):
         # remove pairs where at least one record is None
@@ -204,14 +197,6 @@ def main():
 
         # Tokenize targets with the `text_target` keyword argument
         labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
-
-        # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
-        # padding in the loss.
-        if padding == "max_length" and data_args.ignore_pad_token_for_loss:
-            labels["input_ids"] = [
-                [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
-            ]
-
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
@@ -250,6 +235,10 @@ def main():
                 desc="Running tokenizer on validation dataset",
             )
 
+        def preprocess_logits_for_metrics(logits):
+            return logits.argmax(dim=-1)
+
+    """
     if training_args.do_predict:
         max_target_length = data_args.val_max_target_length
         if "test" not in raw_datasets:
@@ -267,14 +256,33 @@ def main():
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on prediction dataset",
             )
+    """
 
     # Data collator
-    label_pad_token_id = -100 if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id
     data_collator = DataCollatorForSeq2Seq(
         tokenizer,
         model=model,
-        label_pad_token_id=label_pad_token_id,
+        label_pad_token_id=tokenizer.pad_token_id,
         pad_to_multiple_of=8 if training_args.fp16 else None,
+    )
+
+    # Causal language model.
+    causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
+    causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
+
+    noise_scheduler = SimplexDDPMScheduler(
+        num_train_timesteps=diffusion_args.num_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
+        device=training_args.device,
+    )
+    inference_noise_scheduler = SimplexDDPMScheduler(
+        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
+        device=training_args.device,
     )
 
     # Metric
@@ -295,9 +303,6 @@ def main():
         if isinstance(preds, tuple):
             preds = preds[0]
         decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-        if data_args.ignore_pad_token_for_loss:
-            # Replace -100 in the labels as we can't decode them.
-            labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
         # Some simple post-processing
@@ -310,14 +315,21 @@ def main():
         return result
 
     # Initialize our Trainer
-    trainer = Seq2SeqTrainer(
+    trainer = DiffusionTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.predict_with_generate else None,
+        compute_metrics=evaluate_generation if training_args.do_eval else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+        noise_scheduler=noise_scheduler,
+        diffusion_args=diffusion_args,
+        data_args=data_args,
+        inference_noise_scheduler=inference_noise_scheduler,
+        causal_model=causal_model,
+        causal_tokenizer=causal_tokenizer,
     )
 
     # Training
@@ -355,6 +367,7 @@ def main():
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
+    """
     if training_args.do_predict:
         logger.info("*** Predict ***")
 
@@ -379,7 +392,7 @@ def main():
                 output_prediction_file = os.path.join(training_args.output_dir, "generated_predictions.txt")
                 with open(output_prediction_file, "w") as writer:
                     writer.write("\n".join(predictions))
-
+    """
     return results
 
 
