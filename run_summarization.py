@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import datasets
-import nltk  # Here to have a nice missing dependency error message early on
+import nltk
 import numpy as np
 from sdlm.data.data_utils import load_data
 
