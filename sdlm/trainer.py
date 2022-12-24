@@ -172,12 +172,7 @@ class DiffusionTrainer(Trainer):
         Works both with or without labels.
         """
         args = self.args
-        is_conditional_generation = (
-            self.data_args.span_infilling
-            or self.data_args.mixed_pretrain_objectives
-            or self.data_args.prefix_lm
-            or self.data_args.ul2_objective
-        )
+        is_conditional_generation = self.data_args.conditional_generation is not None
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
         # if eval is called w/o train init deepspeed here

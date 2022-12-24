@@ -2,11 +2,24 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Union
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
-from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch, Objective
+from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch
 import numpy as np
 import pdb
 from random import choices
 import torch
+from enum import Enum
+
+
+class Objective(Enum):
+    # Prefix language modeling like GPT style pretraining.
+    prefix = 1
+    # T5 objective with a range of 2 to 5 tokens as the span length, which masks about 15% of input tokens.
+    t5 = 2
+    # Aggressive denoising where approximately 50% of the input sequence is masked.
+    aggressive_t5 = 3
+    # Unconditional generation case.
+    unconditional = 4
+
 
 # TODO: these are for sequence length of 100, adapt for 200.
 OBJECTIVE_SETTINGS = {
@@ -63,14 +76,11 @@ class SpanInfillingDataCollator:
         self.max_length = max_length
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
-        self.span_infilling = data_args.span_infilling
+        self.conditional_generation = data_args.conditional_generation
         self.extra_padding_ratio = data_args.extra_padding_ratio
         self.rng = np.random.default_rng(seed)
-        self.mixed_pretrain_objectives = data_args.mixed_pretrain_objectives
-        self.ul2_objective = data_args.ul2_objective
-        self.prefix_lm = data_args.prefix_lm
         self.mode = mode
-        if self.mixed_pretrain_objectives and mode == "train":
+        if self.conditional_generation == "ul2_with_unconditional" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
@@ -80,13 +90,13 @@ class SpanInfillingDataCollator:
             )
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
             self.mask_generator[Objective.unconditional] = lambda batch: None
-        elif self.span_infilling:
+        elif self.conditional_generation == "span_infilling":
             self.mask_generator = lambda batch: t5_random_spans_mask_batch(
                 batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
             )
-        elif self.prefix_lm:
+        elif self.conditional_generation == "prefix_lm":
             self.mask_generator = lambda batch: gpt_span_mask_batch(batch, use_half_length_as_prefix_size=(mode == "eval"))
-        elif self.ul2_objective and mode == "train":
+        elif self.conditional_generation == "ul2" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
@@ -108,9 +118,9 @@ class SpanInfillingDataCollator:
                 )
 
         masks = {}
-        if self.span_infilling or self.prefix_lm:
+        if self.conditional_generation in ["span_infilling", "prefix_lm"]:
             masks = {"span_mask": self.mask_generator(features)}
-        elif self.mixed_pretrain_objectives and self.mode == "train":
+        elif self.conditional_generation == "ul2_with_unconditional" and self.mode == "train":
             objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
             weights = [0.25, 0.25, 0.25, 0.25]
             objective = choices(objectives, weights)[0]
@@ -119,7 +129,7 @@ class SpanInfillingDataCollator:
                 masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
-        elif self.ul2_objective and self.mode == "train":
+        elif self.conditional_generation == "ul2" and self.mode == "train":
             objectives = [Objective.t5, Objective.prefix, Objective.aggressive_t5]
             weights = [0.25, 0.25, 0.25]
             objective = choices(objectives, weights)[0]
@@ -128,7 +138,7 @@ class SpanInfillingDataCollator:
                 masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
-        elif self.mode == "eval" and (self.ul2_objective or self.mixed_pretrain_objectives):
+        elif self.mode == "eval" and self.conditional_generation in ["ul2", "ul2_with_unconditional"]:
             masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
         batch = self.tokenizer.pad(
             features,

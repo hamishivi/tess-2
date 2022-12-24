@@ -229,15 +229,15 @@ class DataTrainingArguments:
             )
         },
     )
-    span_infilling: bool = field(
-        default=False, metadata={"help": "If set, trains a conditional case with filling the spans."}
-    )
-    prefix_lm: bool = field(default=False, metadata={"help": "If set, generates text conditioning on a prefix."})
-    mixed_pretrain_objectives: bool = field(
-        default=False, metadata={"help": "If sets considers the mixed pretraining objectives."}
-    )
-    ul2_objective: bool = field(
-        default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."}
+    conditional_generation: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "It can be `span_infilling`, `prefix_lm`, `ul2`, or `ul2_with_unconditional`."
+            "In case of `span_infilling`: It trains/evals on filling spans like T5. In `prefix_lm`: it trains/evals"
+            "on completing the prefixes like GPT2. In `ul2`, it trains on a mixture of span_infilling, agressive"
+            "span_infilling, or prefix_lm and evals on prefix_lm with masking half of the sequence. In case of"
+            "`ul2_with_unconditional`: it uses ul2 with also including unconditional generation during training."
+        },
     )
     # Parameters used in seq2seq training for summarization.
     """
@@ -316,6 +316,8 @@ class DataTrainingArguments:
 
         if self.val_max_target_length is None:
             self.val_max_target_length = self.max_target_length
+
+        assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm"]
 
 
 @dataclass

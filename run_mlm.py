@@ -205,12 +205,11 @@ def main():
     )
 
     if training_args.do_eval:
-        is_conditional_generation = (
-            data_args.span_infilling or data_args.mixed_pretrain_objectives or data_args.prefix_lm or data_args.ul2_objective
-        )
+        is_conditional_generation = data_args.conditional_generation is not None
         prefix_lm_eval = (
-            True if (data_args.prefix_lm or data_args.mixed_pretrain_objectives or data_args.ul2_objective) else False
+            True if data_args.conditional_generation in ["prefix_lm", "ul2", "ul2_with_unconditional"] else False
         )
+
         compute_metrics = lambda results: evaluate_generation(
             results,
             causal_model,
