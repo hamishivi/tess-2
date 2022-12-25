@@ -1,6 +1,6 @@
 """Arguments used in training/inference/data processing."""
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Optional
 
 from transformers import MODEL_MAPPING, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
@@ -296,6 +296,9 @@ class DataTrainingArguments:
             )
         },
     )
+    # Translation arguments.
+    source_lang: str = field(default=None, metadata={"help": "Source language id for translation."})
+    target_lang: str = field(default=None, metadata={"help": "Target language id for translation."})
 
     def __post_init__(self):
         if (

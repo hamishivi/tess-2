@@ -7,22 +7,24 @@ import os
 import sys
 
 import datasets
-import nltk
 import numpy as np
 from sdlm.data.data_utils import load_data
 
 import evaluate
 import transformers
-from filelock import FileLock
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers import (
+    AutoTokenizer,
+    DataCollatorForSeq2Seq,
+    HfArgumentParser,
+    default_data_collator,
+    set_seed,
+)
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
+from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-from sdlm.data.data_utils import load_data
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
-import pdb
 from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
@@ -30,33 +32,9 @@ from sdlm.inference.inference_utils import process_text
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
 
-require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/summarization/requirements.txt")
+require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
 
 logger = logging.getLogger(__name__)
-
-try:
-    nltk.data.find("tokenizers/punkt")
-except (LookupError, OSError):
-    if is_offline_mode():
-        raise LookupError("Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files")
-    with FileLock(".lock") as lock:
-        nltk.download("punkt", quiet=True)
-
-
-summarization_name_mapping = {
-    "amazon_reviews_multi": ("review_body", "review_title"),
-    "big_patent": ("description", "abstract"),
-    "cnn_dailymail": ("article", "highlights"),
-    "orange_sum": ("text", "summary"),
-    "pn_summary": ("article", "summary"),
-    "psc": ("extract_text", "summary_text"),
-    "samsum": ("dialogue", "summary"),
-    "thaisum": ("body", "summary"),
-    "xglue": ("news_body", "news_title"),
-    "xsum": ("document", "summary"),
-    "wiki_summary": ("article", "highlights"),
-    "multi_news": ("document", "summary"),
-}
 
 
 def main():
@@ -66,11 +44,9 @@ def main():
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
-    assert data_args.max_target_length + data_args.max_source_length <= data_args.max_seq_length
-
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_summarization", model_args, data_args)
+    send_example_telemetry("run_translation", model_args, data_args)
 
     # Setup logging
     logging.basicConfig(
@@ -78,6 +54,7 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
     log_level = training_args.get_process_log_level()
     logger.setLevel(log_level)
     datasets.utils.logging.set_verbosity(log_level)
@@ -111,7 +88,6 @@ def main():
     set_seed(training_args.seed)
 
     raw_datasets = load_data(data_args, model_args)
-
     config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
@@ -147,16 +123,8 @@ def main():
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
-    if (
-        hasattr(model.config, "max_position_embeddings")
-        and model.config.max_position_embeddings < data_args.max_source_length
-    ):
-        raise ValueError(
-            f"`--max_source_length` is set to {data_args.max_source_length}, but the model only has"
-            f" {model.config.max_position_embeddings} position encodings. Consider either reducing"
-            f" `--max_source_length` to {model.config.max_position_embeddings} or implement the"
-            "`resize_position_embeddings` function."
-        )
+    if model.config.decoder_start_token_id is None:
+        raise ValueError("Make sure that `config.decoder_start_token_id` is correctly defined")
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -170,13 +138,13 @@ def main():
         logger.info("There is nothing to do. Please pass `do_train`, `do_eval` and/or `do_predict`.")
         return
 
-    # Get the column names for input/target.
-    dataset_columns = summarization_name_mapping.get(data_args.dataset_name, None)
-    assert dataset_columns is not None, "You need to provide the columns names."
-    text_column, summary_column = dataset_columns[0], dataset_columns[1]
+    # Get the language codes for input/target.
+    source_lang = data_args.source_lang.split("_")[0]
+    target_lang = data_args.target_lang.split("_")[0]
 
     # Temporarily set max_target_length for training.
     max_target_length = data_args.max_target_length
+    padding = "max_length" if data_args.pad_to_max_length else False
 
     """
     if training_args.label_smoothing_factor > 0 and not hasattr(model, "prepare_decoder_input_ids_from_labels"):
@@ -187,18 +155,13 @@ def main():
     """
 
     def preprocess_function(examples):
-        # remove pairs where at least one record is None
+        inputs = [ex[source_lang] for ex in examples["translation"]]
+        targets = [ex[target_lang] for ex in examples["translation"]]
+        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
 
-        inputs, targets = [], []
-        for i in range(len(examples[text_column])):
-            if examples[text_column][i] and examples[summary_column][i]:
-                inputs.append(examples[text_column][i])
-                targets.append(examples[summary_column][i])
-        # TODO: we need to process first the target, then cut the inputs to the max_length-target length to use the
-        # maximum number of tokens.
-        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=False, truncation=True)
         # Tokenize targets with the `text_target` keyword argument
-        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=False, truncation=True)
+        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
+
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
@@ -242,14 +205,17 @@ def main():
 
     # TODO: we may want to add predict back.
 
-    # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForSeq2Seq(
-        tokenizer,
-        # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
-        padding="max_length" if data_args.pad_to_max_length else True,
-        max_length=data_args.max_seq_length,
-        pad_to_multiple_of=8 if training_args.fp16 else None,
-    )
+    # Data collator
+    label_pad_token_id = tokenizer.pad_token_id
+    if data_args.pad_to_max_length:
+        data_collator = default_data_collator
+    else:
+        data_collator = DataCollatorForSeq2Seq(
+            tokenizer,
+            model=model,
+            label_pad_token_id=label_pad_token_id,
+            pad_to_multiple_of=8 if training_args.fp16 else None,
+        )
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
@@ -266,32 +232,31 @@ def main():
     )
 
     # Metric
-    # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("rouge", keep_in_memory=True)
+    metric = evaluate.load("sacrebleu")
 
     def postprocess_text(preds, labels):
         preds = [pred.strip() for pred in preds]
-        labels = [label.strip() for label in labels]
-
-        # rougeLSum expects newline after each sentence
-        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
-        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
+        labels = [[label.strip()] for label in labels]
 
         return preds, labels
 
-    def compute_metrics(results):
-        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
-        decoded_labels = process_text(results["gold_texts_masked"])
-        metrics = {}
-        for key in keys:
-            decoded_preds = process_text(results[key])
-            # Some simple post-processing
-            decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-            key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
-            key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
-            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
-            metrics.update(key_metrics)
-        return metrics
+    def compute_metrics(eval_preds):
+        preds, labels = eval_preds
+        if isinstance(preds, tuple):
+            preds = preds[0]
+        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+
+        # Some simple post-processing
+        decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
+
+        result = metric.compute(predictions=decoded_preds, references=decoded_labels)
+        result = {"bleu": result["score"]}
+
+        prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds]
+        result["gen_len"] = np.mean(prediction_lens)
+        result = {k: round(v, 4) for k, v in result.items()}
+        return result
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
@@ -301,7 +266,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics if training_args.predict_with_generate else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
@@ -337,9 +302,8 @@ def main():
     num_beams = data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
-        # TODO: num_beans should be added for ours as well.
-        # metrics = trainer.evaluate(max_length=max_length, num_beams=num_beams, metric_key_prefix="eval")
-        metrics = trainer.evaluate()
+
+        metrics = trainer.evaluate(max_length=max_length, num_beams=num_beams, metric_key_prefix="eval")
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
