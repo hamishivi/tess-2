@@ -120,8 +120,11 @@ def main():
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
+    # TODO: is this needed?
+    """
     if model.config.decoder_start_token_id is None:
         raise ValueError("Make sure that `config.decoder_start_token_id` is correctly defined")
+    """
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -141,7 +144,7 @@ def main():
 
     # Temporarily set max_target_length for training.
     max_target_length = data_args.max_target_length
-    padding = "max_length" if data_args.pad_to_max_length else False
+    # padding = "max_length" if data_args.pad_to_max_length else False
 
     """
     if training_args.label_smoothing_factor > 0 and not hasattr(model, "prepare_decoder_input_ids_from_labels"):
@@ -233,20 +236,20 @@ def main():
 
         return preds, labels
 
-    def compute_metrics(eval_preds):
-        preds, labels = eval_preds
-        if isinstance(preds, tuple):
-            preds = preds[0]
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-
-        # Some simple post-processing
-        decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-
-        result = metric.compute(predictions=decoded_preds, references=decoded_labels)
-        result = {"bleu": result["score"]}
-        result = {k: round(v, 4) for k, v in result.items()}
-        return result
+    def compute_metrics(results):
+        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
+        decoded_labels = process_text(results["gold_texts_masked"])
+        metrics = {}
+        for key in keys:
+            decoded_preds = process_text(results[key])
+            # Some simple post-processing
+            decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
+            key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
+            key_metrics = {"bleu": key_metrics["score"]}
+            key_metrics = {k: round(v, 4) for k, v in key_metrics.items()}
+            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
+            metrics.update(key_metrics)
+        return metrics
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
