@@ -16,3 +16,5 @@ dependencies:
     - diffusers==v0.7.2
     - mauve-text
     - nltk
+    - sentencepiece
+    - sacrebleu

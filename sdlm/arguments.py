@@ -1,10 +1,9 @@
 """Arguments used in training/inference/data processing."""
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Optional
 
 from transformers import MODEL_MAPPING, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
-from transformers.training_args import OptimizerNames
 
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -107,10 +106,48 @@ class TrainingArguments(HFTrainingArguments):
     )
     max_grad_norm: float = field(default=1.0)
     log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
-    ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses the SSDLM optimizer setting."})
-    optim: Union[OptimizerNames, str] = field(
-        default="adamw_hf",
-        metadata={"help": "The optimizer to use."},
+
+
+@dataclass
+class Seq2SeqTrainingArguments(TrainingArguments):
+    """
+    Args:
+        sortish_sampler (`bool`, *optional*, defaults to `False`):
+            Whether to use a *sortish sampler* or not. Only possible if the underlying datasets are *Seq2SeqDataset*
+            for now but will become generally available in the near future.
+            It sorts the inputs according to lengths in order to minimize the padding size, with a bit of randomness
+            for the training set.
+        predict_with_generate (`bool`, *optional*, defaults to `False`):
+            Whether to use generate to calculate generative metrics (ROUGE, BLEU).
+        generation_max_length (`int`, *optional*):
+            The `max_length` to use on each evaluation loop when `predict_with_generate=True`. Will default to the
+            `max_length` value of the model configuration.
+        generation_num_beams (`int`, *optional*):
+            The `num_beams` to use on each evaluation loop when `predict_with_generate=True`. Will default to the
+            `num_beams` value of the model configuration.
+    """
+
+    sortish_sampler: bool = field(default=False, metadata={"help": "Whether to use SortishSampler or not."})
+    predict_with_generate: bool = field(
+        default=False, metadata={"help": "Whether to use generate to calculate generative metrics (ROUGE, BLEU)."}
+    )
+    generation_max_length: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The `max_length` to use on each evaluation loop when `predict_with_generate=True`. Will default "
+                "to the `max_length` value of the model configuration."
+            )
+        },
+    )
+    generation_num_beams: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The `num_beams` to use on each evaluation loop when `predict_with_generate=True`. Will default "
+                "to the `num_beams` value of the model configuration."
+            )
+        },
     )
 
 
@@ -192,14 +229,76 @@ class DataTrainingArguments:
             )
         },
     )
-    span_infilling: bool = field(
-        default=False, metadata={"help": "If set, trains a conditional case with filling the spans."}
+    conditional_generation: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "It can be `span_infilling`, `prefix_lm`, `ul2`, or `ul2_with_unconditional`, `seq2seq`."
+            "In case of `span_infilling`: It trains/evals on filling spans like T5. In `prefix_lm`: it trains/evals"
+            "on completing the prefixes like GPT2. In `ul2`, it trains on a mixture of span_infilling, agressive"
+            "span_infilling, or prefix_lm and evals on prefix_lm with masking half of the sequence. In case of"
+            "`ul2_with_unconditional`: it uses ul2 with also including unconditional generation during training."
+            "`seq2seq` is used for translation or summarization tasks."
+        },
     )
-    prefix_lm: bool = field(default=False, metadata={"help": "If set, generates text conditioning on a prefix."})
-    mixed_pretrain_objectives: bool = field(
-        default=False, metadata={"help": "If sets considers the mixed pretraining objectives."}
+    # Parameters used in seq2seq training for summarization.
+    """
+    test_file: Optional[str] = field(
+        default=None,
+        metadata={"help": "An optional input test data file to evaluate the metrics (rouge) on (a jsonlines or csv file)."},
     )
-    ul2_objective: bool = field(default=False, metadata={"help": "If set, pretrains with UL2 and evals on the prefix generation."})
+    """
+    max_source_length: Optional[int] = field(
+        default=1024,
+        metadata={
+            "help": (
+                "The maximum total input sequence length after tokenization. Sequences longer "
+                "than this will be truncated, sequences shorter will be padded."
+            )
+        },
+    )
+    max_target_length: Optional[int] = field(
+        default=128,
+        metadata={
+            "help": (
+                "The maximum total sequence length for target text after tokenization. Sequences longer "
+                "than this will be truncated, sequences shorter will be padded."
+            )
+        },
+    )
+    val_max_target_length: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "The maximum total sequence length for validation target text after tokenization. Sequences longer "
+                "than this will be truncated, sequences shorter will be padded. Will default to `max_target_length`."
+                "This argument is also used to override the ``max_length`` param of ``model.generate``, which is used "
+                "during ``evaluate`` and ``predict``."
+            )
+        },
+    )
+    """
+    max_predict_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "For debugging purposes or quicker training, truncate the number of prediction examples to this "
+                "value if set."
+            )
+        },
+    )
+    """
+    num_beams: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Number of beams to use for evaluation. This argument will be passed to ``model.generate``, "
+                "which is used during ``evaluate`` and ``predict``."
+            )
+        },
+    )
+    # Translation arguments.
+    source_lang: str = field(default=None, metadata={"help": "Source language id for translation."})
+    target_lang: str = field(default=None, metadata={"help": "Target language id for translation."})
 
     def __post_init__(self):
         if (
@@ -218,6 +317,11 @@ class DataTrainingArguments:
                 extension = self.validation_file.split(".")[-1]
                 if extension not in ["csv", "json", "txt"]:
                     raise ValueError("`validation_file` should be a csv, a json or a txt file.")
+
+        if self.val_max_target_length is None:
+            self.val_max_target_length = self.max_target_length
+
+        assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
 
 
 @dataclass

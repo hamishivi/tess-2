@@ -3,7 +3,7 @@ import os
 import sys
 import pdb
 import datasets
-from sdlm.data.data_utils import load_data_new, tokenize_data_new
+from sdlm.data.data_utils import load_data, tokenize_data_new
 from datasets import load_from_disk, DatasetDict
 
 import transformers
@@ -44,9 +44,6 @@ def main():
         model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
-
-    if training_args.ssdlm_optimizer:
-        training_args.optim = "adamw_torch"
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -140,6 +137,7 @@ def main():
 
     # Causal language model.
     causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
+    causal_model = causal_model.to(training_args.device)
     causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
 
     noise_scheduler = SimplexDDPMScheduler(
@@ -160,7 +158,7 @@ def main():
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
     else:
-        raw_datasets = load_data_new(data_args, model_args)
+        raw_datasets = load_data(data_args, model_args)
         tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
 
     # TODO: is this getting the same on each process?
@@ -206,6 +204,20 @@ def main():
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
     )
 
+    if training_args.do_eval:
+        is_conditional_generation = data_args.conditional_generation is not None
+        prefix_lm_eval = (
+            True if data_args.conditional_generation in ["prefix_lm", "ul2", "ul2_with_unconditional"] else False
+        )
+
+        compute_metrics = lambda results: evaluate_generation(
+            results,
+            causal_model,
+            causal_tokenizer,
+            is_conditional_generation,
+            prefix_lm_eval=prefix_lm_eval,
+        )
+
     # Initialize our Trainer
     trainer = DiffusionTrainer(
         model=model,
@@ -214,14 +226,12 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=evaluate_generation if training_args.do_eval else None,
+        compute_metrics=compute_metrics if training_args.do_eval else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
         inference_noise_scheduler=inference_noise_scheduler,
-        causal_model=causal_model,
-        causal_tokenizer=causal_tokenizer,
     )
 
     # Training

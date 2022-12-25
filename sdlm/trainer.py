@@ -17,14 +17,14 @@ from transformers.trainer_pt_utils import (
     nested_concat,
     nested_truncate,
 )
-from transformers.integrations import is_fairscale_available, TensorBoardCallback
-from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, ShardedDDPOption, seed_worker
+from transformers.integrations import TensorBoardCallback
+from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, seed_worker
 from transformers.utils import logging, is_datasets_available
 from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
-from sdlm.utils import self_condition_preds, get_norm_stats
+from sdlm.utils import self_condition_preds
 
 
 if is_apex_available():
@@ -33,9 +33,6 @@ if is_apex_available():
 if is_datasets_available():
     import datasets
 
-if is_fairscale_available():
-    dep_version_check("fairscale")
-    from fairscale.optim import OSS
 
 IS_SAGEMAKER_MP_POST_1_10 = False
 
@@ -55,8 +52,6 @@ class EvalLoopOutput(NamedTuple):
 class DiffusionTrainer(Trainer):
     def __init__(
         self,
-        causal_model,
-        causal_tokenizer,
         noise_scheduler,
         inference_noise_scheduler,
         diffusion_args,
@@ -70,14 +65,8 @@ class DiffusionTrainer(Trainer):
         self.data_args = data_args
         self.vocab_size = self.model.config.vocab_size
         self.inference_noise_scheduler = inference_noise_scheduler
-        self.causal_model = causal_model
-        self._move_model_to_device(self.causal_model, self.args.device)
-        self.causal_tokenizer = causal_tokenizer
         self.tb_writer = self.get_tb_writer()
         self.eos_token_id = self.tokenizer.eos_token_id
-        self.prefix_lm_eval = (
-            True if (data_args.prefix_lm or data_args.mixed_pretrain_objectives or data_args.ul2_objective) else False
-        )
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -183,12 +172,7 @@ class DiffusionTrainer(Trainer):
         Works both with or without labels.
         """
         args = self.args
-        is_conditional_generation = (
-            self.data_args.span_infilling
-            or self.data_args.mixed_pretrain_objectives
-            or self.data_args.prefix_lm
-            or self.data_args.ul2_objective
-        )
+        is_conditional_generation = self.data_args.conditional_generation is not None
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
         # if eval is called w/o train init deepspeed here
@@ -306,7 +290,6 @@ class DiffusionTrainer(Trainer):
                     if simplex_host is None
                     else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
                 )
-
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
         # Gather all remaining tensors and put them back on the CPU
@@ -349,7 +332,6 @@ class DiffusionTrainer(Trainer):
             all_logits = nested_truncate(all_logits, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
-
         # Generates the texts.
         results = {}
         if is_conditional_generation:
@@ -373,24 +355,8 @@ class DiffusionTrainer(Trainer):
                 }
             )
             results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
-
-        # if self.data_args.prefix_lm:
-        #    # We need to pass the prefixes in this case.
-        #    prefixes = [input[~mask] for input, mask in zip(all_inputs, all_masks)]
-        #    prefixes = self.tokenizer.batch_decode(prefixes, skip_special_tokens=True)
-        #    results.update({"prefixes": prefixes})
-
-        # Metrics!
-        # TODO: make sure causal model is going through the same stuff as the model.
-        # TODO: we need to make sure metric for checkpoint is selected.
-        metrics = self.compute_metrics(
-            results,
-            self.causal_model,
-            self.causal_tokenizer,
-            is_conditional_generation,
-            prefix_lm_eval=self.prefix_lm_eval,
-        )
-
+        # Metrics.
+        metrics = self.compute_metrics(results)
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
 
@@ -401,7 +367,6 @@ class DiffusionTrainer(Trainer):
         for key in list(metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
-
         return EvalLoopOutput(
             logits=all_logits,
             simplex=all_simplex,
@@ -443,8 +408,7 @@ class DiffusionTrainer(Trainer):
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         start_time = time.time()
 
-        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
-        output = eval_loop(
+        output = self.evaluation_loop(
             eval_dataloader,
             description="Evaluation",
             # No point gathering the predictions if there are no metrics, otherwise we defer to
@@ -542,49 +506,3 @@ class DiffusionTrainer(Trainer):
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
-
-    def create_optimizer(self):
-        """
-        Setup the optimizer.
-        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
-        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
-        """
-        if not self.args.ssdlm_optimizer:
-            return super().create_optimizer()
-
-        # SDDLM optimizer.
-        opt_model = self.model
-
-        if self.optimizer is None:
-            no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
-            optimizer_grouped_parameters = [
-                {
-                    "params": [p for n, p in opt_model.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": self.args.weight_decay,
-                },
-                {
-                    "params": [p for n, p in opt_model.named_parameters() if any(nd in n for nd in no_decay)],
-                    "weight_decay": 0.0,
-                },
-            ]
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
-                self.optimizer = OSS(
-                    params=optimizer_grouped_parameters,
-                    optim=optimizer_cls,
-                    **optimizer_kwargs,
-                )
-            else:
-                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-                if optimizer_cls.__name__ == "Adam8bit":
-                    import bitsandbytes
-
-                    manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
-
-                    for module in opt_model.modules():
-                        if isinstance(module, nn.Embedding):
-                            manager.register_module_override(module, "weight", {"optim_bits": 32})
-                            logger.debug(f"bitsandbytes: will optimize {module} in fp32")
-
-        return self.optimizer

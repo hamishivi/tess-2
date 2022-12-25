@@ -2,10 +2,24 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, Union
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
-from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch, Objective
+from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch
 import numpy as np
 import pdb
 from random import choices
+import torch
+from enum import Enum
+
+
+class Objective(Enum):
+    # Prefix language modeling like GPT style pretraining.
+    prefix = 1
+    # T5 objective with a range of 2 to 5 tokens as the span length, which masks about 15% of input tokens.
+    t5 = 2
+    # Aggressive denoising where approximately 50% of the input sequence is masked.
+    aggressive_t5 = 3
+    # Unconditional generation case.
+    unconditional = 4
+
 
 # TODO: these are for sequence length of 100, adapt for 200.
 OBJECTIVE_SETTINGS = {
@@ -62,14 +76,11 @@ class SpanInfillingDataCollator:
         self.max_length = max_length
         self.pad_to_multiple_of = pad_to_multiple_of
         self.return_tensors = return_tensors
-        self.span_infilling = data_args.span_infilling
+        self.conditional_generation = data_args.conditional_generation
         self.extra_padding_ratio = data_args.extra_padding_ratio
         self.rng = np.random.default_rng(seed)
-        self.mixed_pretrain_objectives = data_args.mixed_pretrain_objectives
-        self.ul2_objective = data_args.ul2_objective
-        self.prefix_lm = data_args.prefix_lm
         self.mode = mode
-        if self.mixed_pretrain_objectives and mode == "train":
+        if self.conditional_generation == "ul2_with_unconditional" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
@@ -79,13 +90,13 @@ class SpanInfillingDataCollator:
             )
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
             self.mask_generator[Objective.unconditional] = lambda batch: None
-        elif self.span_infilling:
+        elif self.conditional_generation == "span_infilling":
             self.mask_generator = lambda batch: t5_random_spans_mask_batch(
                 batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
             )
-        elif self.prefix_lm:
+        elif self.conditional_generation == "prefix_lm":
             self.mask_generator = lambda batch: gpt_span_mask_batch(batch, use_half_length_as_prefix_size=(mode == "eval"))
-        elif self.ul2_objective and mode == "train":
+        elif self.conditional_generation == "ul2" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
@@ -107,9 +118,9 @@ class SpanInfillingDataCollator:
                 )
 
         masks = {}
-        if self.span_infilling or self.prefix_lm:
+        if self.conditional_generation in ["span_infilling", "prefix_lm"]:
             masks = {"span_mask": self.mask_generator(features)}
-        elif self.mixed_pretrain_objectives and self.mode == "train":
+        elif self.conditional_generation == "ul2_with_unconditional" and self.mode == "train":
             objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
             weights = [0.25, 0.25, 0.25, 0.25]
             objective = choices(objectives, weights)[0]
@@ -118,7 +129,7 @@ class SpanInfillingDataCollator:
                 masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
-        elif self.ul2_objective and self.mode == "train":
+        elif self.conditional_generation == "ul2" and self.mode == "train":
             objectives = [Objective.t5, Objective.prefix, Objective.aggressive_t5]
             weights = [0.25, 0.25, 0.25]
             objective = choices(objectives, weights)[0]
@@ -127,7 +138,7 @@ class SpanInfillingDataCollator:
                 masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
-        elif self.mode == "eval" and (self.ul2_objective or self.mixed_pretrain_objectives):
+        elif self.mode == "eval" and self.conditional_generation in ["ul2", "ul2_with_unconditional"]:
             masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
         batch = self.tokenizer.pad(
             features,
@@ -139,3 +150,49 @@ class SpanInfillingDataCollator:
         if "attention_mask" in batch:
             del batch["attention_mask"]
         return {**batch, **masks}
+
+
+@dataclass
+class DataCollatorForSeq2Seq:
+    """
+    Data collator that will dynamically pad the inputs received, as well as the labels.
+    Args:
+        tokenizer ([`PreTrainedTokenizer`] or [`PreTrainedTokenizerFast`]):
+            The tokenizer used for encoding the data.
+        padding (`bool`, `str` or [`~utils.PaddingStrategy`], *optional*, defaults to `True`):
+            Select a strategy to pad the returned sequences (according to the model's padding side and padding index)
+            among:
+            - `True` or `'longest'`: Pad to the longest sequence in the batch (or no padding if only a single sequence
+              is provided).
+            - `'max_length'`: Pad to a maximum length specified with the argument `max_length` or to the maximum
+              acceptable input length for the model if that argument is not provided.
+            - `False` or `'do_not_pad'` (default): No padding (i.e., can output a batch with sequences of different
+              lengths).
+        max_length (`int`, *optional*):
+            Maximum length of the returned list and optionally padding length (see above).
+        pad_to_multiple_of (`int`, *optional*):
+            If set will pad the sequence to a multiple of the provided value.
+            This is especially useful to enable the use of Tensor Cores on NVIDIA hardware with compute capability >=
+            7.5 (Volta).
+    """
+
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        input_ids = [feature["input_ids"] for feature in features]
+        labels = [feature["labels"] for feature in features]
+        input_target = [input + target for input, target in zip(input_ids, labels)]
+        features = self.tokenizer.pad(
+            {"input_ids": input_target},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+        )
+        batch_length = features["input_ids"].shape[1]
+        masks = [len(input) * [False] + (batch_length - len(input)) * [True] for input in input_ids]
+        features["span_mask"] = torch.tensor(masks)
+        return features

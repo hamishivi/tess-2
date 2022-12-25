@@ -3,18 +3,6 @@ import numpy as np
 import itertools
 import pdb
 import torch
-from enum import Enum
-
-
-class Objective(Enum):
-    # Prefix language modeling like GPT style pretraining.
-    prefix = 1
-    # T5 objective with a range of 2 to 5 tokens as the span length, which masks about 15% of input tokens.
-    t5 = 2
-    # Aggressive denoising where approximately 50% of the input sequence is masked.
-    aggressive_t5 = 3
-    # Unconditional generation case.
-    unconditional = 4
 
 
 # TODO: here the max perhaps needs to be also the half-length.

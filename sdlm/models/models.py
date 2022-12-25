@@ -142,7 +142,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
 
         outputs = self.roberta(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
-            attention_mask=attention_mask,
+            attention_mask=None,  # attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             head_mask=head_mask,
