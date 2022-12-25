@@ -12,19 +12,15 @@ from sdlm.data.data_utils import load_data
 
 import evaluate
 import transformers
-from transformers import (
-    AutoTokenizer,
-    DataCollatorForSeq2Seq,
-    HfArgumentParser,
-    default_data_collator,
-    set_seed,
-)
+from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
+from sdlm.data.data_utils import load_data
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
+import pdb
 from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
@@ -44,6 +40,7 @@ def main():
     else:
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
+    assert data_args.max_target_length + data_args.max_source_length <= data_args.max_seq_length
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_translation", model_args, data_args)
@@ -54,7 +51,6 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
-
     log_level = training_args.get_process_log_level()
     logger.setLevel(log_level)
     datasets.utils.logging.set_verbosity(log_level)
@@ -88,6 +84,7 @@ def main():
     set_seed(training_args.seed)
 
     raw_datasets = load_data(data_args, model_args)
+
     config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
@@ -157,11 +154,9 @@ def main():
     def preprocess_function(examples):
         inputs = [ex[source_lang] for ex in examples["translation"]]
         targets = [ex[target_lang] for ex in examples["translation"]]
-        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=padding, truncation=True)
-
+        model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=False, truncation=True)
         # Tokenize targets with the `text_target` keyword argument
-        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=padding, truncation=True)
-
+        labels = tokenizer(text_target=targets, max_length=max_target_length, padding=False, truncation=True)
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
@@ -205,17 +200,14 @@ def main():
 
     # TODO: we may want to add predict back.
 
-    # Data collator
-    label_pad_token_id = tokenizer.pad_token_id
-    if data_args.pad_to_max_length:
-        data_collator = default_data_collator
-    else:
-        data_collator = DataCollatorForSeq2Seq(
-            tokenizer,
-            model=model,
-            label_pad_token_id=label_pad_token_id,
-            pad_to_multiple_of=8 if training_args.fp16 else None,
-        )
+    # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
+    data_collator = lambda mode: DataCollatorForSeq2Seq(
+        tokenizer,
+        # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
+        padding="max_length" if data_args.pad_to_max_length else True,
+        max_length=data_args.max_seq_length,
+        pad_to_multiple_of=8 if training_args.fp16 else None,
+    )
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
@@ -232,7 +224,8 @@ def main():
     )
 
     # Metric
-    metric = evaluate.load("sacrebleu")
+    # NOTE: remove keep_in_memory in case of memory issues.
+    metric = evaluate.load("sacrebleu", keep_in_memory=True)
 
     def postprocess_text(preds, labels):
         preds = [pred.strip() for pred in preds]
@@ -252,9 +245,6 @@ def main():
 
         result = metric.compute(predictions=decoded_preds, references=decoded_labels)
         result = {"bleu": result["score"]}
-
-        prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds]
-        result["gen_len"] = np.mean(prediction_lens)
         result = {k: round(v, 4) for k, v in result.items()}
         return result
 
@@ -266,7 +256,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.predict_with_generate else None,
+        compute_metrics=compute_metrics if training_args.do_eval else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
@@ -302,8 +292,9 @@ def main():
     num_beams = data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
-
-        metrics = trainer.evaluate(max_length=max_length, num_beams=num_beams, metric_key_prefix="eval")
+        # TODO: num_beans should be added for ours as well.
+        # metrics = trainer.evaluate(max_length=max_length, num_beams=num_beams, metric_key_prefix="eval")
+        metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
