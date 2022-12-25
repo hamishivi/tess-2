@@ -238,11 +238,12 @@ def main():
 
     def compute_metrics(results):
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
-        decoded_labels = process_text(results["gold_texts_masked"])
         metrics = {}
         for key in keys:
             decoded_preds = process_text(results[key])
-            # Some simple post-processing
+            # Note that since decoded_labels is getting updated after post-process, we 
+            # need to compute it here for each key.
+            decoded_labels = process_text(results["gold_texts_masked"])
             decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
             key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
             key_metrics = {"bleu": key_metrics["score"]}
