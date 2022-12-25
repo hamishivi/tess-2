@@ -32,7 +32,7 @@ from sdlm.inference.inference_utils import process_text
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
 
-require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/translation/requirements.txt")
+require_version("datasets>=1.8.0")
 
 logger = logging.getLogger(__name__)
 
