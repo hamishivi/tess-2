@@ -185,7 +185,6 @@ class DataCollatorForSeq2Seq:
         input_ids = [feature["input_ids"] for feature in features]
         labels = [feature["labels"] for feature in features]
         input_target = [input + target for input, target in zip(input_ids, labels)]
-
         features = self.tokenizer.pad(
             {"input_ids": input_target},
             padding=self.padding,
@@ -193,7 +192,6 @@ class DataCollatorForSeq2Seq:
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors="pt",
         )
-
         batch_length = features["input_ids"].shape[1]
         masks = [len(input) * [False] + (batch_length - len(input)) * [True] for input in input_ids]
         features["span_mask"] = torch.tensor(masks)

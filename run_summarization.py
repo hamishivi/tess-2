@@ -262,6 +262,7 @@ def main():
     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
     data_collator = lambda mode: DataCollatorForSeq2Seq(
         tokenizer,
+        # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
         max_length=data_args.max_seq_length,
         pad_to_multiple_of=8 if training_args.fp16 else None,
@@ -282,7 +283,8 @@ def main():
     )
 
     # Metric
-    metric = evaluate.load("rouge")
+    # NOTE: remove keep_in_memory in case of memory issues.
+    metric = evaluate.load("rouge", keep_in_memory=True)
 
     def postprocess_text(preds, labels):
         preds = [pred.strip() for pred in preds]

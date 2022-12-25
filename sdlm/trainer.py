@@ -290,7 +290,6 @@ class DiffusionTrainer(Trainer):
                     if simplex_host is None
                     else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
                 )
-
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
         # Gather all remaining tensors and put them back on the CPU
@@ -333,7 +332,6 @@ class DiffusionTrainer(Trainer):
             all_logits = nested_truncate(all_logits, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
-
         # Generates the texts.
         results = {}
         if is_conditional_generation:
@@ -357,12 +355,8 @@ class DiffusionTrainer(Trainer):
                 }
             )
             results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
-
-        # Metrics!
-        # TODO: make sure causal model is going through the same stuff as the model.
-        # TODO: we need to make sure metric for checkpoint is selected.
+        # Metrics.
         metrics = self.compute_metrics(results)
-
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
 
@@ -373,7 +367,6 @@ class DiffusionTrainer(Trainer):
         for key in list(metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
-
         return EvalLoopOutput(
             logits=all_logits,
             simplex=all_simplex,
