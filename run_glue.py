@@ -13,8 +13,6 @@ import pdb
 import evaluate
 import transformers
 from transformers import (
-    AutoConfig,
-    AutoModelForSequenceClassification,
     AutoTokenizer,
     DataCollatorWithPadding,
     EvalPrediction,
@@ -29,7 +27,9 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from sdlm.arguments import ModelArguments, DiffusionArguments
 from sdlm.arguments import DataTrainingArguments as BaseDataTrainingArguments
-
+from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
+from sdlm.schedulers import SimplexDDPMScheduler
+from sdlm.data.data_utils import split_glue
 
 check_min_version("4.25.0")
 
@@ -46,6 +46,7 @@ task_to_keys = {
     "stsb": ("sentence1", "sentence2"),
     "wnli": ("sentence1", "sentence2"),
 }
+
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,9 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
+    # Split dataset, since test sets of GLUE do not have the labels.
+    raw_datasets = split_glue(raw_datasets, data_args.dataset_name, training_args.seed)
+
     # Labels
     is_regression = data_args.dataset_name == "stsb"
     if not is_regression:
@@ -131,15 +135,16 @@ def main():
     else:
         num_labels = 1
 
-    # Load pretrained model and tokenizer
-    config = AutoConfig.from_pretrained(
+    config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
-        num_labels=num_labels,
-        finetuning_task=data_args.dataset_name,
+        self_condition=diffusion_args.self_condition,
+        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
+        deepmind_conditional=diffusion_args.deepmind_conditional,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -147,26 +152,30 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-        ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
-    )
+    if model_args.model_name_or_path:
+        model = RobertaForDiffusionLM.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    else:
+        logger.info("Training new model from scratch")
+        model = RobertaForDiffusionLM.from_config(config)
 
     # Preprocessing the raw_datasets
     sentence1_key, sentence2_key = task_to_keys[data_args.dataset_name]
 
     padding = "max_length" if data_args.pad_to_max_length else False
 
+    """
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     if not is_regression:
         model.config.label2id = {l: i for i, l in enumerate(label_list)}
         model.config.id2label = {id: label for label, id in config.label2id.items()}
-
+    """
     if data_args.max_seq_length > tokenizer.model_max_length:
         logger.warning(
             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
@@ -238,6 +247,20 @@ def main():
         data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
     else:
         data_collator = None
+    noise_scheduler = SimplexDDPMScheduler(
+        num_train_timesteps=diffusion_args.num_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
+        device=training_args.device,
+    )
+    inference_noise_scheduler = SimplexDDPMScheduler(
+        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
+        beta_schedule=diffusion_args.beta_schedule,
+        simplex_value=diffusion_args.simplex_value,
+        clip_sample=diffusion_args.clip_sample,
+        device=training_args.device,
+    )
 
     # Initialize our Trainer
     trainer = Trainer(

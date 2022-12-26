@@ -3,6 +3,11 @@ from datasets import load_dataset
 import logging
 import torch
 import pdb
+from datasets import DatasetDict
+
+SMALL_GLUE_DATA = ["cola", "wnli", "rte", "mrpc", "stsb"]
+LARGE_GLUE_DATA = ["qnli", "qqp", "sst2"]
+
 
 logger = logging.getLogger(__name__)
 
@@ -248,3 +253,34 @@ def split_data_to_train_validation(data_args, data, seed):
     data["train"], data["validation"] = train, validation
     assert len(data["train"]) == train_size and len(data["validation"]) == validation_size
     return data
+
+
+def split_glue(raw_datasets, dataset_name, seed):
+    """Since glue test sets are not public, splits the data splits to form test sets.
+
+    For large datasets (#samples > 10K), divides training set into 1K as validation and
+    rest as train, using original validation as test. Otherwise, divides validation set
+    to half (half for validation and half for test)."""
+    pdb.set_trace()
+    if dataset_name == "mnli":
+        raw_datasets = DatasetDict(
+            {
+                "test": raw_datasets["validation_matched"],
+                "validation": raw_datasets["validation_mismatched"],
+                "train": raw_datasets["train"],
+            }
+        )
+    elif dataset_name in SMALL_GLUE_DATA:
+        # Splits the validation set into half for validation and half for test.
+        splits = raw_datasets["validation"].train_test_split(test_size=0.5, shuffle=True, seed=seed)
+        raw_datasets = DatasetDict({"validation": splits["train"], "test": splits["test"], "train": raw_datasets["train"]})
+    elif dataset_name in LARGE_GLUE_DATA:
+        # Splits the training set into 1K as validation, rest as train.
+        test_size = 1000 / len(raw_datasets["train"])
+        splits = raw_datasets["train"].train_test_split(test_size=test_size, shuffle=True, seed=seed)
+        raw_datasets = DatasetDict(
+            {"train": splits["train"], "validation": splits["test"], "test": raw_datasets["validation"]}
+        )
+    else:
+        raise NotImplementedError
+    return raw_datasets
