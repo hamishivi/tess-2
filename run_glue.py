@@ -16,7 +16,6 @@ from transformers import (
     AutoTokenizer,
     EvalPrediction,
     HfArgumentParser,
-    Trainer,
     TrainingArguments,
     set_seed,
 )
@@ -130,12 +129,6 @@ def main():
 
     # Labels
     is_regression = data_args.dataset_name == "stsb"
-    if not is_regression:
-        label_list = raw_datasets["train"].features["label"].names
-        num_labels = len(label_list)
-    else:
-        num_labels = 1
-
     config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
@@ -169,14 +162,6 @@ def main():
     # Preprocessing the raw_datasets
     sentence1_key, sentence2_key = task_to_keys[data_args.dataset_name]
 
-    padding = "max_length" if data_args.pad_to_max_length else False
-
-    """
-    # Some models have set the order of the labels to use, so let's make sure we do use it.
-    if not is_regression:
-        model.config.label2id = {l: i for i, l in enumerate(label_list)}
-        model.config.id2label = {id: label for label, id in config.label2id.items()}
-    """
     if data_args.max_seq_length > tokenizer.model_max_length:
         logger.warning(
             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
@@ -320,18 +305,11 @@ def main():
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
 
-        # Loop to handle MNLI double evaluation (matched, mis-matched)
-        tasks = [data_args.dataset_name]
-        eval_datasets = [eval_dataset]
-
-        for eval_dataset, task in zip(eval_datasets, tasks):
-            metrics = trainer.evaluate(eval_dataset=eval_dataset)
-
-            max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-            metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
-            trainer.log_metrics("eval", metrics)
-            trainer.save_metrics("eval", metrics)
+        metrics = trainer.evaluate()
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
 
 
 if __name__ == "__main__":
