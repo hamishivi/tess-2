@@ -7,6 +7,7 @@ from transformers import TrainingArguments as HFTrainingArguments
 
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+GLUE_TASKS = ["cola", "mnli", "mrpc", "qnli", "qqp", "rte", "sst2", "stsb", "wnli"]
 
 
 @dataclass
@@ -174,6 +175,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
     )
+    test_file: Optional[str] = field(default=None, metadata={"help": "A text file containing the test data."})
     overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
     validation_split_ratio: Optional[float] = field(
         default=0.01,
@@ -281,7 +283,6 @@ class DataTrainingArguments:
             )
         },
     )
-    """
     max_predict_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -291,7 +292,6 @@ class DataTrainingArguments:
             )
         },
     )
-    """
     num_beams: Optional[int] = field(
         default=None,
         metadata={
@@ -304,15 +304,22 @@ class DataTrainingArguments:
     # Translation arguments.
     source_lang: str = field(default=None, metadata={"help": "Source language id for translation."})
     target_lang: str = field(default=None, metadata={"help": "Target language id for translation."})
+    # Arguments for `run_glue.py`
+    task_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of the task to train on: " + ", ".join(GLUE_TASKS)},
+    )
 
     def __post_init__(self):
         if (
             not self.tokenized_data_path
             and self.dataset_name is None
-            and self.train_file is None
-            and self.validation_file is None
+            and (self.train_file is None and self.validation_file is None)
+            and self.task_name is None
         ):
-            raise ValueError("Need either a dataset name or a training/validation file or a tokenized dataset path.")
+            raise ValueError(
+                "Need either a task (only used for the `run_glue.py`), a dataset name or a training/validation file or a tokenized dataset path."
+            )
         else:
             if self.train_file is not None:
                 extension = self.train_file.split(".")[-1]
