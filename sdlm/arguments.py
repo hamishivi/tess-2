@@ -321,7 +321,8 @@ class DataTrainingArguments:
         if self.val_max_target_length is None:
             self.val_max_target_length = self.max_target_length
 
-        assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
+        if self.conditional_generation is not None:
+           assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
 
 
 @dataclass
