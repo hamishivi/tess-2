@@ -20,7 +20,7 @@ class Objective(Enum):
     # Unconditional generation case.
     unconditional = 4
 
-
+# TODO: automize this one.
 # TODO: these are for sequence length of 100, adapt for 200.
 OBJECTIVE_SETTINGS = {
     Objective.t5: [

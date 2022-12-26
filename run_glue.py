@@ -185,8 +185,10 @@ def main():
 
     def preprocess_function(examples):
         # Tokenize the texts
+        # TODO: we may want to include keywords here.
         args = (examples[sentence1_key],) if sentence2_key is None else (examples[sentence1_key], examples[sentence2_key])
-        result = tokenizer(*args, padding=padding, max_length=max_seq_length, truncation=True)
+        result = tokenizer(*args, padding=False, max_length=max_seq_length, truncation=True)
+        # Tokenize the labels.
         return result
 
     with training_args.main_process_first(desc="dataset map pre-processing"):

@@ -261,7 +261,6 @@ def split_glue(raw_datasets, dataset_name, seed):
     For large datasets (#samples > 10K), divides training set into 1K as validation and
     rest as train, using original validation as test. Otherwise, divides validation set
     to half (half for validation and half for test)."""
-    pdb.set_trace()
     if dataset_name == "mnli":
         raw_datasets = DatasetDict(
             {
