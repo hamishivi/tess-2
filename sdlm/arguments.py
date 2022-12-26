@@ -62,6 +62,11 @@ class ModelArguments:
         default="EleutherAI/gpt-neo-1.3B",
         metadata={"help": "The autoregressive model used to measure the evaluation perplexity."},
     )
+    # For glue classification tasks.
+    ignore_mismatched_sizes: bool = field(
+        default=False,
+        metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
@@ -322,7 +327,7 @@ class DataTrainingArguments:
             self.val_max_target_length = self.max_target_length
 
         if self.conditional_generation is not None:
-           assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
+            assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
 
 
 @dataclass
