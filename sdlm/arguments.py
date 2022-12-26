@@ -298,7 +298,7 @@ class DataTrainingArguments:
     # Translation arguments.
     source_lang: str = field(default=None, metadata={"help": "Source language id for translation."})
     target_lang: str = field(default=None, metadata={"help": "Target language id for translation."})
-
+    add_t5_tags: bool = field(default=False, metadata={"help": "In case of GLUE, it adds tags to the sentences like `sentence1:` ... ."})
     def __post_init__(self):
         if (
             not self.tokenized_data_path

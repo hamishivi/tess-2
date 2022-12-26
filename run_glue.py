@@ -30,6 +30,7 @@ from sdlm.arguments import DataTrainingArguments as BaseDataTrainingArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.data.data_utils import split_glue
+from sdlm.utils import round_stsb_target
 
 check_min_version("4.25.0")
 
@@ -184,11 +185,24 @@ def main():
     max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
 
     def preprocess_function(examples):
-        # Tokenize the texts
-        # TODO: we may want to include keywords here.
-        args = (examples[sentence1_key],) if sentence2_key is None else (examples[sentence1_key], examples[sentence2_key])
+        # Tokenize the texts.
+        if data_args.add_t5_tags:
+            sentence1_with_tag = [sentence1_key + ": " + sentence_1 for sentence_1 in examples[sentence1_key]]
+            if sentence2_key is not None:
+                sentence2_with_tag = [sentence2_key + ": " + sentence_2 for sentence_2 in examples[sentence2_key]]
+            args = (sentence1_with_tag,) if sentence2_key is None else (sentence1_with_tag, sentence2_with_tag)
+        else:
+            args = (
+                (examples[sentence1_key],) if sentence2_key is None else (examples[sentence1_key], examples[sentence2_key])
+            )
         result = tokenizer(*args, padding=False, max_length=max_seq_length, truncation=True)
+
         # Tokenize the labels.
+        targets = [str(round_stsb_target(label)) if is_regression else str(label) for label in examples["label"]]
+        if data_args.add_t5_tags:
+            targets = ["label: " + label for label in targets]
+        labels = tokenizer(text_target=targets, max_length=max_seq_length, padding=False, truncation=True)
+        result["labels"] = labels["input_ids"]
         return result
 
     with training_args.main_process_first(desc="dataset map pre-processing"):
@@ -221,7 +235,7 @@ def main():
         if data_args.max_predict_samples is not None:
             max_predict_samples = min(len(predict_dataset), data_args.max_predict_samples)
             predict_dataset = predict_dataset.select(range(max_predict_samples))
-    
+
     # Log a few random samples from the training set:
     if training_args.do_train:
         for index in random.sample(range(len(train_dataset)), 3):
