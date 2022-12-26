@@ -14,12 +14,10 @@ import evaluate
 import transformers
 from transformers import (
     AutoTokenizer,
-    DataCollatorWithPadding,
     EvalPrediction,
     HfArgumentParser,
     Trainer,
     TrainingArguments,
-    default_data_collator,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -31,6 +29,8 @@ from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.data.data_utils import split_glue
 from sdlm.utils import round_stsb_target
+from sdlm.data.data_collator import DataCollatorForSeq2Seq
+from sdlm.trainer import DiffusionTrainer
 
 check_min_version("4.25.0")
 
@@ -228,6 +228,9 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
+        def preprocess_logits_for_metrics(logits):
+            return logits.argmax(dim=-1)
+
     if training_args.do_predict or data_args.dataset_name is not None or data_args.test_file is not None:
         if "test" not in raw_datasets:
             raise ValueError("--do_predict requires a test dataset")
@@ -256,12 +259,14 @@ def main():
 
     # Data collator will default to DataCollatorWithPadding when the tokenizer is passed to Trainer, so we change it if
     # we already did the padding.
-    if data_args.pad_to_max_length:
-        data_collator = default_data_collator
-    elif training_args.fp16:
-        data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
-    else:
-        data_collator = None
+    # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
+    data_collator = lambda mode: DataCollatorForSeq2Seq(
+        tokenizer,
+        # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
+        padding="max_length" if data_args.pad_to_max_length else True,
+        max_length=data_args.max_seq_length,
+        pad_to_multiple_of=8 if training_args.fp16 else None,
+    )
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
@@ -278,14 +283,19 @@ def main():
     )
 
     # Initialize our Trainer
-    trainer = Trainer(
+    trainer = DiffusionTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
-        compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        compute_metrics=compute_metrics if training_args.do_eval else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+        noise_scheduler=noise_scheduler,
+        diffusion_args=diffusion_args,
+        data_args=data_args,
+        inference_noise_scheduler=inference_noise_scheduler,
     )
 
     # Training
@@ -313,14 +323,6 @@ def main():
         # Loop to handle MNLI double evaluation (matched, mis-matched)
         tasks = [data_args.dataset_name]
         eval_datasets = [eval_dataset]
-        if data_args.dataset_name == "mnli":
-            tasks.append("mnli-mm")
-            valid_mm_dataset = raw_datasets["validation_mismatched"]
-            if data_args.max_eval_samples is not None:
-                max_eval_samples = min(len(valid_mm_dataset), data_args.max_eval_samples)
-                valid_mm_dataset = valid_mm_dataset.select(range(max_eval_samples))
-            eval_datasets.append(valid_mm_dataset)
-            combined = {}
 
         for eval_dataset, task in zip(eval_datasets, tasks):
             metrics = trainer.evaluate(eval_dataset=eval_dataset)
@@ -328,13 +330,8 @@ def main():
             max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
             metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
-            if task == "mnli-mm":
-                metrics = {k + "_mm": v for k, v in metrics.items()}
-            if "mnli" in task:
-                combined.update(metrics)
-
             trainer.log_metrics("eval", metrics)
-            trainer.save_metrics("eval", combined if task is not None and "mnli" in task else metrics)
+            trainer.save_metrics("eval", metrics)
 
 
 if __name__ == "__main__":
