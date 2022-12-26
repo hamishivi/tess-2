@@ -161,12 +161,7 @@ def main():
     # Preprocessing the raw_datasets
     sentence1_key, sentence2_key = task_to_keys[data_args.dataset_name]
 
-    # Padding strategy
-    if data_args.pad_to_max_length:
-        padding = "max_length"
-    else:
-        # We will pad later, dynamically at batch creation, to the max sequence length in each batch
-        padding = False
+    padding = "max_length" if data_args.pad_to_max_length else False
 
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     label_to_id = None
@@ -229,6 +224,7 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
+    """
     if training_args.do_predict or data_args.dataset_name is not None or data_args.test_file is not None:
         if "test" not in raw_datasets and "test_matched" not in raw_datasets:
             raise ValueError("--do_predict requires a test dataset")
@@ -236,7 +232,7 @@ def main():
         if data_args.max_predict_samples is not None:
             max_predict_samples = min(len(predict_dataset), data_args.max_predict_samples)
             predict_dataset = predict_dataset.select(range(max_predict_samples))
-
+    """
     # Log a few random samples from the training set:
     if training_args.do_train:
         for index in random.sample(range(len(train_dataset)), 3):
@@ -322,7 +318,7 @@ def main():
 
             trainer.log_metrics("eval", metrics)
             trainer.save_metrics("eval", combined if task is not None and "mnli" in task else metrics)
-
+    """
     if training_args.do_predict:
         logger.info("*** Predict ***")
 
@@ -350,6 +346,8 @@ def main():
                         else:
                             item = label_list[item]
                             writer.write(f"{index}\t{item}\n")
+
+    """
 
 
 if __name__ == "__main__":
