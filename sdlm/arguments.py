@@ -117,8 +117,6 @@ class Seq2SeqTrainingArguments(TrainingArguments):
             for now but will become generally available in the near future.
             It sorts the inputs according to lengths in order to minimize the padding size, with a bit of randomness
             for the training set.
-        predict_with_generate (`bool`, *optional*, defaults to `False`):
-            Whether to use generate to calculate generative metrics (ROUGE, BLEU).
         generation_max_length (`int`, *optional*):
             The `max_length` to use on each evaluation loop when `predict_with_generate=True`. Will default to the
             `max_length` value of the model configuration.
@@ -128,9 +126,6 @@ class Seq2SeqTrainingArguments(TrainingArguments):
     """
 
     sortish_sampler: bool = field(default=False, metadata={"help": "Whether to use SortishSampler or not."})
-    predict_with_generate: bool = field(
-        default=False, metadata={"help": "Whether to use generate to calculate generative metrics (ROUGE, BLEU)."}
-    )
     generation_max_length: Optional[int] = field(
         default=None,
         metadata={
@@ -169,6 +164,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
     )
+    test_file: Optional[str] = field(default=None, metadata={"help": "A text file containing the test data."})
     overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
     validation_split_ratio: Optional[float] = field(
         default=0.01,
@@ -276,7 +272,6 @@ class DataTrainingArguments:
             )
         },
     )
-    """
     max_predict_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -286,7 +281,6 @@ class DataTrainingArguments:
             )
         },
     )
-    """
     num_beams: Optional[int] = field(
         default=None,
         metadata={
@@ -299,15 +293,19 @@ class DataTrainingArguments:
     # Translation arguments.
     source_lang: str = field(default=None, metadata={"help": "Source language id for translation."})
     target_lang: str = field(default=None, metadata={"help": "Target language id for translation."})
+    add_t5_tags: bool = field(
+        default=False, metadata={"help": "In case of GLUE, it adds tags to the sentences like `sentence1:` ... ."}
+    )
 
     def __post_init__(self):
         if (
             not self.tokenized_data_path
             and self.dataset_name is None
-            and self.train_file is None
-            and self.validation_file is None
+            and (self.train_file is None and self.validation_file is None)
         ):
-            raise ValueError("Need either a dataset name or a training/validation file or a tokenized dataset path.")
+            raise ValueError(
+                "Need either a task (only used for the `run_glue.py`), a dataset name or a training/validation file or a tokenized dataset path."
+            )
         else:
             if self.train_file is not None:
                 extension = self.train_file.split(".")[-1]
@@ -321,7 +319,8 @@ class DataTrainingArguments:
         if self.val_max_target_length is None:
             self.val_max_target_length = self.max_target_length
 
-        assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
+        if self.conditional_generation is not None:
+            assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
 
 
 @dataclass
