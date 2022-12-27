@@ -181,8 +181,6 @@ def main():
 
         # Tokenize the labels.
         targets = [str(round_stsb_target(label)) if is_regression else str(label) for label in examples["label"]]
-        if data_args.add_t5_tags:
-            targets = ["label: " + label for label in targets]
         labels = tokenizer(text_target=targets, max_length=max_seq_length, padding=False, truncation=True)
         result["labels"] = labels["input_ids"]
         return result
@@ -258,6 +256,7 @@ def main():
                 key_metrics["combined_score"] = np.mean(list(key_metrics.values())).item()
             key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
             metrics.update(key_metrics)
+
         return metrics
 
     # Data collator will default to DataCollatorWithPadding when the tokenizer is passed to Trainer, so we change it if
