@@ -25,7 +25,8 @@ from sdlm.utils import round_stsb_target, lmap
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.trainer import DiffusionTrainer
 from sdlm.inference.inference_utils import process_text
-from sdlm.metrics import get_glue_metrics
+from sdlm.metrics.metrics import get_glue_metrics
+from sdlm.data.postprocessors import get_post_processor
 
 check_min_version("4.25.0")
 
@@ -227,19 +228,27 @@ def main():
 
     # Get the metric function
     task_metrics = get_glue_metrics(data_args.dataset_name)
-    pdb.set_trace()
 
     def postprocess_text(texts):
         # TODO: maybe we need it for others as well.
         return lmap(str.strip, texts)
 
+    # TODO: we maybe need to pad till the sentences, and then predict the tokens we need for the few ones we need.
     def compute_metrics(results):
+        post_processor = get_post_processor(data_args.dataset_name)
+
         # TODO: we need to change the metrics here.
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         decoded_labels = postprocess_text(process_text(results["gold_texts_masked"]))
+        if post_processor is not None:
+            decoded_labels = [post_processor(x) for x in decoded_labels]
+
         metrics = {}
         for key in keys:
             decoded_preds = postprocess_text(process_text(results[key]))
+            if post_processor is not None:
+                decoded_preds = [post_processor(x) for x in decoded_preds]
+
             # TODO: check if we need use_stemmer=True.
             key_metrics = {}
             for metric in task_metrics:
