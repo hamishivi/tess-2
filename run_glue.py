@@ -14,7 +14,6 @@ import evaluate
 import transformers
 from transformers import (
     AutoTokenizer,
-    EvalPrediction,
     HfArgumentParser,
     set_seed,
 )
@@ -29,6 +28,7 @@ from sdlm.data.data_utils import split_glue
 from sdlm.utils import round_stsb_target
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.trainer import DiffusionTrainer
+from sdlm.inference.inference_utils import process_text
 
 check_min_version("4.25.0")
 
@@ -231,15 +231,20 @@ def main():
     # Get the metric function
     metric = evaluate.load("glue", data_args.dataset_name)
 
-    # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
-    # predictions and label_ids field) and has to return a dictionary string to float.
-    def compute_metrics(p: EvalPrediction):
-        preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        preds = np.squeeze(preds) if is_regression else np.argmax(preds, axis=1)
-        result = metric.compute(predictions=preds, references=p.label_ids)
-        if len(result) > 1:
-            result["combined_score"] = np.mean(list(result.values())).item()
-        return result
+    def compute_metrics(results):
+        # TODO: we need to change the metrics here.
+        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
+        decoded_labels = process_text(results["gold_texts_masked"])
+        metrics = {}
+        for key in keys:
+            decoded_preds = process_text(results[key])
+            # TODO: check if we need use_stemmer=True.
+            key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
+            if len(key_metrics) > 1:
+                key_metrics["combined_score"] = np.mean(list(key_metrics.values())).item()
+            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
+            metrics.update(key_metrics)
+        return metrics
 
     # Data collator will default to DataCollatorWithPadding when the tokenizer is passed to Trainer, so we change it if
     # we already did the padding.
@@ -251,6 +256,8 @@ def main():
         max_length=data_args.max_seq_length,
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
+    # TODO: here we need to make sure we mask to the maximum number of tokens in the labels to not signal the model for the labels.
+
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
