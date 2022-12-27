@@ -62,8 +62,8 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
     def forward(
         self,
         timesteps: torch.FloatTensor,
-        input_ids: Optional[torch.LongTensor] = None,
         simplex: torch.FloatTensor,
+        input_ids: Optional[torch.LongTensor] = None,
         span_mask: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
@@ -143,7 +143,7 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
 
         outputs = self.roberta(
             input_ids=None,
-            attention_mask=None, #attention_mask,
+            attention_mask=None,  # attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             head_mask=head_mask,

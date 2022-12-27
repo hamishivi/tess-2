@@ -24,6 +24,7 @@ import pdb
 from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
+import torch
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -228,7 +229,7 @@ def main():
 
     # Metric
     # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("sacrebleu", keep_in_memory=True)
+    metric = evaluate.load("sacrebleu")  # , keep_in_memory=True)
 
     def postprocess_text(preds, labels):
         preds = [pred.strip() for pred in preds]
