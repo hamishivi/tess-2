@@ -156,11 +156,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         sequence_output = outputs[0]
         prediction_scores = self.lm_head(sequence_output)
 
-        loss_fct = CrossEntropyLoss()
         masked_lm_loss = None
         # In case of classifier-free guidance, since the number of output logits and input token ids do not match
         # we do not compute the loss.
         if input_ids is not None and not classifier_free_guidance:
+            loss_fct = CrossEntropyLoss()
             labels = torch.where(span_mask, input_ids, -100) if span_mask is not None else input_ids
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
 

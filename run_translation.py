@@ -18,7 +18,7 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import load_data
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
-from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
+from sdlm.models import XLMRobertaForDiffusionLM, XLMRobertaDiffusionConfig
 from sdlm.schedulers import SimplexDDPMScheduler
 import pdb
 from sdlm.trainer import DiffusionTrainer
@@ -85,7 +85,7 @@ def main():
 
     raw_datasets = load_data(data_args, model_args)
 
-    config = RobertaDiffusionConfig.from_pretrained(
+    config = XLMRobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -102,7 +102,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
     if model_args.model_name_or_path:
-        model = RobertaForDiffusionLM.from_pretrained(
+        model = XLMRobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -112,7 +112,7 @@ def main():
         )
     else:
         logger.info("Training new model from scratch")
-        model = RobertaForDiffusionLM.from_config(config)
+        model = XLMRobertaForDiffusionLM.from_config(config)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
@@ -241,7 +241,7 @@ def main():
         metrics = {}
         for key in keys:
             decoded_preds = process_text(results[key])
-            # Note that since decoded_labels is getting updated after post-process, we 
+            # Note that since decoded_labels is getting updated after post-process, we
             # need to compute it here for each key.
             decoded_labels = process_text(results["gold_texts_masked"])
             decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
