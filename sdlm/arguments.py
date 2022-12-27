@@ -117,8 +117,6 @@ class Seq2SeqTrainingArguments(TrainingArguments):
             for now but will become generally available in the near future.
             It sorts the inputs according to lengths in order to minimize the padding size, with a bit of randomness
             for the training set.
-        predict_with_generate (`bool`, *optional*, defaults to `False`):
-            Whether to use generate to calculate generative metrics (ROUGE, BLEU).
         generation_max_length (`int`, *optional*):
             The `max_length` to use on each evaluation loop when `predict_with_generate=True`. Will default to the
             `max_length` value of the model configuration.
@@ -128,9 +126,6 @@ class Seq2SeqTrainingArguments(TrainingArguments):
     """
 
     sortish_sampler: bool = field(default=False, metadata={"help": "Whether to use SortishSampler or not."})
-    predict_with_generate: bool = field(
-        default=False, metadata={"help": "Whether to use generate to calculate generative metrics (ROUGE, BLEU)."}
-    )
     generation_max_length: Optional[int] = field(
         default=None,
         metadata={
@@ -298,7 +293,10 @@ class DataTrainingArguments:
     # Translation arguments.
     source_lang: str = field(default=None, metadata={"help": "Source language id for translation."})
     target_lang: str = field(default=None, metadata={"help": "Target language id for translation."})
-    add_t5_tags: bool = field(default=False, metadata={"help": "In case of GLUE, it adds tags to the sentences like `sentence1:` ... ."})
+    add_t5_tags: bool = field(
+        default=False, metadata={"help": "In case of GLUE, it adds tags to the sentences like `sentence1:` ... ."}
+    )
+
     def __post_init__(self):
         if (
             not self.tokenized_data_path

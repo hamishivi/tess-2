@@ -16,13 +16,12 @@ from transformers import (
     AutoTokenizer,
     EvalPrediction,
     HfArgumentParser,
-    TrainingArguments,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-from sdlm.arguments import ModelArguments, DiffusionArguments
+from sdlm.arguments import ModelArguments, DiffusionArguments, TrainingArguments
 from sdlm.arguments import DataTrainingArguments as BaseDataTrainingArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
@@ -304,7 +303,6 @@ def main():
     # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
-
         metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
