@@ -167,6 +167,13 @@ def main():
     max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
 
     def preprocess_function(examples):
+        # TODO: here max_length should be max_length minus length of labels.
+        # TODO: this is for now, but maybe compute one max_length as a whole.
+        # Tokenize the labels.
+        targets = [str(round_stsb_target(label)) if is_regression else str(label) for label in examples["label"]]
+        labels = tokenizer(text_target=targets, max_length=max_seq_length, padding=False, truncation=True)
+        max_label_length = max([len(label) for label in labels["input_ids"]])
+
         # Tokenize the texts.
         if data_args.add_t5_tags:
             sentence1_with_tag = [sentence1_key + ": " + sentence_1 for sentence_1 in examples[sentence1_key]]
@@ -177,11 +184,7 @@ def main():
             args = (
                 (examples[sentence1_key],) if sentence2_key is None else (examples[sentence1_key], examples[sentence2_key])
             )
-        result = tokenizer(*args, padding=False, max_length=max_seq_length, truncation=True)
-
-        # Tokenize the labels.
-        targets = [str(round_stsb_target(label)) if is_regression else str(label) for label in examples["label"]]
-        labels = tokenizer(text_target=targets, max_length=max_seq_length, padding=False, truncation=True)
+        result = tokenizer(*args, padding=False, max_length=max_seq_length - max_label_length, truncation=True)
         result["labels"] = labels["input_ids"]
         return result
 
