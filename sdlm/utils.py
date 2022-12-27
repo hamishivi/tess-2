@@ -6,6 +6,8 @@ import pdb
 from pathlib import Path
 from transformers.utils import logging
 import shutil
+import numpy as np
+from typing import Callable, Iterable, List
 
 logger = logging.get_logger(__name__)
 
@@ -98,3 +100,8 @@ def round_stsb_target(label):
       A preprocessed label.
     """
     return np.round((label * 5) / 5, decimals=1)
+
+
+def lmap(f: Callable, x: Iterable) -> List:
+    """list(map(f, x))"""
+    return list(map(f, x))

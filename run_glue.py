@@ -10,13 +10,9 @@ import datasets
 import numpy as np
 from datasets import load_dataset
 import pdb
-import evaluate
+
 import transformers
-from transformers import (
-    AutoTokenizer,
-    HfArgumentParser,
-    set_seed,
-)
+from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
@@ -25,10 +21,11 @@ from sdlm.arguments import DataTrainingArguments as BaseDataTrainingArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.data.data_utils import split_glue
-from sdlm.utils import round_stsb_target
+from sdlm.utils import round_stsb_target, lmap
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.trainer import DiffusionTrainer
 from sdlm.inference.inference_utils import process_text
+from sdlm.metrics import get_glue_metrics
 
 check_min_version("4.25.0")
 
@@ -229,17 +226,25 @@ def main():
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # Get the metric function
-    metric = evaluate.load("glue", data_args.dataset_name)
+    task_metrics = get_glue_metrics(data_args.dataset_name)
+    pdb.set_trace()
+
+    def postprocess_text(texts):
+        # TODO: maybe we need it for others as well.
+        return lmap(str.strip, texts)
 
     def compute_metrics(results):
         # TODO: we need to change the metrics here.
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
-        decoded_labels = process_text(results["gold_texts_masked"])
+        decoded_labels = postprocess_text(process_text(results["gold_texts_masked"]))
         metrics = {}
         for key in keys:
-            decoded_preds = process_text(results[key])
+            decoded_preds = postprocess_text(process_text(results[key]))
             # TODO: check if we need use_stemmer=True.
-            key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
+            key_metrics = {}
+            for metric in task_metrics:
+                key_metrics.update(metric(predictions=decoded_preds, targets=decoded_labels))
+            # key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
             if len(key_metrics) > 1:
                 key_metrics["combined_score"] = np.mean(list(key_metrics.values())).item()
             key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
