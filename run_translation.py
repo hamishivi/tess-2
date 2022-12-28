@@ -19,6 +19,7 @@ from transformers.utils.versions import require_version
 from sdlm.data.data_utils import load_data
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
 from sdlm.models import XLMRobertaForDiffusionLM, XLMRobertaDiffusionConfig
+from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
 import pdb
 from sdlm.trainer import DiffusionTrainer
@@ -86,7 +87,7 @@ def main():
 
     raw_datasets = load_data(data_args, model_args)
 
-    config = XLMRobertaDiffusionConfig.from_pretrained(
+    config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -103,7 +104,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
     if model_args.model_name_or_path:
-        model = XLMRobertaForDiffusionLM.from_pretrained(
+        model = RobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -113,7 +114,7 @@ def main():
         )
     else:
         logger.info("Training new model from scratch")
-        model = XLMRobertaForDiffusionLM.from_config(config)
+        model = RobertaForDiffusionLM.from_config(config)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
