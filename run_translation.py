@@ -18,12 +18,14 @@ from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import load_data
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
+from sdlm.models import XLMRobertaForDiffusionLM, XLMRobertaDiffusionConfig
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
 import pdb
 from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
+import torch
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -228,7 +230,7 @@ def main():
 
     # Metric
     # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("sacrebleu", keep_in_memory=True)
+    metric = evaluate.load("sacrebleu")  # , keep_in_memory=True)
 
     def postprocess_text(preds, labels):
         preds = [pred.strip() for pred in preds]
@@ -241,7 +243,7 @@ def main():
         metrics = {}
         for key in keys:
             decoded_preds = process_text(results[key])
-            # Note that since decoded_labels is getting updated after post-process, we 
+            # Note that since decoded_labels is getting updated after post-process, we
             # need to compute it here for each key.
             decoded_labels = process_text(results["gold_texts_masked"])
             decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
