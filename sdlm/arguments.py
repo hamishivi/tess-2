@@ -70,24 +70,6 @@ class ModelArguments:
 
 @dataclass
 class TrainingArguments(HFTrainingArguments):
-    per_device_train_batch_size: int = field(
-        default=8, metadata={"help": "Batch size (per device) for the training dataloader."}
-    )
-    per_device_eval_batch_size: int = field(
-        default=8, metadata={"help": "Batch size (per device) for the evaluation dataloader."}
-    )
-    learning_rate: float = field(
-        default=5e-5, metadata={"help": "Initial learning rate (after the potential warmup period) to use."}
-    )
-    weight_decay: float = field(default=0.0, metadata={"help": "Weight decay to use."})
-    num_train_epochs: int = field(default=3, metadata={"help": "Total number of training epochs to perform."})
-    max_steps: Optional[int] = field(
-        default=None,
-        metadata={"help": "Total number of training steps to perform. If provided, overrides num_train_epochs."},
-    )
-    gradient_accumulation_steps: int = field(
-        default=1, metadata={"help": "Number of updates steps to accumulate before performing a backward/update pass."}
-    )
     lr_scheduler_type: SchedulerType = field(
         default="linear",
         metadata={
@@ -97,14 +79,12 @@ class TrainingArguments(HFTrainingArguments):
             )
         },
     )
-    warmup_steps: int = field(default=0, metadata={"help": "Number of steps for the warmup in the lr scheduler."})
     output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
     seed: Optional[int] = field(default=42, metadata={"help": "A seed for reproducible training."})
     checkpointing_steps: int = field(default=1000, metadata={"help": "Specifies the checkpoint step."})
     resume_from_checkpoint: Optional[str] = field(
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
-    max_grad_norm: float = field(default=1.0)
     log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
 
 
