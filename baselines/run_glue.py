@@ -22,14 +22,15 @@ from transformers import (
     HfArgumentParser,
     PretrainedConfig,
     Trainer,
-    TrainingArguments,
     default_data_collator,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-
+from sdlm.arguments import DataTrainingArguments as BaseDataTrainingArguments
+from sdlm.arguments import ModelArguments as BaseModelArguments
+from sdlm.arguments import TrainingArguments
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -52,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class DataTrainingArguments:
+class DataTrainingArguments(BaseDataTrainingArguments):
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
 
@@ -61,64 +62,6 @@ class DataTrainingArguments:
     the command line.
     """
 
-    dataset_name: Optional[str] = field(
-        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
-    )
-    dataset_config_name: Optional[str] = field(
-        default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
-    )
-    max_seq_length: int = field(
-        default=128,
-        metadata={
-            "help": (
-                "The maximum total input sequence length after tokenization. Sequences longer "
-                "than this will be truncated, sequences shorter will be padded."
-            )
-        },
-    )
-    overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."})
-    pad_to_max_length: bool = field(
-        default=True,
-        metadata={
-            "help": (
-                "Whether to pad all samples to `max_seq_length`. "
-                "If False, will pad the samples dynamically when batching to the maximum length in the batch."
-            )
-        },
-    )
-    max_train_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": (
-                "For debugging purposes or quicker training, truncate the number of training examples to this "
-                "value if set."
-            )
-        },
-    )
-    max_eval_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": (
-                "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
-                "value if set."
-            )
-        },
-    )
-    max_predict_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": (
-                "For debugging purposes or quicker training, truncate the number of prediction examples to this "
-                "value if set."
-            )
-        },
-    )
-    train_file: Optional[str] = field(default=None, metadata={"help": "A csv or a json file containing the training data."})
-    validation_file: Optional[str] = field(
-        default=None, metadata={"help": "A csv or a json file containing the validation data."}
-    )
-    test_file: Optional[str] = field(default=None, metadata={"help": "A csv or a json file containing the test data."})
-
     def __post_init__(self):
         self.dataset_name = self.dataset_name.lower()
         if self.dataset_name not in task_to_keys.keys():
@@ -126,41 +69,11 @@ class DataTrainingArguments:
 
 
 @dataclass
-class ModelArguments:
+class ModelArguments(BaseModelArguments):
     """
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
     """
 
-    model_name_or_path: str = field(
-        metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
-    )
-    config_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
-    )
-    tokenizer_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
-    )
-    cache_dir: Optional[str] = field(
-        default=None,
-        metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
-    )
-    use_fast_tokenizer: bool = field(
-        default=True,
-        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
-    )
-    model_revision: str = field(
-        default="main",
-        metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
-    )
-    use_auth_token: bool = field(
-        default=False,
-        metadata={
-            "help": (
-                "Will use the token generated when running `huggingface-cli login` (necessary to use this script "
-                "with private models)."
-            )
-        },
-    )
     ignore_mismatched_sizes: bool = field(
         default=False,
         metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
@@ -254,7 +167,7 @@ def main():
 
     # Load pretrained model and tokenizer
     config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+        model_args.model_name_or_path,
         num_labels=num_labels,
         finetuning_task=data_args.dataset_name,
         cache_dir=model_args.cache_dir,
