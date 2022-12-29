@@ -243,7 +243,7 @@ def main():
             train_dataset = train_dataset.select(range(max_train_samples))
 
     if training_args.do_eval:
-        if "validation" not in raw_datasets and "validation_matched" not in raw_datasets:
+        if "validation" not in raw_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = raw_datasets["validation"]
         if data_args.max_eval_samples is not None:
@@ -251,7 +251,7 @@ def main():
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
     if training_args.do_predict:
-        if "test" not in raw_datasets and "test_matched" not in raw_datasets:
+        if "test" not in raw_datasets:
             raise ValueError("--do_predict requires a test dataset")
         predict_dataset = raw_datasets["test"]
         if data_args.max_predict_samples is not None:
@@ -317,43 +317,22 @@ def main():
     # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
-
-        # Loop to handle MNLI double evaluation (matched, mis-matched)
-        tasks = [data_args.dataset_name]
-        eval_datasets = [eval_dataset]
-
-        for eval_dataset, task in zip(eval_datasets, tasks):
-            metrics = trainer.evaluate(eval_dataset=eval_dataset)
-
-            max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-            metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
-            trainer.log_metrics("eval", metrics)
-            trainer.save_metrics("eval", metrics)
+        metrics = trainer.evaluate(eval_dataset=eval_dataset)
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
 
     if training_args.do_predict:
-        logger.info("*** Predict ***")
+        logger.info("*** Test ***")
 
-        # Loop to handle MNLI double evaluation (matched, mis-matched)
-        tasks = [data_args.datset_name]
-        predict_datasets = [predict_dataset]
-        for predict_dataset, task in zip(predict_datasets, tasks):
-            # Removing the `label` columns because it contains -1 and Trainer won't like that.
-            predict_dataset = predict_dataset.remove_columns("label")
-            predictions = trainer.predict(predict_dataset, metric_key_prefix="predict").predictions
-            predictions = np.squeeze(predictions) if is_regression else np.argmax(predictions, axis=1)
-
-            output_predict_file = os.path.join(training_args.output_dir, f"predict_results_{task}.txt")
-            if trainer.is_world_process_zero():
-                with open(output_predict_file, "w") as writer:
-                    logger.info(f"***** Predict results {task} *****")
-                    writer.write("index\tprediction\n")
-                    for index, item in enumerate(predictions):
-                        if is_regression:
-                            writer.write(f"{index}\t{item:3.3f}\n")
-                        else:
-                            item = label_list[item]
-                            writer.write(f"{index}\t{item}\n")
+        metrics = trainer.evaluate(eval_dataset=predict_dataset)
+        max_predict_samples = (
+            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+        )
+        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
 
 
 if __name__ == "__main__":
