@@ -146,7 +146,9 @@ class DiffusionTrainer(Trainer):
         with torch.no_grad():
             with self.compute_loss_context_manager():
                 outputs = pipeline(
-                    batch_size=self.args.per_device_eval_batch_size,
+                    batch_size=inputs["input_ids"].shape[0]
+                    if is_conditional_generation
+                    else self.args.per_device_eval_batch_size,
                     seq_length=self.data_args.max_seq_length,
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
