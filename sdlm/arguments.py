@@ -80,12 +80,13 @@ class TrainingArguments(HFTrainingArguments):
         },
     )
     output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
-    seed: Optional[int] = field(default=42, metadata={"help": "A seed for reproducible training."})
     checkpointing_steps: int = field(default=1000, metadata={"help": "Specifies the checkpoint step."})
     resume_from_checkpoint: Optional[str] = field(
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
     log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
+    checkpoint_best_model: bool = field(default=False, metadata={"help": "If set, for `run_glue.py` it sets the metrics name"
+        "to save the best model in each checkpoint step."})
 
 
 @dataclass

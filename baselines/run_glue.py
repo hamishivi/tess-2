@@ -49,6 +49,18 @@ task_to_keys = {
     "wnli": ("sentence1", "sentence2"),
 }
 
+task_to_metric = {
+    "cola": "matthews_correlation",
+    "mnli": "accuracy",
+    "mrpc": "combined_score",
+    "qnli": "accuracy",
+    "qqp": "combined_score",
+    "rte": "accuracy",
+    "sst2": "accuracy",
+    "stsb": "combined_score",
+    "wnli": "accuracy"
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,6 +100,9 @@ def main():
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+
+    if training_args.checkpoint_best_model:
+        training_args.metric_for_best_model = task_to_metric[data_args.dataset_name]
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
