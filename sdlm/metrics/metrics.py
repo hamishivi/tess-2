@@ -64,7 +64,7 @@ def zipf(tokenized_texts, N=5000):
 
 def accuracy(predictions, targets) -> dict:
     """Computes the average accuracy."""
-    return {"acc": 100 * ((np.array(predictions) == np.array(targets)).mean())}
+    return {"accuracy": 100 * ((np.array(predictions) == np.array(targets)).mean())}
 
 
 def pearson_corrcoef(predictions, targets) -> dict:
@@ -76,7 +76,7 @@ def pearson_corrcoef(predictions, targets) -> dict:
     # and return 0 in this case.
     if math.isnan(pearson_corrcoef):
         pearson_corrcoef = 0
-    return {"pearson_corrcoef": pearson_corrcoef}
+    return {"pearson": pearson_corrcoef}
 
 
 def spearman_corrcoef(predictions, targets) -> dict:
@@ -88,7 +88,7 @@ def spearman_corrcoef(predictions, targets) -> dict:
     # and return 0 in this case.
     if math.isnan(spearman_corrcoef):
         spearman_corrcoef = 0
-    return {"spearman_corrcoef": spearman_corrcoef}
+    return {"spearmanr": spearman_corrcoef}
 
 
 def f1_score_with_invalid(predictions, targets) -> dict:
@@ -110,7 +110,7 @@ def f1_score_with_invalid(predictions, targets) -> dict:
 # TODO: maybe gaurd against invalid values https://stackoverflow.com/questions/56865344/how-do-i-calculate-the-matthews-correlation-coefficient-in-tensorflow
 def matthews_corrcoef(predictions, targets) -> dict:
     """Computes the Matthews correlation coefficient."""
-    return {"mcc": 100 * sklearn.metrics.matthews_corrcoef(targets, predictions)}
+    return {"matthews_correlation": 100 * sklearn.metrics.matthews_corrcoef(targets, predictions)}
 
 
 def get_glue_metrics(task):

@@ -17,8 +17,12 @@ python -m torch.distributed.launch     --nproc_per_node 16  run_mlm.py     --mod
 python run_glue.py --model_name_or_path roberta-large  --dataset_name wnli --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy epoch --save_strategy epoch  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex_new/glue_roberta_large_baseline_tuned/wnli --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 3e-5 --num_train_epochs 5 --logging_steps 50  --load_best_model_at_end true --checkpoint_best_model --greater_is_better true --warmup_steps 500  --tokenizer_name roberta-large --save_total_limit 1 --lr_scheduler_type cosine  --gradient_accumulation_steps 2
 
 
+# s2-8 and s2-10
+# Running our model on glue 
+python run_glue.py --model_name_or_path roberta-large  --dataset_name cola --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 32 --per_device_eval_batch_size 100 --evaluation_strategy epoch --save_strategy epoch  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex_new/glue_roberta_ours/cola --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 3e-5 --num_train_epochs 5 --logging_steps 50  --load_best_model_at_end true --checkpoint_best_model --greater_is_better true --warmup_steps 500  --tokenizer_name roberta-large --save_total_limit 1 --lr_scheduler_type cosine  --gradient_accumulation_steps 4 --simplex_value 5  --num_diffusion_steps 5000  --num_inference_diffusion_steps 2500 --beta_schedule squaredcos_improved_ddpm --top_p 0.9 --conditional_generation "seq2seq"   --self_condition logits_addition
 
-
+# Also try for 1K steps
+python run_glue.py --model_name_or_path roberta-large  --dataset_name cola --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 32 --per_device_eval_batch_size 100 --evaluation_strategy epoch --save_strategy epoch  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex_new/glue_roberta_ours/cola_1k_inference --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 3e-5 --num_train_epochs 5 --logging_steps 50  --load_best_model_at_end true --checkpoint_best_model --greater_is_better true --warmup_steps 500  --tokenizer_name roberta-large --save_total_limit 1 --lr_scheduler_type cosine  --gradient_accumulation_steps 4 --simplex_value 5  --num_diffusion_steps 5000  --num_inference_diffusion_steps 1000 --beta_schedule squaredcos_improved_ddpm --top_p 0.9 --conditional_generation "seq2seq"   --self_condition logits_addition
 
 
 
