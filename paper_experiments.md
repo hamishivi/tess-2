@@ -12,12 +12,30 @@ python -m torch.distributed.launch     --nproc_per_node 16  run_mlm.py     --mod
 
 
 # Running glue baseline
-We use 5 epochs for wnli and mrpc, rest 3 epoch.
+# 5 epochs ( wnli, stsb), 10 epochs for mrpc and rte cola, 3 for the rest.
+# no change for cola, wnli, stsb.
+python run_glue.py --model_name_or_path roberta-large  --dataset_name wnli --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy epoch --save_strategy epoch  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex_new/glue_roberta_large_baseline_tuned/wnli --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 3e-5 --num_train_epochs 5 --logging_steps 50  --load_best_model_at_end true --checkpoint_best_model --greater_is_better true --warmup_steps 500  --tokenizer_name roberta-large --save_total_limit 1 --lr_scheduler_type cosine  --gradient_accumulation_steps 2
 
 
+
+
+
+
+
+
+
+
+############################################
+# not used
+############################################
+# best setup on sst-2
+https://huggingface.co/philschmid/roberta-large-sst2
+# this setup is the old one which was bad!
 python run_glue.py --model_name_or_path roberta-large  --dataset_name wnli --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 32 --per_device_eval_batch_size 32 --evaluation_strategy epoch --save_strategy epoch  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex_new/glue_roberta_large_baseline/wnli --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 2e-5 --num_train_epochs 3 --logging_steps 50  --load_best_model_at_end --checkpoint_best_model --greater_is_better true 
-
-
-
-python run_glue.py --model_name_or_path roberta-large  --dataset_name wnli --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 100 --per_device_eval_batch_size 100 --evaluation_strategy epoch --save_strategy epoch  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex_new/glue_roberta_large_baseline/wnli --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 2e-5 --num_train_epochs 3 --logging_steps 50  --load_best_model_at_end true --checkpoint_best_model --greater_is_better true --warmup_steps 500 --save_steps 1000 --tokenizer_name roberta-large --save_total_limit 1 
-
+ 
+# See which grad acc is the best
+# New setup.
+"""
+# 5 epochs for cola, mrpc, rte, wnli, stsb 
+python run_glue.py --model_name_or_path roberta-large  --dataset_name sst2 --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy steps --save_strategy steps  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex_new/glue_roberta_large_baseline_tuned/sst2 --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 3e-5 --num_train_epochs 3 --logging_steps 50  --load_best_model_at_end true --checkpoint_best_model --greater_is_better true --warmup_steps 500 --save_steps 1000 --tokenizer_name roberta-large --save_total_limit 1 --lr_scheduler_type cosine --eval_steps 1000 --gradient_accumulation_steps 2 
+"""
