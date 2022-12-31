@@ -7,6 +7,7 @@ from torch.nn import CrossEntropyLoss
 import torch.nn as nn
 import torch.nn.functional as F
 import pdb
+import random
 
 logger = logging.get_logger(__name__)
 
@@ -59,6 +60,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.lm_head.decoder = new_embeddings
 
+    def get_roberta_empty_tokens(self, shape, device):
+        empty_token_ids = torch.ones(shape, dtype=torch.int64, device=device)
+        empty_token_ids[:, 0] = 0
+        empty_token_ids[:, 1] = 2
+        return empty_token_ids
+
     def forward(
         self,
         timesteps: torch.FloatTensor,
@@ -77,6 +84,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         return_dict: Optional[bool] = None,
         previous_pred: Optional[torch.FloatTensor] = None,
         classifier_free_guidance: bool = False,
+        classifier_free_guidance_in_train: bool = False,
         unconditional_simplex: torch.FloatTensor = None,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         r"""
@@ -93,8 +101,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
 
         if classifier_free_guidance:
-            unconditional_probs = F.softmax(unconditional_simplex, dim=-1)
-            uncond_inputs_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
+            # unconditional_probs = F.softmax(unconditional_simplex, dim=-1)
+            # uncond_inputs_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
+            empty_token_ids = self.get_roberta_empty_tokens(shape=input_ids.shape, device=input_ids.device)
+            uncond_inputs_embeds = self.get_input_embeddings()(empty_token_ids)
 
         if self.config.self_condition is not None:
             if self.config.self_condition_zeros_after_softmax and previous_pred is None:
@@ -114,7 +124,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
 
         if span_mask is not None:
             # Original word embeddings without noise.
-            inputs_word_embeds = self.get_input_embeddings()(input_ids)
+            if classifier_free_guidance_in_train and random.uniform(0, 1) < 0.1:
+                empty_token_ids = self.get_roberta_empty_tokens(input_ids.shape, input_ids.device)
+                inputs_word_embeds = self.get_input_embeddings()(empty_token_ids)
+            else:
+                inputs_word_embeds = self.get_input_embeddings()(input_ids)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
             inputs_embeds = torch.where(span_mask.unsqueeze(-1), inputs_embeds, torch.zeros_like(previous_pred))
@@ -159,10 +173,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         masked_lm_loss = None
         # In case of classifier-free guidance, since the number of output logits and input token ids do not match
         # we do not compute the loss.
-        if input_ids is not None and not classifier_free_guidance:
+        if input_ids is not None:
+            # In case of classifier_free guidance we need to get rid of the unconditional part.
+            prediction_scores_for_loss = prediction_scores.chunk(2)[1]  if classifier_free_guidance else prediction_scores
             loss_fct = CrossEntropyLoss()
             labels = torch.where(span_mask, input_ids, -100) if span_mask is not None else input_ids
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+            masked_lm_loss = loss_fct(prediction_scores_for_loss.view(-1, self.config.vocab_size), labels.view(-1))
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
