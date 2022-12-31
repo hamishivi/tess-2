@@ -53,7 +53,7 @@ task_to_metric = {
     "rte": "accuracy",
     "sst2": "accuracy",
     "stsb": "combined_score",
-    "wnli": "accuracy"
+    "wnli": "accuracy",
 }
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,9 @@ def main():
         model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
 
     if training_args.checkpoint_best_model:
-        training_args.metric_for_best_model = task_to_metric[data_args.dataset_name]
+        # TODO: ask which one they report and use the one needed here.
+        # TODO: test both simplex and logits.
+        training_args.metric_for_best_model = "pred_texts_from_simplex_masked_" + task_to_metric[data_args.dataset_name]
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
