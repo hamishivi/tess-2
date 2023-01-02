@@ -11,6 +11,15 @@ python -m torch.distributed.launch     --nproc_per_node 16  run_mlm.py     --mod
 python -m torch.distributed.launch     --nproc_per_node 16  run_mlm.py     --model_name_or_path roberta-large     --per_device_train_batch_size 12    --per_device_eval_batch_size 6    --do_train     --do_eval     --output_dir /home/rabeehk/outputs/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits/ --evaluation_strategy steps --eval_steps 1000 --report_to  tensorboard --overwrite_output_dir  --max_seq_length 256  --max_eval_samples 96 --simplex_value 5  --num_diffusion_steps 5000  --num_inference_diffusion_steps 2500 --lr_scheduler_type cosine --learning_rate 1e-4 --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.01 --tokenized_data_path processed_data/openwebtext_256_split/  --top_p 0.99 --max_steps 2000000 --gradient_accumulation_steps 8 --warmup_steps 2000 --logging_steps 50   --save_steps 1000  --conditional_generation "ul2" --self_condition logits
 
 
+# Running  UL2 with self-conditioning with addition and classifier-free guidance - rabeehk-1 - S2
+python -m torch.distributed.launch     --nproc_per_node 16  run_mlm.py     --model_name_or_path roberta-large     --per_device_train_batch_size 12    --per_device_eval_batch_size 6    --do_train     --do_eval     --output_dir /home/rabeehk/outputs/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition_guidance_5/ --evaluation_strategy steps --eval_steps 1000 --report_to  tensorboard --overwrite_output_dir  --max_seq_length 256  --max_eval_samples 96 --simplex_value 5  --num_diffusion_steps 5000  --num_inference_diffusion_steps 2500 --lr_scheduler_type cosine --learning_rate 1e-4 --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.01 --tokenized_data_path processed_data/openwebtext_256_split/  --top_p 0.99 --max_steps 2000000 --gradient_accumulation_steps 8 --warmup_steps 2000 --logging_steps 50   --save_steps 1000  --conditional_generation "ul2" --self_condition logits_addition --guidance_scale 5
+
+
+
+
+
+
+
 # Running glue baseline
 # 5 epochs ( wnli, stsb), 10 epochs for mrpc and rte cola, 3 for the rest.
 # no change for cola, wnli, stsb.
