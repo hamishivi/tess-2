@@ -4,30 +4,35 @@ import logging
 import os
 import random
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import datasets
 import numpy as np
 from datasets import load_dataset
-import pdb
 
+import evaluate
 import transformers
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers import (
+    AutoConfig,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    DataCollatorWithPadding,
+    EvalPrediction,
+    HfArgumentParser,
+    PretrainedConfig,
+    Trainer,
+    default_data_collator,
+    set_seed,
+)
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-from sdlm.arguments import ModelArguments, DiffusionArguments, TrainingArguments
 from sdlm.arguments import DataTrainingArguments as BaseDataTrainingArguments
-from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
-from sdlm.schedulers import SimplexDDPMScheduler
+from sdlm.arguments import ModelArguments as BaseModelArguments
+from sdlm.arguments import TrainingArguments
 from sdlm.data.data_utils import split_glue
-from sdlm.utils import round_stsb_target, lmap
-from sdlm.data.data_collator import DataCollatorForSeq2Seq
-from sdlm.trainer import DiffusionTrainer
-from sdlm.inference.inference_utils import process_text
-from sdlm.metrics.metrics import get_glue_metrics
-from sdlm.data.postprocessors import get_post_processor
 
+# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
 
 require_version("datasets>=1.8.0")
@@ -53,7 +58,7 @@ task_to_metric = {
     "rte": "accuracy",
     "sst2": "accuracy",
     "stsb": "combined_score",
-    "wnli": "accuracy",
+    "wnli": "accuracy"
 }
 
 logger = logging.getLogger(__name__)
@@ -63,28 +68,41 @@ logger = logging.getLogger(__name__)
 class DataTrainingArguments(BaseDataTrainingArguments):
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
+
+    Using `HfArgumentParser` we can turn this class
+    into argparse arguments to be able to specify them on
+    the command line.
     """
 
     def __post_init__(self):
-        assert self.dataset_name is not None
         self.dataset_name = self.dataset_name.lower()
         if self.dataset_name not in task_to_keys.keys():
             raise ValueError("Unknown task, you should pick one in " + ",".join(task_to_keys.keys()))
 
 
+@dataclass
+class ModelArguments(BaseModelArguments):
+    """
+    Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
+    """
+
+    ignore_mismatched_sizes: bool = field(
+        default=False,
+        metadata={"help": "Will enable to load a pretrained model whose head dimensions are different."},
+    )
+
+
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
-        model_args, data_args, training_args, diffusion_args = parser.parse_args_into_dataclasses()
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     if training_args.checkpoint_best_model:
-        # TODO: ask which one they report and use the one needed here.
-        # TODO: test both simplex and logits.
-        training_args.metric_for_best_model = "pred_texts_from_simplex_masked_" + task_to_metric[data_args.dataset_name]
+        training_args.metric_for_best_model = task_to_metric[data_args.dataset_name]
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -129,31 +147,32 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    # Downloading and loading a dataset from the hub.
     raw_datasets = load_dataset(
         "glue",
         data_args.dataset_name,
         cache_dir=model_args.cache_dir,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-
     # Split dataset, since test sets of GLUE do not have the labels.
     raw_datasets = split_glue(raw_datasets, data_args.dataset_name, training_args.seed)
 
     # Labels
     is_regression = data_args.dataset_name == "stsb"
-    config = RobertaDiffusionConfig.from_pretrained(
+    if not is_regression:
+        label_list = raw_datasets["train"].features["label"].names
+        num_labels = len(label_list)
+    else:
+        num_labels = 1
+
+    # Load pretrained model and tokenizer
+    config = AutoConfig.from_pretrained(
         model_args.model_name_or_path,
-        self_condition=diffusion_args.self_condition,
-        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
-        deepmind_conditional=diffusion_args.deepmind_conditional,
-        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
-        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
+        num_labels=num_labels,
+        finetuning_task=data_args.dataset_name,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -161,21 +180,46 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    if model_args.model_name_or_path:
-        model = RobertaForDiffusionLM.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-    else:
-        logger.info("Training new model from scratch")
-        model = RobertaForDiffusionLM.from_config(config)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_args.model_name_or_path,
+        from_tf=bool(".ckpt" in model_args.model_name_or_path),
+        config=config,
+        cache_dir=model_args.cache_dir,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+        ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
+    )
 
     # Preprocessing the raw_datasets
     sentence1_key, sentence2_key = task_to_keys[data_args.dataset_name]
+
+    # Padding strategy
+    if data_args.pad_to_max_length:
+        padding = "max_length"
+    else:
+        # We will pad later, dynamically at batch creation, to the max sequence length in each batch
+        padding = False
+
+    # Some models have set the order of the labels to use, so let's make sure we do use it.
+    label_to_id = None
+    if model.config.label2id != PretrainedConfig(num_labels=num_labels).label2id and not is_regression:
+        # Some have all caps in their config, some don't.
+        label_name_to_id = {k.lower(): v for k, v in model.config.label2id.items()}
+        if list(sorted(label_name_to_id.keys())) == list(sorted(label_list)):
+            label_to_id = {i: int(label_name_to_id[label_list[i]]) for i in range(num_labels)}
+        else:
+            logger.warning(
+                "Your model seems to have been trained with labels, but they don't match the dataset: ",
+                f"model labels: {list(sorted(label_name_to_id.keys()))}, dataset labels: {list(sorted(label_list))}."
+                "\nIgnoring the model labels as a result.",
+            )
+
+    if label_to_id is not None:
+        model.config.label2id = label_to_id
+        model.config.id2label = {id: label for label, id in config.label2id.items()}
+    elif not is_regression:
+        model.config.label2id = {l: i for i, l in enumerate(label_list)}
+        model.config.id2label = {id: label for label, id in config.label2id.items()}
 
     if data_args.max_seq_length > tokenizer.model_max_length:
         logger.warning(
@@ -185,25 +229,13 @@ def main():
     max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
 
     def preprocess_function(examples):
-        # TODO: here max_length should be max_length minus length of labels.
-        # TODO: this is for now, but maybe compute one max_length as a whole.
-        # Tokenize the labels.
-        targets = [str(round_stsb_target(label)) if is_regression else str(label) for label in examples["label"]]
-        labels = tokenizer(text_target=targets, max_length=max_seq_length, padding=False, truncation=True)
-        max_label_length = max([len(label) for label in labels["input_ids"]])
+        # Tokenize the texts
+        args = (examples[sentence1_key],) if sentence2_key is None else (examples[sentence1_key], examples[sentence2_key])
+        result = tokenizer(*args, padding=padding, max_length=max_seq_length, truncation=True)
 
-        # Tokenize the texts.
-        if data_args.add_t5_tags:
-            sentence1_with_tag = [sentence1_key + ": " + sentence_1 for sentence_1 in examples[sentence1_key]]
-            if sentence2_key is not None:
-                sentence2_with_tag = [sentence2_key + ": " + sentence_2 for sentence_2 in examples[sentence2_key]]
-            args = (sentence1_with_tag,) if sentence2_key is None else (sentence1_with_tag, sentence2_with_tag)
-        else:
-            args = (
-                (examples[sentence1_key],) if sentence2_key is None else (examples[sentence1_key], examples[sentence2_key])
-            )
-        result = tokenizer(*args, padding=False, max_length=max_seq_length - max_label_length, truncation=True)
-        result["labels"] = labels["input_ids"]
+        # Map labels to IDs (not necessary for GLUE tasks)
+        if label_to_id is not None and "label" in examples:
+            result["label"] = [(label_to_id[l] if l != -1 else -1) for l in examples["label"]]
         return result
 
     with training_args.main_process_first(desc="dataset map pre-processing"):
@@ -229,10 +261,7 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-        def preprocess_logits_for_metrics(logits):
-            return logits.argmax(dim=-1)
-
-    if training_args.do_predict or data_args.dataset_name is not None or data_args.test_file is not None:
+    if training_args.do_predict:
         if "test" not in raw_datasets:
             raise ValueError("--do_predict requires a test dataset")
         predict_dataset = raw_datasets["test"]
@@ -246,81 +275,36 @@ def main():
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # Get the metric function
-    task_metrics = get_glue_metrics(data_args.dataset_name)
+    metric = evaluate.load("glue", data_args.dataset_name)
 
-    def postprocess_text(texts):
-        # TODO: maybe we need it for others as well.
-        return lmap(str.strip, texts)
-
-    # TODO: we maybe need to pad till the sentences, and then predict the tokens we need for the few ones we need.
-    def compute_metrics(results):
-        post_processor = get_post_processor(data_args.dataset_name)
-
-        # TODO: we need to change the metrics here.
-        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
-        decoded_labels = postprocess_text(process_text(results["gold_texts_masked"]))
-        if post_processor is not None:
-            decoded_labels = [post_processor(x) for x in decoded_labels]
-
-        metrics = {}
-        for key in keys:
-            decoded_preds = postprocess_text(process_text(results[key]))
-            if post_processor is not None:
-                decoded_preds = [post_processor(x) for x in decoded_preds]
-
-            # TODO: check if we need use_stemmer=True.
-            key_metrics = {}
-            for metric in task_metrics:
-                key_metrics.update(metric(predictions=decoded_preds, targets=decoded_labels))
-            # key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
-            if len(key_metrics) > 1:
-                key_metrics["combined_score"] = np.mean(list(key_metrics.values())).item()
-            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
-            metrics.update(key_metrics)
-
-        return metrics
+    # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
+    # predictions and label_ids field) and has to return a dictionary string to float.
+    def compute_metrics(p: EvalPrediction):
+        preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
+        preds = np.squeeze(preds) if is_regression else np.argmax(preds, axis=1)
+        result = metric.compute(predictions=preds, references=p.label_ids)
+        if len(result) > 1:
+            result["combined_score"] = np.mean(list(result.values())).item()
+        return result
 
     # Data collator will default to DataCollatorWithPadding when the tokenizer is passed to Trainer, so we change it if
     # we already did the padding.
-    # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForSeq2Seq(
-        tokenizer,
-        # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
-        padding="max_length" if data_args.pad_to_max_length else True,
-        max_length=data_args.max_seq_length,
-        pad_to_multiple_of=8 if training_args.fp16 else None,
-    )
-    # TODO: here we need to make sure we mask to the maximum number of tokens in the labels to not signal the model for the labels.
-
-    noise_scheduler = SimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-    )
-    inference_noise_scheduler = SimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-    )
+    if data_args.pad_to_max_length:
+        data_collator = default_data_collator
+    elif training_args.fp16:
+        data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
+    else:
+        data_collator = None
 
     # Initialize our Trainer
-    trainer = DiffusionTrainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
+        compute_metrics=compute_metrics,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
-        noise_scheduler=noise_scheduler,
-        diffusion_args=diffusion_args,
-        data_args=data_args,
-        inference_noise_scheduler=inference_noise_scheduler,
     )
 
     # Training
@@ -344,11 +328,22 @@ def main():
     # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
-        metrics = trainer.evaluate()
+        metrics = trainer.evaluate(eval_dataset=eval_dataset)
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
+    if training_args.do_predict:
+        logger.info("*** Test ***")
+
+        metrics = trainer.evaluate(eval_dataset=predict_dataset)
+        max_predict_samples = (
+            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+        )
+        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
 
 
 if __name__ == "__main__":

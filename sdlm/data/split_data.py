@@ -1,8 +1,8 @@
 from datasets import load_from_disk, DatasetDict
 import pdb
 
-tokenized_data_path = "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_512"
-output_dir = "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_512_split"
+tokenized_data_path = "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_50"
+output_dir = "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_50_split"
 seed = 42
 validation_split_ratio = 0.001
 

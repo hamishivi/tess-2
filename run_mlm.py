@@ -98,6 +98,8 @@ def main():
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
         deepmind_conditional=diffusion_args.deepmind_conditional,
+        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
+        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
         **config_kwargs,
     )
     tokenizer_kwargs = {

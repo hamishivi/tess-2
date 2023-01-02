@@ -116,6 +116,8 @@ def main():
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
         deepmind_conditional=diffusion_args.deepmind_conditional,
+        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
+        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
@@ -283,7 +285,7 @@ def main():
         metrics = {}
         for key in keys:
             decoded_preds = process_text(results[key])
-            # Note that since decoded_labels is getting updated after post-process, we 
+            # Note that since decoded_labels is getting updated after post-process, we
             # need to compute it here for each key.
             decoded_labels = process_text(results["gold_texts_masked"])
             decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)

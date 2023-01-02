@@ -3,9 +3,20 @@
 from transformers.models.roberta.configuration_roberta import RobertaConfig
 from typing import Optional
 
+
 class RobertaDiffusionConfig(RobertaConfig):
-    def __init__(self, self_condition: Optional[str]= None, self_condition_zeros_after_softmax: bool=False,  deepmind_conditional: bool = False, **kwargs):
+    def __init__(
+        self,
+        self_condition: Optional[str] = None,
+        self_condition_zeros_after_softmax: bool = False,
+        deepmind_conditional: bool = False,
+        classifier_free_simplex_inputs: bool = False,
+        classifier_free_uncond_input: str = "empty_token",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.self_condition = self_condition
         self.self_condition_zeros_after_softmax = self_condition_zeros_after_softmax
         self.deepmind_conditional = deepmind_conditional
+        self.classifier_free_simplex_inputs = classifier_free_simplex_inputs
+        self.classifier_free_uncond_input = classifier_free_uncond_input

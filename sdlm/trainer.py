@@ -67,6 +67,7 @@ class DiffusionTrainer(Trainer):
         self.inference_noise_scheduler = inference_noise_scheduler
         self.tb_writer = self.get_tb_writer()
         self.eos_token_id = self.tokenizer.eos_token_id
+        self.classifier_free_guidance = diffusion_args.guidance_scale > 1.0 and data_args.conditional_generation is not None
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -113,7 +114,8 @@ class DiffusionTrainer(Trainer):
                     self.diffusion_args.self_condition, outputs.logits, logits_projection_fct
                 )
             inputs.update({"previous_pred": previous_pred})
-
+        # NOTE: we do this after computation of self-conditioning to not affect that one.
+        inputs.update({"classifier_free_guidance_in_train": self.classifier_free_guidance})
         with self.autocast_smart_context_manager():
             loss = self.compute_loss(model, inputs)
 
@@ -146,7 +148,9 @@ class DiffusionTrainer(Trainer):
         with torch.no_grad():
             with self.compute_loss_context_manager():
                 outputs = pipeline(
-                    batch_size=self.args.per_device_eval_batch_size,
+                    batch_size=inputs["input_ids"].shape[0]
+                    if is_conditional_generation
+                    else self.args.per_device_eval_batch_size,
                     seq_length=self.data_args.max_seq_length,
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
