@@ -85,8 +85,12 @@ class TrainingArguments(HFTrainingArguments):
         default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
     )
     log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
-    checkpoint_best_model: bool = field(default=False, metadata={"help": "If set, for `run_glue.py` it sets the metrics name"
-        "to save the best model in each checkpoint step."})
+    checkpoint_best_model: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, for `run_glue.py` it sets the metrics name" "to save the best model in each checkpoint step."
+        },
+    )
 
 
 @dataclass
@@ -372,7 +376,11 @@ class DiffusionArguments:
     classifier_free_uncond_input: str = field(
         default="empty_token", metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."}
     )
+    # TODO: remove this, this option is very bad.
     classifier_free_guided_prev_outputs: bool = field(
         default=False,
         metadata={"help": "In case this is set to True, we would use the guided outputs as the previous outputs."},
+    )
+    classifier_free_simplex_inputs: bool = field(
+        default=False, metadata={"help": "If set to true, uses simplex representation for the unconditional input."}
     )

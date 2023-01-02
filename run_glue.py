@@ -147,6 +147,8 @@ def main():
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
         deepmind_conditional=diffusion_args.deepmind_conditional,
+        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
+        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,

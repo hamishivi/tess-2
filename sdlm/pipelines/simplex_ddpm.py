@@ -80,6 +80,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         """
         # Classifier_free guidance works only in the conditional generation case.
         classifier_free_guidance = guidance_scale > 1.0 and self.is_conditional_generation
+        """
         if classifier_free_guidance:
             # Makes unconditional input for max sequence length, later we truncate it.
             uncond_input = self.tokenizer(
@@ -87,7 +88,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             ).to(self.device)
             # Converts this to a simplex (batch_size, max_seq, vocab_size)
             uncond_simplex = convert_to_simplex(uncond_input["input_ids"], self.simplex_value, self.model.config.vocab_size)
-
+        """
         # Sample gaussian noise to begin loop
         vocab_size = self.model.config.vocab_size
         if batch is not None:
@@ -102,7 +103,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))
-
+            """
             if classifier_free_guidance:
                 if self.classifier_free_uncond_input == "empty_token":
                     uncond_input = uncond_simplex[:, : batch["input_ids"].shape[1], :]
@@ -110,7 +111,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                     uncond_input = self.simplex_value * torch.randn(simplex.shape, generator=generator, device=self.device)
                 else:
                     raise NotImplementedError
-
+            """
             # 1. predict noise model_output. Note we need not to pass the input_ids in case of
             # unconditional generation since the loss would be computed and it should not.
             model_output = self.model(
@@ -120,7 +121,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 timesteps=t_scaled,
                 previous_pred=previous_pred if self.model.config.self_condition else None,
                 classifier_free_guidance=classifier_free_guidance,
-                unconditional_simplex=uncond_input if classifier_free_guidance else None,
+                # unconditional_simplex=uncond_input if classifier_free_guidance else None,
             )
             model_output_logits = model_output.logits
 
