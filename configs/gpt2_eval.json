@@ -3,12 +3,12 @@
         "per_device_train_batch_size": 48,
         "per_device_eval_batch_size": 24,
 	"max_eval_samples": 96,
-        "tokenized_data_path": "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_100_split/",
-        "output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/new_simplex/gpt2_medium_eval_top_p_0.95",
-        "max_seq_length": 100,
+        "tokenized_data_path": "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_256_split/",
+        "output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/gpt2-_eval/gpt2_medium_eval_top_p_0.95",
+        "max_seq_length": 256,
         "line_by_line": true,
         "pad_to_max_length": false,
         "top_p": 0.95,
-	"prefix_lm": true
+	"conditional_generation": "prefix_lm"
 }
 

@@ -9,7 +9,7 @@ from transformers import HfArgumentParser, set_seed
 from torch.utils.data import DataLoader
 import datasets
 from datasets import load_from_disk
-from sdlm.data.data_utils import load_data_new, tokenize_data_new
+from sdlm.data.data_utils import load_data, tokenize_data_new
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.inference.inference_utils import evaluate_generation
 import pdb
