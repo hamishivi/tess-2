@@ -15,6 +15,7 @@ from sdlm.inference.inference_utils import evaluate_generation
 import pdb
 import numpy as np
 import json
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -114,30 +115,31 @@ def main():
     all_inputs = []
     all_prefixes = []
     all_masks = []
-    for step, batch in enumerate(eval_dataloader):
-        # De-tokenize with the roberta tokenizer.
-        inputs, span_mask = batch["input_ids"], batch["span_mask"]
-        all_masks.extend(span_mask)
-        all_inputs.extend(inputs)
-        prefixes = [input[~mask] for input, mask in zip(inputs, span_mask)]
-        prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
-        all_prefixes.extend(prefixes)
-        prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
-        prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
+    with torch.no_grad():
+        for i, batch in enumerate(eval_dataloader):
+            # De-tokenize with the roberta tokenizer.
+            inputs, span_mask = batch["input_ids"], batch["span_mask"]
+            all_masks.extend(span_mask)
+            all_inputs.extend(inputs)
+            prefixes = [input[~mask] for input, mask in zip(inputs, span_mask)]
+            prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
+            all_prefixes.extend(prefixes)
+            prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
+            prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
 
-        outputs = model.generate(
-            input_ids=prefixes_inputs["input_ids"],
-            attention_mask=prefixes_inputs["attention_mask"],
-            pad_token_id=tokenizer.eos_token_id,
-            max_length=data_args.max_seq_length,
-            min_length=data_args.max_seq_length,
-            do_sample=True,
-            top_p=diffusion_args.top_p,
-        )
-        # Note that output also include the prefix and we need to remove it here.
-        generated_outputs = [output[len(prefix) :] for output, prefix in zip(outputs, prefixes_inputs["input_ids"])]
-        generated_outputs = [tokens.cpu().numpy().tolist() for tokens in generated_outputs]
-        all_outputs.extend(generated_outputs)
+            outputs = model.generate(
+                input_ids=prefixes_inputs["input_ids"],
+                attention_mask=prefixes_inputs["attention_mask"],
+                pad_token_id=tokenizer.eos_token_id,
+                max_length=data_args.max_seq_length,
+                min_length=data_args.max_seq_length,
+                do_sample=True,
+                top_p=diffusion_args.top_p,
+            )
+            # Note that output also include the prefix and we need to remove it here.
+            generated_outputs = [output[len(prefix) :] for output, prefix in zip(outputs, prefixes_inputs["input_ids"])]
+            generated_outputs = [tokens.cpu().numpy().tolist() for tokens in generated_outputs]
+            all_outputs.extend(generated_outputs)
     results = {}
     generated_texts = [tokenizer.decode(output, skip_special_tokens=True) for output in all_outputs]
     gold_texts = [
