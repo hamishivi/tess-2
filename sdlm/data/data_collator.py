@@ -20,6 +20,7 @@ class Objective(Enum):
     # Unconditional generation case.
     unconditional = 4
 
+
 # TODO: automize this one.
 # TODO: these are for sequence length of 100, adapt for 200.
 OBJECTIVE_SETTINGS = {
@@ -70,6 +71,7 @@ class SpanInfillingDataCollator:
         pad_to_multiple_of: Optional[int] = None,
         return_tensors: str = "pt",
         seed: int = 42,
+        eval_context_size: int = None,
     ):
         self.tokenizer = tokenizer
         self.padding = padding
@@ -95,7 +97,9 @@ class SpanInfillingDataCollator:
                 batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
             )
         elif self.conditional_generation == "prefix_lm":
-            self.mask_generator = lambda batch: gpt_span_mask_batch(batch, use_half_length_as_prefix_size=(mode == "eval"))
+            self.mask_generator = lambda batch: gpt_span_mask_batch(
+                batch, use_half_length_as_prefix_size=(mode == "eval"), eval_context_size=eval_context_size
+            )
         elif self.conditional_generation == "ul2" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(

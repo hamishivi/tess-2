@@ -9,7 +9,7 @@ import math
 import scipy
 import sklearn
 
-MAX_TEXT_LENGTH = 512
+MAX_TEXT_LENGTH = 256
 
 
 def mauve(predictions, references, featurize_model_name="gpt2-large"):
@@ -19,11 +19,15 @@ def mauve(predictions, references, featurize_model_name="gpt2-large"):
     reference (list of str) of references.
     """
     results = compute_mauve(
-        p_text=predictions,
-        q_text=references,
+        p_text=references,  # human-text.
+        q_text=predictions,  # machine-text.
         max_text_length=MAX_TEXT_LENGTH,
         featurize_model_name=featurize_model_name,
         verbose=False,
+        # These are the tricks to make `mauve` run faster.
+        # See https://github.com/krishnap25/mauve#best-practices-for-mauve
+        num_buckets=500 if len(predictions) > 5000 else "auto",
+        kmeans_num_redo=1,
     )
     return {"muave": results.mauve}
 

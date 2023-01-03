@@ -2,9 +2,10 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import pdb
-from sdlm.utils import convert_to_simplex
-from sdlm.metrics.perplexity import perplexity, conditional_perplexity
-from sdlm.metrics.metrics import distinct_n_grams, mauve
+from sdlm.utils import convert_to_simplex, join_texts
+from sdlm.metrics.perplexity import perplexity
+from sdlm.metrics.metrics import distinct_n_grams, mauve, zipf
+from sdlm.metrics.repetition import repetition
 
 
 def sample_logits(sampling_type, logits, top_p):
@@ -32,10 +33,11 @@ def sample_logits(sampling_type, logits, top_p):
 
 
 def remove_first_occurrence(string, char):
+    # We do not strip as we need the spaces as well.
     if char in string:
         idx = string.index(char)
         string = string[idx + len(char) :]
-    return string.strip()
+    return string
 
 
 def keep_till_first_occurrence(string, chars):
@@ -44,7 +46,7 @@ def keep_till_first_occurrence(string, chars):
     if len(idxs):
         min_idx = np.min(idxs)
         string = string[:min_idx]
-    return string.strip()
+    return string
 
 
 def process_text(texts):
@@ -168,8 +170,12 @@ def evaluate_generation(
         keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]
         gold_text_key = "gold_texts"
 
+    # TODO: remove this later.
+    is_gpt = True if "gold_texts_masked" in results else False
     if is_conditional_generation:
         gold_texts = process_text(results[gold_text_key])
+    if "prefixes" in results:
+        prefixes = results["prefixes"]
     for key in keys:
         key_metrics = {}
         texts = results[key]
@@ -183,13 +189,19 @@ def evaluate_generation(
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
 
-        """
         # Metrics requiring the gold text.
-        if is_conditional_generation:
+        if is_conditional_generation and is_gpt:
             # Note that we need to pass both context and predicted texts to this metric.
             remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
-            key_metrics.update(mauve(predictions=texts, references=remained_gold_texts))
-        """
+            remained_prefixes = [text for i, text in enumerate(prefixes) if i in remained_indices]
+            texts_with_context = join_texts(remained_prefixes, texts)
+            gold_with_context = join_texts(remained_prefixes, remained_gold_texts)
+            key_metrics.update(mauve(predictions=texts_with_context, references=gold_with_context))
+
+        if key + "_tokens" in results and is_gpt:
+            key_metrics.update(repetition(results[key + "_tokens"], causal_tokenizer))
+            key_metrics.update(zipf(results[key + "_tokens"]))
+
         # Adds the metrics.
         key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
         metrics.update(key_metrics)

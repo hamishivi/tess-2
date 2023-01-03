@@ -14,8 +14,7 @@ from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.inference.inference_utils import evaluate_generation
 import pdb
 import numpy as np
-import itertools
-import math
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +85,7 @@ def main():
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
     else:
-        raw_datasets = load_data_new(data_args, model_args)
+        raw_datasets = load_data(data_args, model_args)
         tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
 
     eval_dataset = tokenized_datasets["validation"]
@@ -102,6 +101,7 @@ def main():
         max_length=data_args.max_seq_length,
         seed=training_args.seed,
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
+        eval_context_size=data_args.eval_context_size,
     )
 
     # Creates the data_loader.
@@ -123,23 +123,21 @@ def main():
         prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
         all_prefixes.extend(prefixes)
         prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
-
-        # Compute the average length of prefixes (it should be all around the same length).
-        average_prefix_length = math.ceil(prefixes_inputs["attention_mask"].sum(1).numpy().mean())
-        # TODO: myabe the more accurate one is to generate this separately for each one with its own length.
-        # Mask half of the sequence.
         prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
+
         outputs = model.generate(
             input_ids=prefixes_inputs["input_ids"],
             attention_mask=prefixes_inputs["attention_mask"],
             pad_token_id=tokenizer.eos_token_id,
-            max_length=data_args.max_seq_length - average_prefix_length,
-            min_length=data_args.max_seq_length - average_prefix_length,
+            max_length=data_args.max_seq_length,
+            min_length=data_args.max_seq_length,
             do_sample=True,
             top_p=diffusion_args.top_p,
         )
-        all_outputs.extend(outputs)
-
+        # Note that output also include the prefix and we need to remove it here.
+        generated_outputs = [output[len(prefix) :] for output, prefix in zip(outputs, prefixes_inputs["input_ids"])]
+        generated_outputs = [tokens.cpu().numpy().tolist() for tokens in generated_outputs]
+        all_outputs.extend(generated_outputs)
     results = {}
     generated_texts = [tokenizer.decode(output, skip_special_tokens=True) for output in all_outputs]
     gold_texts = [
@@ -148,7 +146,16 @@ def main():
     total_texts_marked = [
         prefix + " ***" + generated_text + "***" for prefix, generated_text in zip(all_prefixes, generated_texts)
     ]
-    results = {"generated_texts_masked": generated_texts, "gold_texts_masked": gold_texts}
+    results = {
+        "generated_texts_masked": generated_texts,
+        "gold_texts_masked": gold_texts,
+        "generated_texts_masked_tokens": all_outputs,
+        "prefixes": all_prefixes,
+    }
+    # Saves the generated results.
+    with open(f"{training_args.output_dir}/generated_results.json", "w") as f:
+        json.dump(results, f)
+
     metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True, prefix_lm_eval=True)
     logger.info(metrics)
     for text in total_texts_marked:

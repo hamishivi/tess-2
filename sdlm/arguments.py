@@ -221,6 +221,13 @@ class DataTrainingArguments:
             "`seq2seq` is used for translation or summarization tasks."
         },
     )
+    eval_context_size: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "By default we consider the half of sequence as prompt when evaluating for `conditional_generation` of"
+            "`ul2` and `prefix_lm`. If this parameter is set, it specifies the context size during the evaluation."
+        },
+    )
     # Parameters used in seq2seq training for summarization.
     """
     test_file: Optional[str] = field(
