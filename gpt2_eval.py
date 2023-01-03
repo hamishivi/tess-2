@@ -71,7 +71,7 @@ def main():
     tokenizer.eos_token = roberta_tokenizer.eos_token
     tokenizer.pad_token = tokenizer.eos_token
     # Huggingface requires this to be set.
-    tokenizer.padding_side = "right"
+    tokenizer.padding_side = "left"
 
     model = AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
