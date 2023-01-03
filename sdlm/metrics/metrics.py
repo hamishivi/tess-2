@@ -24,10 +24,10 @@ def mauve(predictions, references, featurize_model_name="gpt2-large"):
         max_text_length=MAX_TEXT_LENGTH,
         featurize_model_name=featurize_model_name,
         verbose=False,
-        # These are the tricks to make `mauve` run faster.
+        # These are the tricks to make `mauve` run faster if #examples > 5K.
         # See https://github.com/krishnap25/mauve#best-practices-for-mauve
-        num_buckets=500 if len(predictions) > 5000 else "auto",
-        kmeans_num_redo=1,
+        # num_buckets=500 if len(predictions) > 5000 else "auto",
+        # kmeans_num_redo=1,
     )
     return {"muave": results.mauve}
 

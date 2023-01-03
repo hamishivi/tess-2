@@ -31,6 +31,8 @@ def main():
     else:
         data_args, training_args, model_args, diffusion_args = parser.parse_args_into_dataclasses()
 
+    os.makedirs(training_args.output_dir, exist_ok=True)
+
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -162,7 +164,6 @@ def main():
     logger.info(metrics)
     for text in total_texts_marked:
         logger.info(text)
-    os.makedirs(training_args.output_dir, exist_ok=True)
     np.save(f"{training_args.output_dir}/metrics.npy", metrics)
 
 
