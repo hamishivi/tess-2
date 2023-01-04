@@ -63,6 +63,7 @@ def zipf(tokenized_texts, N=5000):
     xs = np.arange(1, min(len(cnt), N) + 1)
     ys = np.array(sorted(cnt.values(), key=operator.neg)[:N])
     a, b, r, p, std = stats.linregress(np.log(xs), np.log(ys))
+    # Note that zipf_minus_a is the reported number.
     return {"zipf_minus_a": -a, "zipf_minus_r": -r, "zipf_p": p}
 
 
