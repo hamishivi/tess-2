@@ -1,5 +1,5 @@
-import numpy as np
 import pdb
+import json
 
 path = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/gpt2_eval_no_mauve_setting"
 
@@ -19,7 +19,7 @@ ordered_key = ["MAUVE", "PPL", "Dist-1", "Dist-2", "Dist-3", "ZIPF-a", "Repetiti
 for name in ["gpt2_large_top_p", "gpt2_xl_top_p", "gpt2_medium_top_p"]:
     for top_p in [0.95]:  # , 0.99, 0.9]:
         print(f"{name}_{top_p}")
-        metrics = np.load(f"{path}/{name}_{top_p}/metrics.npy", allow_pickle=True).item()
+        metrics = json.load(open(f"{path}/{name}_{top_p}/metrics.json"))
         metrics = {
             name_to_short[k]: np.round(100 * v, 2)
             if not name_to_short[k] in ["PPL", "ZIPF-a", "Repetition"]
