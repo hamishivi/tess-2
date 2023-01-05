@@ -122,15 +122,11 @@ def main():
             inputs, span_mask = batch["input_ids"], batch["span_mask"]
             all_masks.extend(span_mask)
             all_inputs.extend(inputs)
-
-            prefixes = [input[~mask] for input, mask in zip(inputs, span_mask)]
-            prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
+            prefixes_tokens = [input[~mask] for input, mask in zip(inputs, span_mask)]
+            prefixes = roberta_tokenizer.batch_decode(prefixes_tokens, skip_special_tokens=True)
             all_prefixes.extend(prefixes)
-            prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
-            prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
-
             # Note that output also include the prefix and we need to remove it here.
-            gold_texts = [input[len(prefix) :] for input, prefix in zip(inputs, prefixes_inputs["input_ids"])]
+            gold_texts = [input[len(prefix) :] for input, prefix in zip(inputs, prefixes_tokens)]
             gold_texts = [tokens.cpu().numpy().tolist() for tokens in gold_texts]
             all_outputs.extend(gold_texts)
 
