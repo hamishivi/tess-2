@@ -16,6 +16,7 @@ import pdb
 import numpy as np
 import json
 import torch
+import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,8 @@ def main():
     all_inputs = []
     all_prefixes = []
     all_masks = []
+    all_prefix_tokens = []
+    max_seq_length = data_args.max_seq_length
     with torch.no_grad():
         for i, batch in enumerate(eval_dataloader):
             # De-tokenize with the roberta tokenizer.
@@ -131,6 +134,8 @@ def main():
             all_masks.extend(span_mask)
             all_inputs.extend(inputs)
             prefixes = [input[~mask] for input, mask in zip(inputs, span_mask)]
+            prefixes = [prefix.cpu().numpy().tolist() for prefix in prefixes]
+            all_prefix_tokens.append(prefixes)
             prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
             all_prefixes.extend(prefixes)
             prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
@@ -161,6 +166,7 @@ def main():
         "gold_texts_masked": gold_texts,
         "generated_texts_masked_tokens": all_outputs,
         "prefixes": all_prefixes,
+        "prefix_tokens": all_prefix_tokens,
     }
     # Saves the generated results.
     with open(f"{training_args.output_dir}/generated_results.json", "w") as f:
