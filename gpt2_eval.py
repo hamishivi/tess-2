@@ -176,7 +176,9 @@ def main():
     logger.info(metrics)
     for text in total_texts_marked:
         logger.info(text)
-    np.save(f"{training_args.output_dir}/metrics.npy", metrics)
+
+    with open(f"{training_args.output_dir}/metrics.json", "w") as f:
+        json.dump(metrics, f)
 
 
 if __name__ == "__main__":
