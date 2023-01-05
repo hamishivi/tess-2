@@ -228,6 +228,9 @@ class DataTrainingArguments:
             "`ul2` and `prefix_lm`. If this parameter is set, it specifies the context size during the evaluation."
         },
     )
+    truncation_length: Optional[int] = field(
+        default=0, metadata={"help": "If set, we will truncate the tokens from the end for the given length."}
+    )
     # Parameters used in seq2seq training for summarization.
     """
     test_file: Optional[str] = field(

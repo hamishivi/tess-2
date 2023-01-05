@@ -121,6 +121,13 @@ def main():
         for i, batch in enumerate(eval_dataloader):
             # De-tokenize with the roberta tokenizer.
             inputs, span_mask = batch["input_ids"], batch["span_mask"]
+            # Truncate the length if needed.
+            if data_args.truncation_length > 0:
+                inputs = inputs[:, : -data_args.truncation_length]
+                span_mask = span_mask[:, : -data_args.truncation_length]
+                max_seq_length = data_args.max_seq_length - data_args.truncation_length
+                assert data_args.eval_context_size < max_seq_length
+
             all_masks.extend(span_mask)
             all_inputs.extend(inputs)
             prefixes = [input[~mask] for input, mask in zip(inputs, span_mask)]
@@ -128,13 +135,12 @@ def main():
             all_prefixes.extend(prefixes)
             prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
             prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
-
             outputs = model.generate(
                 input_ids=prefixes_inputs["input_ids"],
                 attention_mask=prefixes_inputs["attention_mask"],
                 pad_token_id=tokenizer.eos_token_id,
-                max_length=data_args.max_seq_length,
-                min_length=data_args.max_seq_length,
+                max_length=max_seq_length,
+                min_length=max_seq_length,
                 do_sample=True,
                 top_p=diffusion_args.top_p,
             )

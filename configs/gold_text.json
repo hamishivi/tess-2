@@ -5,7 +5,6 @@
         "output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/gold_text_with_gpt_large",
         "max_seq_length": 256,
         "line_by_line": true,
-	"max_eval_samples":4,
         "pad_to_max_length": false,
 	"conditional_generation": "prefix_lm",
 	"eval_context_size": 32
