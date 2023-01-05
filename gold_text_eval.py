@@ -88,7 +88,7 @@ def main():
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
     else:
         raw_datasets = load_data(data_args, model_args)
-        tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
+        tokenized_datasets = tokenize_data_new(data_args, roberta_tokenizer, raw_datasets, training_args)
 
     eval_dataset = tokenized_datasets["validation"]
     if data_args.max_eval_samples is not None:
@@ -99,7 +99,7 @@ def main():
     data_collator = SpanInfillingDataCollator(
         mode="eval",
         data_args=data_args,
-        tokenizer=tokenizer,
+        tokenizer=roberta_tokenizer,
         max_length=data_args.max_seq_length,
         seed=training_args.seed,
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
@@ -120,6 +120,11 @@ def main():
         for i, batch in enumerate(eval_dataloader):
             # De-tokenize with the roberta tokenizer.
             inputs, span_mask = batch["input_ids"], batch["span_mask"]
+            if data_args.truncation_length > 0:
+                inputs = inputs[:, : -data_args.truncation_length]
+                span_mask = span_mask[:, : -data_args.truncation_length]
+                max_seq_length = data_args.max_seq_length - data_args.truncation_length
+                assert data_args.eval_context_size < max_seq_length
             all_masks.extend(span_mask)
             all_inputs.extend(inputs)
             prefixes_tokens = [input[~mask] for input, mask in zip(inputs, span_mask)]

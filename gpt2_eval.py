@@ -90,7 +90,7 @@ def main():
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
     else:
         raw_datasets = load_data(data_args, model_args)
-        tokenized_datasets = tokenize_data_new(data_args, tokenizer, raw_datasets, training_args)
+        tokenized_datasets = tokenize_data_new(data_args, roberta_tokenizer, raw_datasets, training_args)
 
     eval_dataset = tokenized_datasets["validation"]
     if data_args.max_eval_samples is not None:
@@ -101,7 +101,7 @@ def main():
     data_collator = SpanInfillingDataCollator(
         mode="eval",
         data_args=data_args,
-        tokenizer=tokenizer,
+        tokenizer=roberta_tokenizer,
         max_length=data_args.max_seq_length,
         seed=training_args.seed,
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
