@@ -418,8 +418,10 @@ class DiffusionTrainer(Trainer):
                     )
                 }
             )
+
         # Metrics.
         metrics = self.compute_metrics(results)
+
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
 
@@ -497,7 +499,7 @@ class DiffusionTrainer(Trainer):
         self.log(output.metrics)
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-        return output.metrics
+        return output.metrics, output.results
 
     def log_results_to_tensorboard(self, state, output):
         # TODO: we need to fix this which happens during the only eval option.

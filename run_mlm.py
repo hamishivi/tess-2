@@ -267,11 +267,13 @@ def main():
             trainer._load_rng_state(model_args.model_name_or_path)
 
         logger.info("*** Evaluate ***")
-        metrics = trainer.evaluate()
+        metrics, generation_results = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+        # Saves the generations.
+        trainer.save_metrics("generated_eval", generation_results)
 
 
 if __name__ == "__main__":
