@@ -259,7 +259,7 @@ class DiffusionTrainer(Trainer):
             simplex, logits, loss = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
-            prefixes = [input[~mask] for input, mask in zip(inputs_decode, masks)] if has_mask else None
+            prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
 
             # Update containers on host
             if prefixes is not None:
@@ -379,10 +379,6 @@ class DiffusionTrainer(Trainer):
                     self.data_args.skip_special_tokens,
                 )
             )
-            all_prefixes_text = [
-                self.tokenizer.batch_decode(x, skip_special_tokens=self.data_args.skip_special_tokens) for x in all_prefixes
-            ]
-            results.update({"prefixes": all_prefixes_text})
         else:
             results.update(
                 {
@@ -404,6 +400,14 @@ class DiffusionTrainer(Trainer):
                     "gold_texts_masked": [
                         self.tokenizer.decode(input[mask], skip_special_tokens=self.data_args.skip_special_tokens)
                         for mask, input in zip(all_masks, all_inputs)
+                    ]
+                }
+            )
+            results.update(
+                {
+                    "prefixes": [
+                        self.tokenizer.decode(x, skip_special_tokens=self.data_args.skip_special_tokens)
+                        for x in all_prefixes
                     ]
                 }
             )
