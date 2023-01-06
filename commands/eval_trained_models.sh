@@ -14,17 +14,17 @@ DEBUG_PARAMS="--max_eval_samples 25 --num_inference_diffusion_steps 10"
 # On length = 200
 # Eval only on one GPU due to speed issue with MAUVE metric.
 # our self-condition addition with guidance eval 
-MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition_guidance_5/"${CHECKPOINT} 
-MODEL_NAME="self_condition_logits_addition_guidance_5"
-python -m torch.distributed.launch --nproc_per_node 8  run_mlm.py  --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}   --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition --guidance_scale 5  
-CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py  --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}   --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps}  ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition --guidance_scale 5  
+# MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition_guidance_5/"${CHECKPOINT} 
+# MODEL_NAME="self_condition_logits_addition_guidance_5"
+# python -m torch.distributed.launch --nproc_per_node 8  run_mlm.py  --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}   --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition --guidance_scale 5  
+# CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py  --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}   --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps}  ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition --guidance_scale 5  
 
 
 # our self-condition addition 
-MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition/"${CHECKPOINT} 
-MODEL_NAME="self-condition-addition"
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition  
-# CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition  
+# MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition/"${CHECKPOINT} 
+# MODEL_NAME="self-condition-addition"
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition
+# CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition 
 
 # ul2 model
 MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256/"${CHECKPOINT} 
