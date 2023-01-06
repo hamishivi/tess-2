@@ -1,6 +1,6 @@
 # Evaluation of our models trained on the cloud from a checkpoint
 
-TOP_P=0.99
+TOP_P=0.1
 # BASE_DIR="/net/nfs.cirrascale/s2-research/"
 BASE_DIR="/home/"
 tokenized_data_path=${BASE_DIR}"rabeehk/simplex-diffusion/processed_data/openwebtext_256_split_gpt_eval/"
@@ -21,16 +21,16 @@ DEBUG_PARAMS="--max_eval_samples 25 --num_inference_diffusion_steps 10"
 
 
 # our self-condition addition 
-# MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition/"${CHECKPOINT} 
-# MODEL_NAME="self-condition-addition"
-# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition
-# CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition 
+MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition/"${CHECKPOINT} 
+MODEL_NAME="self-condition-addition"
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition
+CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P} --self_condition logits_addition 
 
 # ul2 model
-MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256/"${CHECKPOINT} 
-MODEL_NAME="ul2"
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps}  ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P}
-CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps}  ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P}
+# MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256/"${CHECKPOINT} 
+# MODEL_NAME="ul2"
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps}  ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P}
+# CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --truncation_length ${truncation_length} --model_name_or_path ${MODEL_PATH}  --output_dir ${output_dir}/${MODEL_NAME}"_"${TOP_P}"_"${truncation_length}"_"${num_inference_diffusion_steps} --num_inference_diffusion_steps ${num_inference_diffusion_steps}  ${shared_params} --tokenized_data_path ${tokenized_data_path} --top_p ${TOP_P}
 
 # original self-condition
 # MODEL_PATH=${BASE_DIR}"rabeehk/outputs/paper_experiments/cloudmodels/opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits/"${CHECKPOINT} 
