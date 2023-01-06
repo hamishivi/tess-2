@@ -247,6 +247,14 @@ class DiffusionTrainer(Trainer):
         # Main evaluation loop
         for step, inputs in enumerate(dataloader):
             has_mask = True if "span_mask" in inputs else False
+
+            # Truncate the length if needed.
+            if self.data_args.truncation_length > 0:
+                inputs["input_ids"] = inputs["input_ids"][:, : -self.data_args.truncation_length]
+                inputs["span_mask"] = inputs["span_mask"][:, : -self.data_args.truncation_length]
+                max_seq_length = self.data_args.max_seq_length - self.data_args.truncation_length
+                assert self.data_args.eval_context_size < max_seq_length
+
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
