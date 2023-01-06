@@ -233,6 +233,7 @@ class DiffusionTrainer(Trainer):
         simplex_host = None
         inputs_host = None
         masks_host = None
+        prefixes_host = None
 
         # logits/simplex/labels on CPU (final containers)
         all_losses = None
@@ -258,8 +259,17 @@ class DiffusionTrainer(Trainer):
             simplex, logits, loss = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
+            prefixes = [input[~mask] for input, mask in zip(inputs_decode, masks)] if has_mask else None
 
             # Update containers on host
+            if prefixes is not None:
+                prefixes = self._pad_across_processes(prefixes, pad_index=self.eos_token_id)
+                prefixes = self._nested_gather(prefixes)
+                prefixes_host = (
+                    prefixes
+                    if prefixes_host is None
+                    else nested_concat(prefixes_host, prefixes, padding_index=self.eos_token_id)
+                )
             if inputs_decode is not None:
                 inputs_decode = self._pad_across_processes(inputs_decode, pad_index=self.eos_token_id)
                 inputs_decode = self._nested_gather(inputs_decode)
@@ -274,6 +284,7 @@ class DiffusionTrainer(Trainer):
             if masks is not None:
                 masks = self._pad_across_processes(masks, pad_index=0)
                 masks = self._nested_gather(masks)
+                # We pad masks with False tokens.
                 masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=0)
             if logits is not None:
                 if self.preprocess_logits_for_metrics is not None:
@@ -319,6 +330,11 @@ class DiffusionTrainer(Trainer):
         if masks_host is not None:
             masks = nested_numpify(masks_host)
             all_masks = masks if all_masks is None else nested_concat(all_masks, masks, padding_index=0)
+        if prefixes_host is not None:
+            prefixes = nested_numpify(prefixes_host)
+            all_prefixes = (
+                prefixes if all_prefixes is None else nested_concat(all_prefixes, prefixes, padding_index=self.eos_token_id)
+            )
 
         # Number of samples
         num_samples = len(eval_dataset)
@@ -337,6 +353,8 @@ class DiffusionTrainer(Trainer):
             all_logits = nested_truncate(all_logits, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
+        if all_prefixes is not None:
+            all_prefixes = nested_truncate(all_prefixes, num_samples)
         # Generates the texts.
         results = {}
         if is_conditional_generation:
@@ -361,6 +379,10 @@ class DiffusionTrainer(Trainer):
                     self.data_args.skip_special_tokens,
                 )
             )
+            all_prefixes_text = [
+                self.tokenizer.batch_decode(x, skip_special_tokens=self.data_args.skip_special_tokens) for x in all_prefixes
+            ]
+            results.update({"prefixes": all_prefixes_text})
         else:
             results.update(
                 {
