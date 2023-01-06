@@ -25,6 +25,8 @@ from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.inference.inference_utils import evaluate_generation
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.data.data_utils import split_data_to_train_validation
+from transformers.trainer_callback import TrainerState
+
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -259,6 +261,11 @@ def main():
 
     # Evaluation
     if training_args.do_eval:
+        if training_args.load_states_in_eval_from_model_path:
+            trainer._load_from_checkpoint(model_args.model_name_or_path)
+            trainer.state = TrainerState.load_from_json(os.path.join(model_args.model_name_or_path, "trainer_state.json"))
+            trainer._load_rng_state(model_args.model_name_or_path)
+
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
