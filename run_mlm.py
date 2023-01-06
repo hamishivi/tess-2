@@ -219,6 +219,8 @@ def main():
             causal_tokenizer,
             is_conditional_generation,
             prefix_lm_eval=prefix_lm_eval,
+            skip_special_tokens=data_args.skip_special_tokens,
+            eval_for_all_metrics=training_args.eval_for_all_metrics,
         )
 
     # Initialize our Trainer

@@ -149,7 +149,15 @@ def main():
     with open(f"{training_args.output_dir}/generated_results.json", "w") as f:
         json.dump(results, f)
 
-    metrics = evaluate_generation(results, model, tokenizer, is_conditional_generation=True, prefix_lm_eval=True)
+    metrics = evaluate_generation(
+        results,
+        model,
+        tokenizer,
+        is_conditional_generation=True,
+        prefix_lm_eval=True,
+        skip_special_tokens=True,
+        eval_for_all_metrics=True,
+    )
     with open(f"{training_args.output_dir}/metrics.json", "w") as f:
         json.dump(metrics, f)
 

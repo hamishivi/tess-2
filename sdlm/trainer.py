@@ -240,6 +240,7 @@ class DiffusionTrainer(Trainer):
         all_simplex = None
         all_inputs = None
         all_masks = None
+        all_prefixes = None
         observed_num_examples = 0
 
         # Main evaluation loop
@@ -341,24 +342,56 @@ class DiffusionTrainer(Trainer):
         if is_conditional_generation:
             # We predict the masked tokens only. Here, we compute the masked tokens.
             results.update(
-                predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_simplex, "pred_texts_from_simplex")
+                predict_conditional_generated(
+                    all_masks,
+                    all_inputs,
+                    self.tokenizer,
+                    all_simplex,
+                    "pred_texts_from_simplex",
+                    self.data_args.skip_special_tokens,
+                )
             )
             results.update(
-                predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_logits, "pred_texts_from_logits")
+                predict_conditional_generated(
+                    all_masks,
+                    all_inputs,
+                    self.tokenizer,
+                    all_logits,
+                    "pred_texts_from_logits",
+                    self.data_args.skip_special_tokens,
+                )
             )
         else:
-            results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
-            results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
+            results.update(
+                {
+                    "pred_texts_from_simplex": self.tokenizer.batch_decode(
+                        all_simplex, skip_special_tokens=self.data_args.skip_special_tokens
+                    )
+                }
+            )
+            results.update(
+                {
+                    "pred_texts_from_logits": self.tokenizer.batch_decode(
+                        all_logits, skip_special_tokens=self.data_args.skip_special_tokens
+                    )
+                }
+            )
         if is_conditional_generation:
             results.update(
                 {
                     "gold_texts_masked": [
-                        self.tokenizer.decode(input[mask], skip_special_tokens=False)
+                        self.tokenizer.decode(input[mask], skip_special_tokens=self.data_args.skip_special_tokens)
                         for mask, input in zip(all_masks, all_inputs)
                     ]
                 }
             )
-            results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
+            results.update(
+                {
+                    "gold_texts": self.tokenizer.batch_decode(
+                        all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
+                    )
+                }
+            )
         # Metrics.
         metrics = self.compute_metrics(results)
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors

@@ -91,6 +91,7 @@ class TrainingArguments(HFTrainingArguments):
             "help": "If set, for `run_glue.py` it sets the metrics name" "to save the best model in each checkpoint step."
         },
     )
+    eval_for_all_metrics: bool = field(default=False, metadata={"help": "If set, evaluates on all metrics in run_mlm.py"})
 
 
 @dataclass
@@ -230,6 +231,12 @@ class DataTrainingArguments:
     )
     truncation_length: Optional[int] = field(
         default=0, metadata={"help": "If set, we will truncate the tokens from the end for the given length."}
+    )
+    skip_special_tokens: bool = field(
+        default=True,
+        metadata={
+            "help": "If training line by line set this to False to generate end token and cut. Also, in case you want to consider generation till </s> and cut the rest."
+        },
     )
     # Parameters used in seq2seq training for summarization.
     """

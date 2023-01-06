@@ -130,13 +130,13 @@ def filter_empty(texts):
     return list(texts), list(remained_inds)
 
 
-def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name):
+def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name, skip_special_tokens):
     masked = list(
         map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=True), predicted_token_ids, span_masks)
     )
     unmasked = list(map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=False), input_ids, span_masks))
-    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in masked]
-    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in unmasked]
+    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens) for x in masked]
+    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens) for x in unmasked]
     pred_texts = list(map(lambda x, y: concatenate_alternatively(x, y), pred_unmasked_texts, pred_masked_texts))
     pred_texts_marked = list(
         map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
@@ -155,6 +155,8 @@ def evaluate_generation(
     causal_tokenizer,
     is_conditional_generation,
     prefix_lm_eval=False,
+    skip_special_tokens=True,
+    eval_for_all_metrics=False,
 ):
     metrics = {}
     # In case of prefix_lm since the generated text is unified, we can evaluate only the masked parts.
@@ -170,16 +172,17 @@ def evaluate_generation(
         keys = ["pred_texts_from_simplex", "pred_texts_from_logits"]
         gold_text_key = "gold_texts"
 
-    # TODO: remove this later.
-    is_gpt = True if "gold_texts_masked" in results else False
     if is_conditional_generation:
-        gold_texts = process_text(results[gold_text_key])
+        gold_texts = results[gold_text_key]
+        if not skip_special_tokens:
+            gold_texts = process_text(gold_texts)
     if "prefixes" in results:
         prefixes = results["prefixes"]
     for key in keys:
         key_metrics = {}
         texts = results[key]
-        texts = process_text(texts)
+        if not skip_special_tokens:
+            texts = process_text(texts)
         texts, remained_indices = filter_empty(texts)
         if len(texts) == 0:
             continue
@@ -190,7 +193,7 @@ def evaluate_generation(
         key_metrics.update(distinct_n_grams(texts))
 
         # Metrics requiring the gold text.
-        if is_conditional_generation and is_gpt:
+        if is_conditional_generation and eval_for_all_metrics:
             # Note that we need to pass both context and predicted texts to this metric.
             remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
             remained_prefixes = [text for i, text in enumerate(prefixes) if i in remained_indices]
@@ -198,7 +201,7 @@ def evaluate_generation(
             gold_with_context = join_texts(remained_prefixes, remained_gold_texts)
             key_metrics.update(mauve(predictions=texts_with_context, references=gold_with_context))
 
-        if key + "_tokens" in results and is_gpt:
+        if key + "_tokens" in results and eval_for_all_metrics:
             key_metrics.update(repetition(results[key + "_tokens"], causal_tokenizer))
             key_metrics.update(zipf(results[key + "_tokens"]))
 
