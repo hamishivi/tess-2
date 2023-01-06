@@ -81,6 +81,7 @@ class SpanInfillingDataCollator:
         self.conditional_generation = data_args.conditional_generation
         self.extra_padding_ratio = data_args.extra_padding_ratio
         self.rng = np.random.default_rng(seed)
+        self.eval_context_size = eval_context_size
         self.mode = mode
         if self.conditional_generation == "ul2_with_unconditional" and mode == "train":
             self.mask_generator = {}
@@ -143,7 +144,11 @@ class SpanInfillingDataCollator:
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
         elif self.mode == "eval" and self.conditional_generation in ["ul2", "ul2_with_unconditional"]:
-            masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
+            masks = {
+                "span_mask": gpt_span_mask_batch(
+                    features, use_half_length_as_prefix_size=True, eval_context_size=self.eval_context_size
+                )
+            }
         batch = self.tokenizer.pad(
             features,
             padding=self.padding,

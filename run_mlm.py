@@ -199,7 +199,6 @@ def main():
     # Data collator
     # TODO: fix lambda max_seq_length, extra_padding_ratio:
     pad_to_multiple_of_8 = data_args.line_by_line and training_args.fp16 and not data_args.pad_to_max_length
-    # TODO: we can add prefix_size here.
     data_collator = lambda mode: SpanInfillingDataCollator(
         mode=mode,
         data_args=data_args,
@@ -207,6 +206,7 @@ def main():
         max_length=data_args.max_seq_length,
         seed=training_args.seed,
         pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
+        eval_context_size=data_args.eval_context_size,
     )
 
     if training_args.do_eval:
