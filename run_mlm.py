@@ -27,6 +27,8 @@ from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.data.data_utils import split_data_to_train_validation
 from transformers.trainer_callback import TrainerState
 
+GENERATION_RESULTS = "generated_eval"
+
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -36,6 +38,26 @@ require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/lang
 logger = logging.getLogger(__name__)
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
+
+def get_compute_metrics(data_args, training_args, model_args):
+    # Causal language model.
+    causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
+    causal_model = causal_model.to(training_args.device)
+    causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
+
+    is_conditional_generation = data_args.conditional_generation is not None
+    prefix_lm_eval = True if data_args.conditional_generation in ["prefix_lm", "ul2", "ul2_with_unconditional"] else False
+    compute_metrics = lambda results: evaluate_generation(
+        results,
+        causal_model,
+        causal_tokenizer,
+        is_conditional_generation,
+        prefix_lm_eval=prefix_lm_eval,
+        skip_special_tokens=data_args.skip_special_tokens,
+        eval_for_all_metrics=training_args.eval_for_all_metrics,
+    )
+    return compute_metrics
 
 
 def main():
@@ -139,11 +161,6 @@ def main():
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
-    # Causal language model.
-    causal_model = AutoModelForCausalLM.from_pretrained(model_args.autoregressive_eval_model)
-    causal_model = causal_model.to(training_args.device)
-    causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
-
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
@@ -210,20 +227,7 @@ def main():
     )
 
     if training_args.do_eval:
-        is_conditional_generation = data_args.conditional_generation is not None
-        prefix_lm_eval = (
-            True if data_args.conditional_generation in ["prefix_lm", "ul2", "ul2_with_unconditional"] else False
-        )
-
-        compute_metrics = lambda results: evaluate_generation(
-            results,
-            causal_model,
-            causal_tokenizer,
-            is_conditional_generation,
-            prefix_lm_eval=prefix_lm_eval,
-            skip_special_tokens=data_args.skip_special_tokens,
-            eval_for_all_metrics=training_args.eval_for_all_metrics,
-        )
+        comute_metrics = get_compute_metrics(data_args, training_args, model_args)
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
@@ -233,7 +237,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics if training_args.do_eval and not training_args.without_compute_metrics else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
@@ -267,13 +271,15 @@ def main():
             trainer._load_rng_state(model_args.model_name_or_path)
 
         logger.info("*** Evaluate ***")
-        metrics, generation_results = trainer.evaluate()
+        metrics, results = trainer.evaluate()
+        # Save the results
+        trainer.save_metrics(GENERATION_RESULTS, results)
+        logger.info("Results are saved now")
+
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
-        # Saves the generations.
-        trainer.save_metrics("generated_eval", generation_results)
 
 
 if __name__ == "__main__":

@@ -142,10 +142,12 @@ def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_to
         map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
     )
     aggregated_masked_texts = list(map(lambda x: aggregate_list(x), pred_masked_texts))
+    predicted_tokens = [np.array(item).tolist() for submasked in masked for item in submasked]
     return {
         prefix_name: pred_texts,
         prefix_name + "_marked": pred_texts_marked,
         prefix_name + "_masked": aggregated_masked_texts,
+        prefix_name + "_masked_tokens": predicted_tokens,
     }
 
 

@@ -96,6 +96,14 @@ class TrainingArguments(HFTrainingArguments):
         default=False,
         metadata={"help": "In case of only using --do_eval without --do_train, use it to load the states before eval."},
     )
+    without_compute_metrics: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, does not compute the metrics. we are observing MAUVE is very slow"
+            "on multi-gpu setting and we do this to compute the metrics separately."
+            "If using this option, you can call `compute_mlm_metrics.py` to compute them on 1 GPU later on."
+        },
+    )
 
 
 @dataclass

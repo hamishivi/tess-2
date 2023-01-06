@@ -420,7 +420,10 @@ class DiffusionTrainer(Trainer):
             )
 
         # Metrics.
-        metrics = self.compute_metrics(results)
+        if self.compute_metrics is not None:
+            metrics = self.compute_metrics(results)
+        else:
+            metrics = {}
 
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
@@ -469,8 +472,8 @@ class DiffusionTrainer(Trainer):
         """
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
-
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
+
         start_time = time.time()
 
         output = self.evaluation_loop(
