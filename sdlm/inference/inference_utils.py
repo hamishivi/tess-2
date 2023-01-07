@@ -180,6 +180,7 @@ def evaluate_generation(
             gold_texts = process_text(gold_texts)
     if "prefixes" in results:
         prefixes = results["prefixes"]
+
     for key in keys:
         key_metrics = {}
         texts = results[key]
