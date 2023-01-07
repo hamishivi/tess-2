@@ -227,7 +227,7 @@ def main():
     )
 
     if training_args.do_eval:
-        comute_metrics = get_compute_metrics(data_args, training_args, model_args)
+        compute_metrics = get_compute_metrics(data_args, training_args, model_args)
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
