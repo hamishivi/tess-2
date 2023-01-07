@@ -2,7 +2,7 @@ import pdb
 import json
 import numpy as np
 
-path = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_eval/self-condition-original_0.99_56_1000/eval_results.json"
+path = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_eval/self_condition_logits_addition_guidance_5_0.99_56_1000/eval_results.json"
 
 name_to_short = {
     "pred_texts_from_simplex_masked_perplexity": "PPL",
