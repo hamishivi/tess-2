@@ -143,6 +143,7 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
     return tokenized_datasets
 
 
+# TODO: we need to remove this one and update process_data.py.
 def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length

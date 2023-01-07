@@ -97,6 +97,13 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             Used to hide legacy arguments that have been deprecated.
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # If we have a mask, we need to mask the simplex values before softmax.
+        if span_mask is not None:
+            mask_value = torch.finfo(simplex.dtype).min
+            mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
+            simplex = torch.where(span_mask[:, :, None], mask_value, simplex)
+
         inputs_probs = F.softmax(simplex, dim=-1)
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)

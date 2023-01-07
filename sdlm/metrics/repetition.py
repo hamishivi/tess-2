@@ -1,4 +1,5 @@
 """Computes the repetition metric. Adapted from: https://raw.githubusercontent.com/ari-holtzman/degen/master/metrics/repetition.py"""
+import pdb
 
 
 def repetition(tokenized_texts, tokenizer):
@@ -41,4 +42,4 @@ def repetition(tokenized_texts, tokenizer):
         else:
             repetition_stats.append({})
 
-    return n_repeated_examples * 1.0 / num_examples, repetition_stats
+    return {"repetition": n_repeated_examples * 1.0 / num_examples}  # , "repetition_stats": repetition_stats}

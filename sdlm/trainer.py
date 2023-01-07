@@ -92,6 +92,11 @@ class DiffusionTrainer(Trainer):
         model.train()
         inputs = self._prepare_inputs(inputs)
 
+        # Truncate the length if needed.
+        if self.data_args.truncation_length > 0:
+            inputs["input_ids"] = inputs["input_ids"][:, : -self.data_args.truncation_length]
+            inputs["span_mask"] = inputs["span_mask"][:, : -self.data_args.truncation_length]
+
         # Creates the noisy simplex and timesteps.
         simplex = convert_to_simplex(inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size)
         noise = self.diffusion_args.simplex_value * torch.randn(simplex.shape, device=simplex.device, dtype=simplex.dtype)
@@ -233,6 +238,7 @@ class DiffusionTrainer(Trainer):
         simplex_host = None
         inputs_host = None
         masks_host = None
+        prefixes_host = None
 
         # logits/simplex/labels on CPU (final containers)
         all_losses = None
@@ -240,11 +246,20 @@ class DiffusionTrainer(Trainer):
         all_simplex = None
         all_inputs = None
         all_masks = None
+        all_prefixes = None
         observed_num_examples = 0
 
         # Main evaluation loop
         for step, inputs in enumerate(dataloader):
             has_mask = True if "span_mask" in inputs else False
+
+            # Truncate the length if needed.
+            if self.data_args.truncation_length > 0:
+                inputs["input_ids"] = inputs["input_ids"][:, : -self.data_args.truncation_length]
+                inputs["span_mask"] = inputs["span_mask"][:, : -self.data_args.truncation_length]
+                max_seq_length = self.data_args.max_seq_length - self.data_args.truncation_length
+                assert self.data_args.eval_context_size < max_seq_length
+
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
@@ -257,8 +272,17 @@ class DiffusionTrainer(Trainer):
             simplex, logits, loss = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
+            prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
 
             # Update containers on host
+            if prefixes is not None:
+                prefixes = self._pad_across_processes(prefixes, pad_index=self.eos_token_id)
+                prefixes = self._nested_gather(prefixes)
+                prefixes_host = (
+                    prefixes
+                    if prefixes_host is None
+                    else nested_concat(prefixes_host, prefixes, padding_index=self.eos_token_id)
+                )
             if inputs_decode is not None:
                 inputs_decode = self._pad_across_processes(inputs_decode, pad_index=self.eos_token_id)
                 inputs_decode = self._nested_gather(inputs_decode)
@@ -273,6 +297,7 @@ class DiffusionTrainer(Trainer):
             if masks is not None:
                 masks = self._pad_across_processes(masks, pad_index=0)
                 masks = self._nested_gather(masks)
+                # We pad masks with False tokens.
                 masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=0)
             if logits is not None:
                 if self.preprocess_logits_for_metrics is not None:
@@ -318,6 +343,11 @@ class DiffusionTrainer(Trainer):
         if masks_host is not None:
             masks = nested_numpify(masks_host)
             all_masks = masks if all_masks is None else nested_concat(all_masks, masks, padding_index=0)
+        if prefixes_host is not None:
+            prefixes = nested_numpify(prefixes_host)
+            all_prefixes = (
+                prefixes if all_prefixes is None else nested_concat(all_prefixes, prefixes, padding_index=self.eos_token_id)
+            )
 
         # Number of samples
         num_samples = len(eval_dataset)
@@ -336,31 +366,81 @@ class DiffusionTrainer(Trainer):
             all_logits = nested_truncate(all_logits, num_samples)
         if all_inputs is not None:
             all_inputs = nested_truncate(all_inputs, num_samples)
+        if all_prefixes is not None:
+            all_prefixes = nested_truncate(all_prefixes, num_samples)
+
         # Generates the texts.
         results = {}
         if is_conditional_generation:
+
             # We predict the masked tokens only. Here, we compute the masked tokens.
             results.update(
-                predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_simplex, "pred_texts_from_simplex")
+                predict_conditional_generated(
+                    all_masks,
+                    all_inputs,
+                    self.tokenizer,
+                    all_simplex,
+                    "pred_texts_from_simplex",
+                    self.data_args.skip_special_tokens,
+                )
             )
             results.update(
-                predict_conditional_generated(all_masks, all_inputs, self.tokenizer, all_logits, "pred_texts_from_logits")
+                predict_conditional_generated(
+                    all_masks,
+                    all_inputs,
+                    self.tokenizer,
+                    all_logits,
+                    "pred_texts_from_logits",
+                    self.data_args.skip_special_tokens,
+                )
             )
         else:
-            results.update({"pred_texts_from_simplex": self.tokenizer.batch_decode(all_simplex, skip_special_tokens=False)})
-            results.update({"pred_texts_from_logits": self.tokenizer.batch_decode(all_logits, skip_special_tokens=False)})
+            results.update(
+                {
+                    "pred_texts_from_simplex": self.tokenizer.batch_decode(
+                        all_simplex, skip_special_tokens=self.data_args.skip_special_tokens
+                    )
+                }
+            )
+            results.update(
+                {
+                    "pred_texts_from_logits": self.tokenizer.batch_decode(
+                        all_logits, skip_special_tokens=self.data_args.skip_special_tokens
+                    )
+                }
+            )
         if is_conditional_generation:
+
             results.update(
                 {
                     "gold_texts_masked": [
-                        self.tokenizer.decode(input[mask], skip_special_tokens=False)
+                        self.tokenizer.decode(input[mask], skip_special_tokens=self.data_args.skip_special_tokens)
                         for mask, input in zip(all_masks, all_inputs)
                     ]
                 }
             )
-            results.update({"gold_texts": self.tokenizer.batch_decode(all_inputs, skip_special_tokens=False)})
+            results.update(
+                {
+                    "prefixes": [
+                        self.tokenizer.decode(x, skip_special_tokens=self.data_args.skip_special_tokens)
+                        for x in all_prefixes
+                    ]
+                }
+            )
+            results.update(
+                {
+                    "gold_texts": self.tokenizer.batch_decode(
+                        all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
+                    )
+                }
+            )
+
         # Metrics.
-        metrics = self.compute_metrics(results)
+        if self.compute_metrics is not None:
+            metrics = self.compute_metrics(results)
+        else:
+            metrics = {}
+
         # To be JSON-serializable, we need to remove numpy types or zero-d tensors
         metrics = denumpify_detensorize(metrics)
 
@@ -408,8 +488,8 @@ class DiffusionTrainer(Trainer):
         """
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
-
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
+
         start_time = time.time()
 
         output = self.evaluation_loop(
@@ -438,7 +518,7 @@ class DiffusionTrainer(Trainer):
         self.log(output.metrics)
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-        return output.metrics
+        return output.metrics, output.results
 
     def log_results_to_tensorboard(self, state, output):
         # TODO: we need to fix this which happens during the only eval option.

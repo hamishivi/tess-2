@@ -91,6 +91,19 @@ class TrainingArguments(HFTrainingArguments):
             "help": "If set, for `run_glue.py` it sets the metrics name" "to save the best model in each checkpoint step."
         },
     )
+    eval_for_all_metrics: bool = field(default=False, metadata={"help": "If set, evaluates on all metrics in run_mlm.py"})
+    load_states_in_eval_from_model_path: bool = field(
+        default=False,
+        metadata={"help": "In case of only using --do_eval without --do_train, use it to load the states before eval."},
+    )
+    without_compute_metrics: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, does not compute the metrics. we are observing MAUVE is very slow"
+            "on multi-gpu setting and we do this to compute the metrics separately."
+            "If using this option, you can call `compute_mlm_metrics.py` to compute them on 1 GPU later on."
+        },
+    )
 
 
 @dataclass
@@ -219,6 +232,22 @@ class DataTrainingArguments:
             "span_infilling, or prefix_lm and evals on prefix_lm with masking half of the sequence. In case of"
             "`ul2_with_unconditional`: it uses ul2 with also including unconditional generation during training."
             "`seq2seq` is used for translation or summarization tasks."
+        },
+    )
+    eval_context_size: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "By default we consider the half of sequence as prompt when evaluating for `conditional_generation` of"
+            "`ul2` and `prefix_lm`. If this parameter is set, it specifies the context size during the evaluation."
+        },
+    )
+    truncation_length: Optional[int] = field(
+        default=0, metadata={"help": "If set, we will truncate the tokens from the end for the given length."}
+    )
+    skip_special_tokens: bool = field(
+        default=True,
+        metadata={
+            "help": "If training line by line set this to False to generate end token and cut. Also, in case you want to consider generation till </s> and cut the rest."
         },
     )
     # Parameters used in seq2seq training for summarization.

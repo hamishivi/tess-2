@@ -2,9 +2,10 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import pdb
-from sdlm.utils import convert_to_simplex
-from sdlm.metrics.perplexity import perplexity, conditional_perplexity
-from sdlm.metrics.metrics import distinct_n_grams, mauve
+from sdlm.utils import convert_to_simplex, join_texts
+from sdlm.metrics.perplexity import perplexity
+from sdlm.metrics.metrics import distinct_n_grams, mauve, zipf
+from sdlm.metrics.repetition import repetition
 
 
 def sample_logits(sampling_type, logits, top_p):
@@ -32,10 +33,11 @@ def sample_logits(sampling_type, logits, top_p):
 
 
 def remove_first_occurrence(string, char):
+    # We do not strip as we need the spaces as well.
     if char in string:
         idx = string.index(char)
         string = string[idx + len(char) :]
-    return string.strip()
+    return string
 
 
 def keep_till_first_occurrence(string, chars):
@@ -44,7 +46,7 @@ def keep_till_first_occurrence(string, chars):
     if len(idxs):
         min_idx = np.min(idxs)
         string = string[:min_idx]
-    return string.strip()
+    return string
 
 
 def process_text(texts):
@@ -128,22 +130,24 @@ def filter_empty(texts):
     return list(texts), list(remained_inds)
 
 
-def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name):
+def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name, skip_special_tokens):
     masked = list(
         map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=True), predicted_token_ids, span_masks)
     )
     unmasked = list(map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=False), input_ids, span_masks))
-    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in masked]
-    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=False) for x in unmasked]
+    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens) for x in masked]
+    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens) for x in unmasked]
     pred_texts = list(map(lambda x, y: concatenate_alternatively(x, y), pred_unmasked_texts, pred_masked_texts))
     pred_texts_marked = list(
         map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
     )
     aggregated_masked_texts = list(map(lambda x: aggregate_list(x), pred_masked_texts))
+    predicted_tokens = [np.array(item).tolist() for submasked in masked for item in submasked]
     return {
         prefix_name: pred_texts,
         prefix_name + "_marked": pred_texts_marked,
         prefix_name + "_masked": aggregated_masked_texts,
+        prefix_name + "_masked_tokens": predicted_tokens,
     }
 
 
@@ -153,6 +157,8 @@ def evaluate_generation(
     causal_tokenizer,
     is_conditional_generation,
     prefix_lm_eval=False,
+    skip_special_tokens=True,
+    eval_for_all_metrics=False,
 ):
     metrics = {}
     # In case of prefix_lm since the generated text is unified, we can evaluate only the masked parts.
@@ -169,27 +175,40 @@ def evaluate_generation(
         gold_text_key = "gold_texts"
 
     if is_conditional_generation:
-        gold_texts = process_text(results[gold_text_key])
+        gold_texts = results[gold_text_key]
+        if not skip_special_tokens:
+            gold_texts = process_text(gold_texts)
+    if "prefixes" in results:
+        prefixes = results["prefixes"]
+
     for key in keys:
         key_metrics = {}
         texts = results[key]
-        texts = process_text(texts)
-        texts, remained_indices = filter_empty(texts)
-        if len(texts) == 0:
-            continue
+        if not skip_special_tokens:
+            texts = process_text(texts)
+
+        # texts, remained_indices = filter_empty(texts)
+        # if len(texts) == 0:
+        #     continue
 
         # Perplexity measured by a causal model.
         key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
 
-        """
         # Metrics requiring the gold text.
-        if is_conditional_generation:
+        if is_conditional_generation and eval_for_all_metrics:
             # Note that we need to pass both context and predicted texts to this metric.
-            remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
-            key_metrics.update(mauve(predictions=texts, references=remained_gold_texts))
-        """
+            # remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
+            # remained_prefixes = [text for i, text in enumerate(prefixes) if i in remained_indices]
+            texts_with_context = join_texts(prefixes, texts)
+            gold_with_context = join_texts(prefixes, gold_texts)
+            key_metrics.update(mauve(predictions=texts_with_context, references=gold_with_context))
+
+        if key + "_tokens" in results and eval_for_all_metrics:
+            key_metrics.update(repetition(results[key + "_tokens"], causal_tokenizer))
+            key_metrics.update(zipf(results[key + "_tokens"]))
+
         # Adds the metrics.
         key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
         metrics.update(key_metrics)

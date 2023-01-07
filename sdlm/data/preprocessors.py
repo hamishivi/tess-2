@@ -6,7 +6,7 @@ import torch
 
 
 # TODO: here the max perhaps needs to be also the half-length.
-def gpt_span_mask(length, pad_length, use_half_length_as_prefix_size):
+def gpt_span_mask(length, pad_length, use_half_length_as_prefix_size, eval_context_size):
     """Given the length and pad_length for an input generates a prefix (GPT-style) mask."""
     # Start of the sequence is not masked, so we consider length-1.
     # TODO: we need an assert for length not be smaller than a value.
@@ -14,15 +14,20 @@ def gpt_span_mask(length, pad_length, use_half_length_as_prefix_size):
         # high should be higher than low, otherwise we set prefix_size=1.
         prefix_size = np.random.randint(low=1, high=int((length - 1) / 2)) if length >= 5 else 1
     else:
-        prefix_size = int((length - 1) / 2)
+        # If eval_context_size is set, we consider it, otherwise we use half of the given length as
+        # context. Note that since the start token is also masked, we deduct one from the given
+        # context size.
+        prefix_size = eval_context_size - 1 if eval_context_size is not None else int((length - 1) / 2)
     # The start token is not masked.
     return [False] + [False] * prefix_size + [True] * (length - prefix_size - 1) + [False] * pad_length
 
 
-def gpt_span_mask_batch(batch, use_half_length_as_prefix_size=False):
+def gpt_span_mask_batch(batch, use_half_length_as_prefix_size=False, eval_context_size=None):
     lengths = [len(feature["input_ids"]) for feature in batch]
     max_length = max(lengths)
-    masks = [gpt_span_mask(length, max_length - length, use_half_length_as_prefix_size) for length in lengths]
+    masks = [
+        gpt_span_mask(length, max_length - length, use_half_length_as_prefix_size, eval_context_size) for length in lengths
+    ]
     return torch.tensor(masks)
 
 

@@ -20,6 +20,7 @@ class Objective(Enum):
     # Unconditional generation case.
     unconditional = 4
 
+
 # TODO: automize this one.
 # TODO: these are for sequence length of 100, adapt for 200.
 OBJECTIVE_SETTINGS = {
@@ -70,6 +71,7 @@ class SpanInfillingDataCollator:
         pad_to_multiple_of: Optional[int] = None,
         return_tensors: str = "pt",
         seed: int = 42,
+        eval_context_size: int = None,
     ):
         self.tokenizer = tokenizer
         self.padding = padding
@@ -79,6 +81,7 @@ class SpanInfillingDataCollator:
         self.conditional_generation = data_args.conditional_generation
         self.extra_padding_ratio = data_args.extra_padding_ratio
         self.rng = np.random.default_rng(seed)
+        self.eval_context_size = eval_context_size
         self.mode = mode
         if self.conditional_generation == "ul2_with_unconditional" and mode == "train":
             self.mask_generator = {}
@@ -95,7 +98,9 @@ class SpanInfillingDataCollator:
                 batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
             )
         elif self.conditional_generation == "prefix_lm":
-            self.mask_generator = lambda batch: gpt_span_mask_batch(batch, use_half_length_as_prefix_size=(mode == "eval"))
+            self.mask_generator = lambda batch: gpt_span_mask_batch(
+                batch, use_half_length_as_prefix_size=(mode == "eval"), eval_context_size=eval_context_size
+            )
         elif self.conditional_generation == "ul2" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
@@ -139,7 +144,11 @@ class SpanInfillingDataCollator:
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
         elif self.mode == "eval" and self.conditional_generation in ["ul2", "ul2_with_unconditional"]:
-            masks = {"span_mask": gpt_span_mask_batch(features, use_half_length_as_prefix_size=True)}
+            masks = {
+                "span_mask": gpt_span_mask_batch(
+                    features, use_half_length_as_prefix_size=True, eval_context_size=self.eval_context_size
+                )
+            }
         batch = self.tokenizer.pad(
             features,
             padding=self.padding,

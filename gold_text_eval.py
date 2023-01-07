@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import logging
 import sys
 import os
-from sdlm.arguments import DataTrainingArguments, TrainingArguments, ModelArguments, DiffusionArguments
+from sdlm.arguments import DataTrainingArguments, TrainingArguments, ModelArguments
 import transformers
 from transformers import HfArgumentParser, set_seed
 from torch.utils.data import DataLoader
@@ -13,10 +13,8 @@ from sdlm.data.data_utils import load_data, tokenize_data_new
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.inference.inference_utils import evaluate_generation
 import pdb
-import numpy as np
 import json
 import torch
-import pdb
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +24,11 @@ def prepare_inputs(inputs, device):
 
 
 def main():
-    parser = HfArgumentParser((DataTrainingArguments, TrainingArguments, ModelArguments, DiffusionArguments))
+    parser = HfArgumentParser((DataTrainingArguments, TrainingArguments, ModelArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        data_args, training_args, model_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        data_args, training_args, model_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
-        data_args, training_args, model_args, diffusion_args = parser.parse_args_into_dataclasses()
+        data_args, training_args, model_args = parser.parse_args_into_dataclasses()
 
     os.makedirs(training_args.output_dir, exist_ok=True)
 
@@ -118,55 +116,34 @@ def main():
     all_inputs = []
     all_prefixes = []
     all_masks = []
-    all_prefix_tokens = []
-    max_seq_length = data_args.max_seq_length
     with torch.no_grad():
         for i, batch in enumerate(eval_dataloader):
             # De-tokenize with the roberta tokenizer.
             inputs, span_mask = batch["input_ids"], batch["span_mask"]
-            # Truncate the length if needed.
             if data_args.truncation_length > 0:
                 inputs = inputs[:, : -data_args.truncation_length]
                 span_mask = span_mask[:, : -data_args.truncation_length]
                 max_seq_length = data_args.max_seq_length - data_args.truncation_length
                 assert data_args.eval_context_size < max_seq_length
-
             all_masks.extend(span_mask)
             all_inputs.extend(inputs)
-            prefixes = [input[~mask] for input, mask in zip(inputs, span_mask)]
-            prefixes = [prefix.cpu().numpy().tolist() for prefix in prefixes]
-            all_prefix_tokens.append(prefixes)
-            prefixes = roberta_tokenizer.batch_decode(prefixes, skip_special_tokens=True)
+            prefixes_tokens = [input[~mask] for input, mask in zip(inputs, span_mask)]
+            prefixes = roberta_tokenizer.batch_decode(prefixes_tokens, skip_special_tokens=True)
             all_prefixes.extend(prefixes)
-            prefixes_inputs = tokenizer(prefixes, return_tensors="pt", padding=True)
-            prefixes_inputs = prepare_inputs(prefixes_inputs, training_args.device)
-            outputs = model.generate(
-                input_ids=prefixes_inputs["input_ids"],
-                attention_mask=prefixes_inputs["attention_mask"],
-                pad_token_id=tokenizer.eos_token_id,
-                max_length=max_seq_length,
-                min_length=max_seq_length,
-                do_sample=True,
-                top_p=diffusion_args.top_p,
-            )
             # Note that output also include the prefix and we need to remove it here.
-            generated_outputs = [output[len(prefix) :] for output, prefix in zip(outputs, prefixes_inputs["input_ids"])]
-            generated_outputs = [tokens.cpu().numpy().tolist() for tokens in generated_outputs]
-            all_outputs.extend(generated_outputs)
+            gold_texts = [input[len(prefix) :] for input, prefix in zip(inputs, prefixes_tokens)]
+            gold_texts = [tokens.cpu().numpy().tolist() for tokens in gold_texts]
+            all_outputs.extend(gold_texts)
+
     results = {}
-    generated_texts = [tokenizer.decode(output, skip_special_tokens=True) for output in all_outputs]
     gold_texts = [
         roberta_tokenizer.decode(input[mask], skip_special_tokens=True) for input, mask in zip(all_inputs, all_masks)
     ]
-    total_texts_marked = [
-        prefix + " ***" + generated_text + "***" for prefix, generated_text in zip(all_prefixes, generated_texts)
-    ]
     results = {
-        "generated_texts_masked": generated_texts,
+        "generated_texts_masked": gold_texts,
         "gold_texts_masked": gold_texts,
         "generated_texts_masked_tokens": all_outputs,
         "prefixes": all_prefixes,
-        "prefix_tokens": all_prefix_tokens,
     }
     # Saves the generated results.
     with open(f"{training_args.output_dir}/generated_results.json", "w") as f:
@@ -181,10 +158,6 @@ def main():
         skip_special_tokens=True,
         eval_for_all_metrics=True,
     )
-    logger.info(metrics)
-    for text in total_texts_marked:
-        logger.info(text)
-
     with open(f"{training_args.output_dir}/metrics.json", "w") as f:
         json.dump(metrics, f)
 
