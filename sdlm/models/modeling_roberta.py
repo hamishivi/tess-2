@@ -131,6 +131,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             else:
                 if previous_pred is None:
                     previous_pred = torch.zeros_like(simplex, device=simplex.device)
+
+                if span_mask is not None:
+                    mask_value = torch.finfo(previous_pred.dtype).min
+                    mask_value = torch.tensor(mask_value, dtype=previous_pred.dtype, device=previous_pred.device)
+                    previous_pred = torch.where(span_mask[:, :, None], mask_value, previous_pred)
+
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
             previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if not self.config.deepmind_conditional:
