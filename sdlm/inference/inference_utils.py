@@ -185,9 +185,10 @@ def evaluate_generation(
         texts = results[key]
         if not skip_special_tokens:
             texts = process_text(texts)
-        texts, remained_indices = filter_empty(texts)
-        if len(texts) == 0:
-            continue
+
+        # texts, remained_indices = filter_empty(texts)
+        # if len(texts) == 0:
+        #     continue
 
         # Perplexity measured by a causal model.
         key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
@@ -197,10 +198,10 @@ def evaluate_generation(
         # Metrics requiring the gold text.
         if is_conditional_generation and eval_for_all_metrics:
             # Note that we need to pass both context and predicted texts to this metric.
-            remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
-            remained_prefixes = [text for i, text in enumerate(prefixes) if i in remained_indices]
-            texts_with_context = join_texts(remained_prefixes, texts)
-            gold_with_context = join_texts(remained_prefixes, remained_gold_texts)
+            # remained_gold_texts = [text for i, text in enumerate(gold_texts) if i in remained_indices]
+            # remained_prefixes = [text for i, text in enumerate(prefixes) if i in remained_indices]
+            texts_with_context = join_texts(prefixes, texts)
+            gold_with_context = join_texts(prefixes, gold_texts)
             key_metrics.update(mauve(predictions=texts_with_context, references=gold_with_context))
 
         if key + "_tokens" in results and eval_for_all_metrics:
