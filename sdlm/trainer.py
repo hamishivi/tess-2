@@ -92,6 +92,11 @@ class DiffusionTrainer(Trainer):
         model.train()
         inputs = self._prepare_inputs(inputs)
 
+        # Truncate the length if needed.
+        if self.data_args.truncation_length > 0:
+            inputs["input_ids"] = inputs["input_ids"][:, : -self.data_args.truncation_length]
+            inputs["span_mask"] = inputs["span_mask"][:, : -self.data_args.truncation_length]
+
         # Creates the noisy simplex and timesteps.
         simplex = convert_to_simplex(inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size)
         noise = self.diffusion_args.simplex_value * torch.randn(simplex.shape, device=simplex.device, dtype=simplex.dtype)
@@ -363,9 +368,11 @@ class DiffusionTrainer(Trainer):
             all_inputs = nested_truncate(all_inputs, num_samples)
         if all_prefixes is not None:
             all_prefixes = nested_truncate(all_prefixes, num_samples)
+
         # Generates the texts.
         results = {}
         if is_conditional_generation:
+
             # We predict the masked tokens only. Here, we compute the masked tokens.
             results.update(
                 predict_conditional_generated(
@@ -403,6 +410,7 @@ class DiffusionTrainer(Trainer):
                 }
             )
         if is_conditional_generation:
+
             results.update(
                 {
                     "gold_texts_masked": [
