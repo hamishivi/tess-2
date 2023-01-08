@@ -150,18 +150,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         if span_mask is not None:
             # Original word embeddings without noise.
             if classifier_free_guidance_in_train and random.uniform(0, 1) < 0.1:
-                """
-                if self.config.classifier_free_simplex_inputs:
-                    # NOTE: during training, we do not pass the unconditional_simplex and we need to generate it here.
-                    empty_token_ids = self.get_roberta_empty_tokens(shape=input_ids.shape, device=input_ids.device)
-                    # TODO: fix the simplex_value later.
-                    unconditional_simplex = convert_to_simplex(empty_token_ids, 5.0, self.config.vocab_size)
-                    unconditional_probs = F.softmax(unconditional_simplex, dim=-1)
-                    inputs_word_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
-                else:
-                    empty_token_ids = self.get_roberta_empty_tokens(input_ids.shape, input_ids.device)
-                    inputs_word_embeds = self.get_input_embeddings()(empty_token_ids)
-                """
                 inputs_word_embeds = uncond_inputs_embeds
             else:
                 inputs_word_embeds = self.get_input_embeddings()(input_ids)
