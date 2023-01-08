@@ -62,6 +62,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.lm_head.decoder = new_embeddings
 
     def get_roberta_empty_tokens(self, shape, device):
+        # Padding token in roberta-large is 1.
         empty_token_ids = torch.ones(shape, dtype=torch.int64, device=device)
         empty_token_ids[:, 0] = 0
         empty_token_ids[:, 1] = 2
