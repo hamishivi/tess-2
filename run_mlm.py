@@ -271,6 +271,8 @@ def main():
             trainer.state = TrainerState.load_from_json(os.path.join(model_args.model_name_or_path, "trainer_state.json"))
             trainer._load_rng_state(model_args.model_name_or_path)
 
+        # np.save("weights.npy", model.vocab_to_hidden_dim_embed.weight.data.numpy())
+
         logger.info("*** Evaluate ***")
         metrics, results = trainer.evaluate()
         # Save the results
