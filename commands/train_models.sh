@@ -17,13 +17,17 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1"
 # self-condition with an MLP layer
 # python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_mlp" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --self_condition_mlp_projection
 
+# self-condition with addition
+python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_addition" ${shared_params}  --self_condition "logits_addition" --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL}
+
+
 
 # Classifier-free guidance 
-# python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_guidance_scale_2" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 --guidance_scale 2 ${PARAMS_FOR_LOCAL}
+#python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_guidance_scale_2" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 --guidance_scale 2 ${PARAMS_FOR_LOCAL}
 
 
 # Classifier-free guidance with mlp self-conditioned 
-python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_mlp_with_guidance_scale_2" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 --guidance_scale 2 ${PARAMS_FOR_LOCAL} --self_condition_mlp_projection
+#python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_mlp_with_guidance_scale_2" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 --guidance_scale 2 ${PARAMS_FOR_LOCAL} --self_condition_mlp_projection
 
 
 # DEBUG MODEL
