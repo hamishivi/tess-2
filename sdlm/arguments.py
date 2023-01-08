@@ -241,8 +241,13 @@ class DataTrainingArguments:
             "`ul2` and `prefix_lm`. If this parameter is set, it specifies the context size during the evaluation."
         },
     )
+    # TODO: later fix masking length with truncation.
     truncation_length: Optional[int] = field(
-        default=0, metadata={"help": "If set, we will truncate the tokens from the end for the given length."}
+        default=0,
+        metadata={
+            "help": "If set, we will truncate the tokens from the end for the given length."
+            "Note we still compute masking length based on original data length!"
+        },
     )
     skip_special_tokens: bool = field(
         default=True,

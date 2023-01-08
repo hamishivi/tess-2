@@ -79,7 +79,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
-        clip_sample: bool = True,
+        clip_sample: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)

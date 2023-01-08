@@ -294,6 +294,24 @@ class DiffusionTrainer(Trainer):
             if loss is not None:
                 losses = self._nested_gather(loss.repeat(batch_size))
                 losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+            # Note that this block should be before masks block, since we need masks here.
+            if simplex is not None:
+                # In case of having a mask softmax is applied over the simplex non-masked values.
+                if has_mask is not None:
+                    mask_value = torch.finfo(simplex.dtype).min
+                    mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
+                    simplex = torch.where(masks[:, :, None], mask_value, simplex)
+                simplex = F.softmax(simplex, dim=-1)
+                if self.preprocess_logits_for_metrics is not None:
+                    simplex = self.preprocess_logits_for_metrics(simplex)
+                simplex = self._pad_across_processes(simplex, pad_index=self.eos_token_id)
+                simplex = self._nested_gather(simplex)
+                # TODO: note that this is no more a simplex, but the processed one.
+                simplex_host = (
+                    simplex
+                    if simplex_host is None
+                    else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
+                )
             if masks is not None:
                 masks = self._pad_across_processes(masks, pad_index=0)
                 masks = self._nested_gather(masks)
@@ -307,18 +325,7 @@ class DiffusionTrainer(Trainer):
                 logits_host = (
                     logits if logits_host is None else nested_concat(logits_host, logits, padding_index=self.eos_token_id)
                 )
-            if simplex is not None:
-                simplex = F.softmax(simplex, dim=-1)
-                if self.preprocess_logits_for_metrics is not None:
-                    simplex = self.preprocess_logits_for_metrics(simplex)
-                simplex = self._pad_across_processes(simplex, pad_index=self.eos_token_id)
-                simplex = self._nested_gather(simplex)
-                # TODO: note that this is no more a simplex, but the processed one.
-                simplex_host = (
-                    simplex
-                    if simplex_host is None
-                    else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
-                )
+
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
         # Gather all remaining tensors and put them back on the CPU
@@ -427,13 +434,13 @@ class DiffusionTrainer(Trainer):
                     ]
                 }
             )
-            results.update(
-                {
-                    "gold_texts": self.tokenizer.batch_decode(
-                        all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
-                    )
-                }
-            )
+            # results.update(
+            #    {
+            #        "gold_texts": self.tokenizer.batch_decode(
+            #            all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
+            #        )
+            #    }
+            # )
 
         # Metrics.
         if self.compute_metrics is not None:
