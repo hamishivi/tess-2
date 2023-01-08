@@ -28,6 +28,8 @@ from sdlm.inference.inference_utils import process_text
 from sdlm.metrics.metrics import get_glue_metrics
 from sdlm.data.postprocessors import get_post_processor
 
+# This is computed with scripts/compute_max_tokens_of_labels.py
+MAX_LABEL_LENGTH = 5
 check_min_version("4.25.0")
 
 require_version("datasets>=1.8.0")
@@ -191,7 +193,7 @@ def main():
         # Tokenize the labels.
         targets = [str(round_stsb_target(label)) if is_regression else str(label) for label in examples["label"]]
         labels = tokenizer(text_target=targets, max_length=max_seq_length, padding=False, truncation=True)
-        max_label_length = max([len(label) for label in labels["input_ids"]])
+        max_label_length = MAX_LABEL_LENGTH  # max([len(label) for label in labels["input_ids"]])
 
         # Tokenize the texts.
         if data_args.add_t5_tags:
