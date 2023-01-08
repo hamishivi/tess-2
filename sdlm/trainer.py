@@ -182,6 +182,7 @@ class DiffusionTrainer(Trainer):
         """
         args = self.args
         is_conditional_generation = self.data_args.conditional_generation is not None
+        save_prefixes = is_conditional_generation and self.data_args.conditional_generation != "seq2seq"
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
         # if eval is called w/o train init deepspeed here
@@ -272,8 +273,10 @@ class DiffusionTrainer(Trainer):
             simplex, logits, loss = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
-            prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
-
+            if save_prefixes:
+                prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
+            else:
+                prefixes = None
             # Update containers on host
             if prefixes is not None:
                 prefixes = self._pad_across_processes(prefixes, pad_index=self.eos_token_id)
@@ -426,14 +429,15 @@ class DiffusionTrainer(Trainer):
                     ]
                 }
             )
-            results.update(
-                {
-                    "prefixes": [
-                        self.tokenizer.decode(x, skip_special_tokens=self.data_args.skip_special_tokens)
-                        for x in all_prefixes
-                    ]
-                }
-            )
+            if save_prefixes:
+                results.update(
+                    {
+                        "prefixes": [
+                            self.tokenizer.decode(x, skip_special_tokens=self.data_args.skip_special_tokens)
+                            for x in all_prefixes
+                        ]
+                    }
+                )
             # results.update(
             #    {
             #        "gold_texts": self.tokenizer.batch_decode(
