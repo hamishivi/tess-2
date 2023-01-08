@@ -300,7 +300,7 @@ class DiffusionTrainer(Trainer):
                 if has_mask:
                     mask_value = torch.finfo(simplex.dtype).min
                     mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
-                    simplex = torch.where(masks[:, :, None], mask_value, simplex)
+                    simplex = torch.where(masks[:, :, None], simplex, mask_value)
                 simplex = F.softmax(simplex, dim=-1)
                 if self.preprocess_logits_for_metrics is not None:
                     simplex = self.preprocess_logits_for_metrics(simplex)
