@@ -19,7 +19,7 @@ TOP_P=0.99
 # DEBUG MODEL trained on length=50 with prefix_lm. 
 truncation_length=206
 model_path="checkpoint-57000"
-python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --model_name_or_path ${model_path} --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_length_50_context_25_generations_"${TOP_P} ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25  ${extra_params} 
+python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --model_name_or_path ${model_path} --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 100 --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_length_50_context_25_generations_"${TOP_P} ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25  ${extra_params} 
 # CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --max_seq_length 50 --truncation_length ${truncation_length} --max_eval_samples 96 --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_length_50_context_25_generations_"${TOP_P} ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25  ${extra_params} --eval_for_all_metrics
 
 

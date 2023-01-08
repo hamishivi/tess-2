@@ -156,7 +156,7 @@ class DiffusionTrainer(Trainer):
                     batch_size=inputs["input_ids"].shape[0]
                     if is_conditional_generation
                     else self.args.per_device_eval_batch_size,
-                    seq_length=self.data_args.max_seq_length - data_args.truncation_length,
+                    seq_length=self.data_args.max_seq_length - self.data_args.truncation_length,
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
                 )
