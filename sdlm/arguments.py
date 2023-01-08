@@ -389,6 +389,7 @@ class DiffusionArguments:
             )
         },
     )
+    self_condition_mlp_projection: bool = field(default=False, metadata={"help": "If not set, uses a linear layer."})
     self_condition_zeros_after_softmax: bool = field(
         default=False,
         metadata={

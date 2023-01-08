@@ -12,6 +12,7 @@ class RobertaDiffusionConfig(RobertaConfig):
         deepmind_conditional: bool = False,
         classifier_free_simplex_inputs: bool = False,
         classifier_free_uncond_input: str = "empty_token",
+        self_condition_mlp_projection=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -20,3 +21,4 @@ class RobertaDiffusionConfig(RobertaConfig):
         self.deepmind_conditional = deepmind_conditional
         self.classifier_free_simplex_inputs = classifier_free_simplex_inputs
         self.classifier_free_uncond_input = classifier_free_uncond_input
+        self.self_condition_mlp_projection = self_condition_mlp_projection

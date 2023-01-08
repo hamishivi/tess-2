@@ -94,6 +94,7 @@ def main():
         deepmind_conditional=diffusion_args.deepmind_conditional,
         classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
         classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
+        self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,

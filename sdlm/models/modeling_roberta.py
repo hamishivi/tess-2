@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import pdb
 import random
 from sdlm.utils import convert_to_simplex
+from transformers.activations import ACT2FN
 
 logger = logging.get_logger(__name__)
 
@@ -46,7 +47,14 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             "logits_addition",
             "logits_with_projection_addition",
         ]:
-            self.project_to_hidden_size = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
+            if config.self_condition_mlp_projection:
+                self.project_to_hidden_size = nn.Sequential(
+                    nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False),
+                    ACT2FN[config.hidden_act],
+                    nn.Linear(config.hidden_size, config.hidden_size, bias=False),
+                )
+            else:
+                self.project_to_hidden_size = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()

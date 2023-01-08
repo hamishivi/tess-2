@@ -124,6 +124,7 @@ def main():
         deepmind_conditional=diffusion_args.deepmind_conditional,
         classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
         classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
+        self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
         **config_kwargs,
     )
     tokenizer_kwargs = {

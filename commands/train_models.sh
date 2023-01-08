@@ -16,12 +16,12 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1"
 
 
 # Classifier-free guidance 
-python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_guidance_scale_2" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 --guidance_scale 2 ${PARAMS_FOR_LOCAL}
+# python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_guidance_scale_2" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 --guidance_scale 2 ${PARAMS_FOR_LOCAL}
 
 
 
 # DEBUG MODEL
-# python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS} --guidance_scale 5 --self_condition logits  ${PARAMS_FOR_LOCAL}
+python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS} --guidance_scale 5 --self_condition logits  ${PARAMS_FOR_LOCAL} --self_condition_mlp_projection
 
 # Train on the simple data
 # python run_mlm.py ${params_for_simple_data} --output_dir $BASE_DIR"/outputs/paper_experiments/simple_data"    --line_by_line ${PARAMS_FOR_LOCAL}
