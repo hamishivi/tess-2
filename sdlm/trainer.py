@@ -297,7 +297,7 @@ class DiffusionTrainer(Trainer):
             # Note that this block should be before masks block, since we need masks here.
             if simplex is not None:
                 # In case of having a mask softmax is applied over the simplex non-masked values.
-                if has_mask is not None:
+                if has_mask:
                     mask_value = torch.finfo(simplex.dtype).min
                     mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
                     simplex = torch.where(masks[:, :, None], mask_value, simplex)
