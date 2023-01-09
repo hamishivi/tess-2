@@ -12,7 +12,7 @@ TOP_P=0.99
 # DEBUG MODEL trained on length=50 with prefix_lm. 
 truncation_length=206
 model_path="length_50/checkpoint-102000"
-for TOP_P in 0.0 0.1 0.2 0.5 0.7 0.9 0.95 0.99
+for TOP_P in 0.7 0.9 0.95 0.99  #0.0 0.1 0.2 0.5 0.7 0.9 0.95 0.99
 do
     python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --model_name_or_path ${model_path} --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --output_dir $BASE_DIR"/outputs/paper_experiments/tune_top_p/ul2_length_50_context_25_generations_"${TOP_P} ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25  ${extra_params}  --top_p ${TOP_P}
 done
