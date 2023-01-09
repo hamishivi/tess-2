@@ -46,6 +46,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         tokenizer,
         classifier_free_uncond_input,
         classifier_free_guided_prev_outputs,
+        temperature,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
@@ -56,6 +57,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.tokenizer = tokenizer
         self.classifier_free_uncond_input = classifier_free_uncond_input
         self.classifier_free_guided_prev_outputs = classifier_free_guided_prev_outputs
+        self.temperature = temperature
 
     @torch.no_grad()
     def __call__(
@@ -99,7 +101,10 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         simplex = self.simplex_value * torch.randn(simplex_shape, generator=generator, device=self.device)
         if self.model.config.self_condition is not None:
             previous_pred = torch.zeros((batch_size, seq_length, vocab_size), device=self.device)
-        logits_projection_fct = lambda x: logits_projection(x, self.sampling_type, self.top_p, self.simplex_value)
+        logits_projection_fct = lambda x: logits_projection(
+            x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
+        )
+
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
             t_scaled = scale(t, len(self.scheduler))

@@ -32,13 +32,17 @@ shared_params=" --per_device_train_batch_size 24 --per_device_eval_batch_size 25
 checkpoint="checkpoint-9000"
 model_path="ul2/"${checkpoint}
 TOP_P=0.9
-python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --top_p ${TOP_P}
-CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${checkpoint}  ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --eval_for_all_metrics --top_p ${TOP_P}
+#python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --top_p ${TOP_P}
+# CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_"${truncation_length}"_top_p_"${TOP_P}"_context_25_ul2/checkpoint-9000/"  ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --eval_for_all_metrics --top_p ${TOP_P}
 
 # ul2_with_self_condition
-# model_path="self_condition/checkpoint-7000/"
+model_path="self_condition/checkpoint-7000/"
+TOP_P=0.99
 # python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_"${truncation_length}"_top_p_"${TOP_P}"_context_25" ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits 
+python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_"${truncation_length}"_top_p_"${TOP_P}"_context_25" ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits --eval_for_all_metrics 
 
 # ul2_with_self_condition_with_addition 
-#model_path="self_condition_with_addition/checkpoint-6000/"
+TOP_P=0.99
+model_path="self_condition_with_addition/checkpoint-7000/"
 #python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25" ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  
+#CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25" ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --eval_for_all_metrics 

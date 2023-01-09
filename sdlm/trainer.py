@@ -113,7 +113,11 @@ class DiffusionTrainer(Trainer):
             if np.random.rand(1) > 0.5:
                 outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(
-                    x, self.diffusion_args.sampling_type, self.diffusion_args.top_p, self.diffusion_args.simplex_value
+                    x,
+                    self.diffusion_args.sampling_type,
+                    self.diffusion_args.top_p,
+                    self.diffusion_args.simplex_value,
+                    self.diffusion_args.temperature,
                 )
                 previous_pred = self_condition_preds(
                     self.diffusion_args.self_condition, outputs.logits, logits_projection_fct
@@ -226,6 +230,7 @@ class DiffusionTrainer(Trainer):
             tokenizer=self.tokenizer,
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
             classifier_free_guided_prev_outputs=self.diffusion_args.classifier_free_guided_prev_outputs,
+            temperature=self.diffusion_args.temperature,
         )
 
         self.callback_handler.eval_dataloader = dataloader

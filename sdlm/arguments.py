@@ -422,3 +422,4 @@ class DiffusionArguments:
     classifier_free_simplex_inputs: bool = field(
         default=False, metadata={"help": "If set to true, uses simplex representation for the unconditional input."}
     )
+    temperature: float = field(default=1.0, metadata={"help": "Defines the softmax temperature before doing the sampling."})

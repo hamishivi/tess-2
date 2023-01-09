@@ -8,9 +8,10 @@ from sdlm.metrics.metrics import distinct_n_grams, mauve, zipf
 from sdlm.metrics.repetition import repetition
 
 
-def sample_logits(sampling_type, logits, top_p):
+def sample_logits(sampling_type, logits, top_p, temperature):
     # top-p (nucleus) sampling.
     if sampling_type == "top_p":
+        logits = logits / temperature
         probs = F.softmax(logits, dim=-1)
         sorted_probs, sorted_indices = torch.sort(probs, dim=-1, descending=True)
         cumsum_probs = torch.cumsum(sorted_probs, dim=-1)
@@ -116,10 +117,10 @@ def aggregate_list(x):
     return str[:-1]
 
 
-def logits_projection(logits, sampling_type, top_p, simplex_value):
+def logits_projection(logits, sampling_type, top_p, simplex_value, temperature):
     # TODO(rabeeh): huggingface has different sampling, like constrastive one.
     # also there are more variant in diffusion-lm.
-    token_ids = sample_logits(sampling_type, logits, top_p)
+    token_ids = sample_logits(sampling_type, logits, top_p, temperature)
     return convert_to_simplex(token_ids, simplex_value, vocab_size=logits.shape[2])
 
 
