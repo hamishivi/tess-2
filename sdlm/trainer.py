@@ -35,6 +35,7 @@ if is_datasets_available():
 
 
 IS_SAGEMAKER_MP_POST_1_10 = False
+GENERATION_RESULTS = "generated"
 
 
 logger = logging.get_logger(__name__)
@@ -534,7 +535,12 @@ class DiffusionTrainer(Trainer):
         self.log(output.metrics)
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-        return output.metrics, output.results
+
+        # Save the results
+        self.save_metrics(GENERATION_RESULTS+"_"+metric_key_prefix, output.results)
+        logger.info("Results are saved now")
+
+        return output.metrics
 
     def log_results_to_tensorboard(self, state, output):
         # TODO: we need to fix this which happens during the only eval option.

@@ -27,8 +27,6 @@ from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.data.data_utils import split_data_to_train_validation
 from transformers.trainer_callback import TrainerState
 
-GENERATION_RESULTS = "generated_eval"
-
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -274,11 +272,7 @@ def main():
         # np.save("weights.npy", model.vocab_to_hidden_dim_embed.weight.data.numpy())
 
         logger.info("*** Evaluate ***")
-        metrics, results = trainer.evaluate()
-        # Save the results
-        trainer.save_metrics(GENERATION_RESULTS, results)
-        logger.info("Results are saved now")
-
+        metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         trainer.log_metrics("eval", metrics)
