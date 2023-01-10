@@ -35,6 +35,7 @@ if is_datasets_available():
 
 
 IS_SAGEMAKER_MP_POST_1_10 = False
+GENERATION_RESULTS = "generated"
 
 
 logger = logging.get_logger(__name__)
@@ -113,7 +114,11 @@ class DiffusionTrainer(Trainer):
             if np.random.rand(1) > 0.5:
                 outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(
-                    x, self.diffusion_args.sampling_type, self.diffusion_args.top_p, self.diffusion_args.simplex_value
+                    x,
+                    self.diffusion_args.sampling_type,
+                    self.diffusion_args.top_p,
+                    self.diffusion_args.simplex_value,
+                    self.diffusion_args.temperature,
                 )
                 previous_pred = self_condition_preds(
                     self.diffusion_args.self_condition, outputs.logits, logits_projection_fct
@@ -156,7 +161,7 @@ class DiffusionTrainer(Trainer):
                     batch_size=inputs["input_ids"].shape[0]
                     if is_conditional_generation
                     else self.args.per_device_eval_batch_size,
-                    seq_length=self.data_args.max_seq_length,
+                    seq_length=self.data_args.max_seq_length - self.data_args.truncation_length,
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
                 )
@@ -182,6 +187,7 @@ class DiffusionTrainer(Trainer):
         """
         args = self.args
         is_conditional_generation = self.data_args.conditional_generation is not None
+        save_prefixes = is_conditional_generation and self.data_args.conditional_generation != "seq2seq"
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
         # if eval is called w/o train init deepspeed here
@@ -225,6 +231,7 @@ class DiffusionTrainer(Trainer):
             tokenizer=self.tokenizer,
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
             classifier_free_guided_prev_outputs=self.diffusion_args.classifier_free_guided_prev_outputs,
+            temperature=self.diffusion_args.temperature,
         )
 
         self.callback_handler.eval_dataloader = dataloader
@@ -272,8 +279,10 @@ class DiffusionTrainer(Trainer):
             simplex, logits, loss = self.prediction_step(inputs, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
-            prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
-
+            if save_prefixes:
+                prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
+            else:
+                prefixes = None
             # Update containers on host
             if prefixes is not None:
                 prefixes = self._pad_across_processes(prefixes, pad_index=self.eos_token_id)
@@ -294,6 +303,24 @@ class DiffusionTrainer(Trainer):
             if loss is not None:
                 losses = self._nested_gather(loss.repeat(batch_size))
                 losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+            # Note that this block should be before masks block, since we need masks here.
+            if simplex is not None:
+                # In case of having a mask softmax is applied over the simplex non-masked values.
+                if has_mask:
+                    mask_value = torch.finfo(simplex.dtype).min
+                    mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
+                    simplex = torch.where(masks[:, :, None], simplex, mask_value)
+                simplex = F.softmax(simplex, dim=-1)
+                if self.preprocess_logits_for_metrics is not None:
+                    simplex = self.preprocess_logits_for_metrics(simplex)
+                simplex = self._pad_across_processes(simplex, pad_index=self.eos_token_id)
+                simplex = self._nested_gather(simplex)
+                # TODO: note that this is no more a simplex, but the processed one.
+                simplex_host = (
+                    simplex
+                    if simplex_host is None
+                    else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
+                )
             if masks is not None:
                 masks = self._pad_across_processes(masks, pad_index=0)
                 masks = self._nested_gather(masks)
@@ -307,18 +334,7 @@ class DiffusionTrainer(Trainer):
                 logits_host = (
                     logits if logits_host is None else nested_concat(logits_host, logits, padding_index=self.eos_token_id)
                 )
-            if simplex is not None:
-                simplex = F.softmax(simplex, dim=-1)
-                if self.preprocess_logits_for_metrics is not None:
-                    simplex = self.preprocess_logits_for_metrics(simplex)
-                simplex = self._pad_across_processes(simplex, pad_index=self.eos_token_id)
-                simplex = self._nested_gather(simplex)
-                # TODO: note that this is no more a simplex, but the processed one.
-                simplex_host = (
-                    simplex
-                    if simplex_host is None
-                    else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
-                )
+
             self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
         # Gather all remaining tensors and put them back on the CPU
@@ -419,21 +435,22 @@ class DiffusionTrainer(Trainer):
                     ]
                 }
             )
-            results.update(
-                {
-                    "prefixes": [
-                        self.tokenizer.decode(x, skip_special_tokens=self.data_args.skip_special_tokens)
-                        for x in all_prefixes
-                    ]
-                }
-            )
-            results.update(
-                {
-                    "gold_texts": self.tokenizer.batch_decode(
-                        all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
-                    )
-                }
-            )
+            if save_prefixes:
+                results.update(
+                    {
+                        "prefixes": [
+                            self.tokenizer.decode(x, skip_special_tokens=self.data_args.skip_special_tokens)
+                            for x in all_prefixes
+                        ]
+                    }
+                )
+            # results.update(
+            #    {
+            #        "gold_texts": self.tokenizer.batch_decode(
+            #            all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
+            #        )
+            #    }
+            # )
 
         # Metrics.
         if self.compute_metrics is not None:
@@ -518,7 +535,12 @@ class DiffusionTrainer(Trainer):
         self.log(output.metrics)
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
         self._memory_tracker.stop_and_update_metrics(output.metrics)
-        return output.metrics, output.results
+
+        # Save the results
+        self.save_metrics(GENERATION_RESULTS+"_"+metric_key_prefix, output.results)
+        logger.info("Results are saved now")
+
+        return output.metrics
 
     def log_results_to_tensorboard(self, state, output):
         # TODO: we need to fix this which happens during the only eval option.

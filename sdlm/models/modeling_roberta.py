@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import pdb
 import random
 from sdlm.utils import convert_to_simplex
+from transformers.activations import ACT2FN
 
 logger = logging.get_logger(__name__)
 
@@ -46,7 +47,14 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             "logits_addition",
             "logits_with_projection_addition",
         ]:
-            self.project_to_hidden_size = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
+            if config.self_condition_mlp_projection:
+                self.project_to_hidden_size = nn.Sequential(
+                    nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False),
+                    ACT2FN[config.hidden_act],
+                    nn.Linear(config.hidden_size, config.hidden_size, bias=False),
+                )
+            else:
+                self.project_to_hidden_size = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -62,6 +70,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.lm_head.decoder = new_embeddings
 
     def get_roberta_empty_tokens(self, shape, device):
+        # Padding token in roberta-large is 1.
         empty_token_ids = torch.ones(shape, dtype=torch.int64, device=device)
         empty_token_ids[:, 0] = 0
         empty_token_ids[:, 1] = 2
@@ -102,7 +111,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         if span_mask is not None:
             mask_value = torch.finfo(simplex.dtype).min
             mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
-            simplex = torch.where(span_mask[:, :, None], mask_value, simplex)
+            simplex = torch.where(span_mask[:, :, None], simplex, mask_value)
 
         inputs_probs = F.softmax(simplex, dim=-1)
         seq_length = inputs_probs.shape[1]
@@ -131,6 +140,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             else:
                 if previous_pred is None:
                     previous_pred = torch.zeros_like(simplex, device=simplex.device)
+
+                if span_mask is not None:
+                    mask_value = torch.finfo(previous_pred.dtype).min
+                    mask_value = torch.tensor(mask_value, dtype=previous_pred.dtype, device=previous_pred.device)
+                    previous_pred = torch.where(span_mask[:, :, None], previous_pred, mask_value)
+
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
             previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if not self.config.deepmind_conditional:
@@ -144,18 +159,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         if span_mask is not None:
             # Original word embeddings without noise.
             if classifier_free_guidance_in_train and random.uniform(0, 1) < 0.1:
-                """
-                if self.config.classifier_free_simplex_inputs:
-                    # NOTE: during training, we do not pass the unconditional_simplex and we need to generate it here.
-                    empty_token_ids = self.get_roberta_empty_tokens(shape=input_ids.shape, device=input_ids.device)
-                    # TODO: fix the simplex_value later.
-                    unconditional_simplex = convert_to_simplex(empty_token_ids, 5.0, self.config.vocab_size)
-                    unconditional_probs = F.softmax(unconditional_simplex, dim=-1)
-                    inputs_word_embeds = self.vocab_to_hidden_dim_embed(unconditional_probs)
-                else:
-                    empty_token_ids = self.get_roberta_empty_tokens(input_ids.shape, input_ids.device)
-                    inputs_word_embeds = self.get_input_embeddings()(empty_token_ids)
-                """
                 inputs_word_embeds = uncond_inputs_embeds
             else:
                 inputs_word_embeds = self.get_input_embeddings()(input_ids)

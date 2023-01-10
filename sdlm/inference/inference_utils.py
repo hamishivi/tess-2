@@ -8,9 +8,10 @@ from sdlm.metrics.metrics import distinct_n_grams, mauve, zipf
 from sdlm.metrics.repetition import repetition
 
 
-def sample_logits(sampling_type, logits, top_p):
+def sample_logits(sampling_type, logits, top_p, temperature):
     # top-p (nucleus) sampling.
     if sampling_type == "top_p":
+        logits = logits / temperature
         probs = F.softmax(logits, dim=-1)
         sorted_probs, sorted_indices = torch.sort(probs, dim=-1, descending=True)
         cumsum_probs = torch.cumsum(sorted_probs, dim=-1)
@@ -116,18 +117,20 @@ def aggregate_list(x):
     return str[:-1]
 
 
-def logits_projection(logits, sampling_type, top_p, simplex_value):
+def logits_projection(logits, sampling_type, top_p, simplex_value, temperature):
     # TODO(rabeeh): huggingface has different sampling, like constrastive one.
     # also there are more variant in diffusion-lm.
-    token_ids = sample_logits(sampling_type, logits, top_p)
+    token_ids = sample_logits(sampling_type, logits, top_p, temperature)
     return convert_to_simplex(token_ids, simplex_value, vocab_size=logits.shape[2])
 
 
 def filter_empty(texts):
     """Filters empty texts and return the remained texts and the their indices."""
     list_of_tuples = [(text, i) for i, text in enumerate(texts) if text != ""]
-    texts, remained_inds = list(zip(*list_of_tuples))
-    return list(texts), list(remained_inds)
+    if len(list_of_tuples) == 0:
+        return [], []
+    non_empty_texts, remained_inds = list(zip(*list_of_tuples))
+    return list(non_empty_texts), list(remained_inds)
 
 
 def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name, skip_special_tokens):
@@ -144,7 +147,7 @@ def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_to
     aggregated_masked_texts = list(map(lambda x: aggregate_list(x), pred_masked_texts))
     predicted_tokens = [np.array(item).tolist() for submasked in masked for item in submasked]
     return {
-        prefix_name: pred_texts,
+        # prefix_name: pred_texts,
         prefix_name + "_marked": pred_texts_marked,
         prefix_name + "_masked": aggregated_masked_texts,
         prefix_name + "_masked_tokens": predicted_tokens,
@@ -187,12 +190,13 @@ def evaluate_generation(
         if not skip_special_tokens:
             texts = process_text(texts)
 
-        # texts, remained_indices = filter_empty(texts)
-        # if len(texts) == 0:
-        #     continue
+        non_empty_texts, remained_indices = filter_empty(texts)
+        if len(non_empty_texts) == 0:
+            continue
 
         # Perplexity measured by a causal model.
-        key_metrics.update({"perplexity": perplexity(texts, causal_model, causal_tokenizer)["mean_perplexity"]})
+        key_metrics.update({"perplexity": perplexity(non_empty_texts, causal_model, causal_tokenizer)["mean_perplexity"]})
+
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
 

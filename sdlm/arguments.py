@@ -93,8 +93,11 @@ class TrainingArguments(HFTrainingArguments):
     )
     eval_for_all_metrics: bool = field(default=False, metadata={"help": "If set, evaluates on all metrics in run_mlm.py"})
     load_states_in_eval_from_model_path: bool = field(
-        default=False,
-        metadata={"help": "In case of only using --do_eval without --do_train, use it to load the states before eval."},
+        default=True,
+        metadata={
+            "help": "In case of only using --do_eval without --do_train, use it to load the states before eval."
+            "keep this to true, it causes otherwise an issue with huggingface when doing only --do_eval."
+        },
     )
     without_compute_metrics: bool = field(
         default=False,
@@ -241,8 +244,13 @@ class DataTrainingArguments:
             "`ul2` and `prefix_lm`. If this parameter is set, it specifies the context size during the evaluation."
         },
     )
+    # TODO: later fix masking length with truncation.
     truncation_length: Optional[int] = field(
-        default=0, metadata={"help": "If set, we will truncate the tokens from the end for the given length."}
+        default=0,
+        metadata={
+            "help": "If set, we will truncate the tokens from the end for the given length."
+            "Note we still compute masking length based on original data length!"
+        },
     )
     skip_special_tokens: bool = field(
         default=True,
@@ -384,6 +392,7 @@ class DiffusionArguments:
             )
         },
     )
+    self_condition_mlp_projection: bool = field(default=False, metadata={"help": "If not set, uses a linear layer."})
     self_condition_zeros_after_softmax: bool = field(
         default=False,
         metadata={
@@ -413,3 +422,4 @@ class DiffusionArguments:
     classifier_free_simplex_inputs: bool = field(
         default=False, metadata={"help": "If set to true, uses simplex representation for the unconditional input."}
     )
+    temperature: float = field(default=1.0, metadata={"help": "Defines the softmax temperature before doing the sampling."})

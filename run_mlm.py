@@ -27,8 +27,6 @@ from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.data.data_utils import split_data_to_train_validation
 from transformers.trainer_callback import TrainerState
 
-GENERATION_RESULTS = "generated_eval"
-
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -124,6 +122,7 @@ def main():
         deepmind_conditional=diffusion_args.deepmind_conditional,
         classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
         classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
+        self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
         **config_kwargs,
     )
     tokenizer_kwargs = {
@@ -227,7 +226,7 @@ def main():
     )
 
     if training_args.do_eval:
-        comute_metrics = get_compute_metrics(data_args, training_args, model_args)
+        compute_metrics = get_compute_metrics(data_args, training_args, model_args)
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
@@ -270,12 +269,10 @@ def main():
             trainer.state = TrainerState.load_from_json(os.path.join(model_args.model_name_or_path, "trainer_state.json"))
             trainer._load_rng_state(model_args.model_name_or_path)
 
-        logger.info("*** Evaluate ***")
-        metrics, results = trainer.evaluate()
-        # Save the results
-        trainer.save_metrics(GENERATION_RESULTS, results)
-        logger.info("Results are saved now")
+        # np.save("weights.npy", model.vocab_to_hidden_dim_embed.weight.data.numpy())
 
+        logger.info("*** Evaluate ***")
+        metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         trainer.log_metrics("eval", metrics)
