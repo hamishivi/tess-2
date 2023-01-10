@@ -3,7 +3,8 @@ import sys
 import os
 from transformers import HfArgumentParser
 from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments, DiffusionArguments
-from run_mlm import get_compute_metrics, GENERATION_RESULTS
+from run_mlm import get_compute_metrics
+from sdlm.trainer import GENERATION_RESULTS
 import json
 from transformers.trainer_utils import denumpify_detensorize
 
@@ -27,7 +28,7 @@ def main():
 
     compute_metrics = get_compute_metrics(data_args, training_args, model_args)
     # Load generations.
-    results = json.load(open(os.path.join(training_args.output_dir, GENERATION_RESULTS + "_results.json")))
+    results = json.load(open(os.path.join(training_args.output_dir, GENERATION_RESULTS + "_eval_results.json")))
     metrics = compute_metrics(results)
     metrics = denumpify_detensorize(metrics)
     save_metrics(metrics, "eval", training_args)
