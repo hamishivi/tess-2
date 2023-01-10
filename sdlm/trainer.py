@@ -444,13 +444,6 @@ class DiffusionTrainer(Trainer):
                         ]
                     }
                 )
-            # results.update(
-            #    {
-            #        "gold_texts": self.tokenizer.batch_decode(
-            #            all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
-            #        )
-            #    }
-            # )
 
         # Metrics.
         if self.compute_metrics is not None:
