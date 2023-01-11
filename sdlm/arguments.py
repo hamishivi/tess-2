@@ -107,6 +107,9 @@ class TrainingArguments(HFTrainingArguments):
             "If using this option, you can call `compute_mlm_metrics.py` to compute them on 1 GPU later on."
         },
     )
+    compute_eval_loss_with_simplex: bool = field(
+        default=False, metadata={"help": "If set, computes the evaluation loss from the simplex values."}
+    )
 
 
 @dataclass

@@ -25,7 +25,7 @@ from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
 from sdlm.utils import self_condition_preds
-
+from torch.nn import CrossEntropyLoss
 
 if is_apex_available():
     from apex import amp
@@ -171,6 +171,13 @@ class DiffusionTrainer(Trainer):
                     loss = None
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
+
+        # Computes the evaluation loss from the simplex values.
+        if self.args.compute_eval_loss_with_simplex and is_conditional_generation:
+            loss_fct = CrossEntropyLoss()
+            labels = torch.where(inputs["span_mask"], inputs["input_ids"], -100)
+            loss = loss_fct(simplex.view(-1, self.model.config.vocab_size), labels.view(-1)).detach()
+
         return (simplex, logits, loss)
 
     def evaluation_loop(
@@ -530,7 +537,7 @@ class DiffusionTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         # Save the results
-        self.save_metrics(GENERATION_RESULTS+"_"+metric_key_prefix, output.results)
+        self.save_metrics(GENERATION_RESULTS + "_" + metric_key_prefix, output.results)
         logger.info("Results are saved now")
 
         return output.metrics

@@ -39,7 +39,7 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 
 # DEBUG MODEL
-python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS}   ${PARAMS_FOR_LOCAL} --eval_steps 30 --temperature 4.0  
+python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS}   ${PARAMS_FOR_LOCAL} --eval_steps 400 --temperature 1.0  --tokenized_data_path  "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_256_split" --eval_steps 30 --compute_eval_loss_with_simplex True 
 
 # Train on the simple data
 # python run_mlm.py ${params_for_simple_data} --output_dir $BASE_DIR"/outputs/paper_experiments/simple_data"    --line_by_line ${PARAMS_FOR_LOCAL}
