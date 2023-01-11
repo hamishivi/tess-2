@@ -43,9 +43,14 @@ def distinct_n_grams(texts):
         unigrams = set(ngrams(text.split(), 1))
         bigrams = set(ngrams(text.split(), 2))
         trigrams = set(ngrams(text.split(), 3))
-        dist_1.append(len(unigrams) / total_words)
-        dist_2.append(len(bigrams) / total_words)
-        dist_3.append(len(trigrams) / total_words)
+        if total_words == 0:
+            dist_1.append(0)
+            dist_2.append(0)
+            dist_3.append(0)
+        else:
+            dist_1.append(len(unigrams) / total_words)
+            dist_2.append(len(bigrams) / total_words)
+            dist_3.append(len(trigrams) / total_words)
     return {"dist-1": np.nanmean(dist_1), "dist-2": np.nanmean(dist_2), "dist-3": np.nanmean(dist_3)}
 
 
