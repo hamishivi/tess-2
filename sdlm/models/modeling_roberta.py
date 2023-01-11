@@ -46,6 +46,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         elif self.config.self_condition is not None and not self.config.self_condition in [
             "logits_addition",
             "logits_with_projection_addition",
+            "logits_max",
+            "logits_mean",
         ]:
             if config.self_condition_mlp_projection:
                 self.project_to_hidden_size = nn.Sequential(
@@ -151,6 +153,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             if not self.config.deepmind_conditional:
                 if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
                     inputs_embeds = inputs_embeds + previous_pred
+                elif self.config.self_condition == "logits_mean":
+                    inputs_embeds = (inputs_embeds + previous_pred) / 2.0
+                elif self.config.self_condition == "logits_max":
+                    inputs_embeds = torch.max(inputs_embeds, previous_pred)
                 elif self.config.self_condition in ["logits", "logits_with_projection"]:
                     inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
                 else:

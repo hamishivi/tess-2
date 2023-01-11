@@ -391,7 +391,8 @@ class DiffusionArguments:
                 "consider logits and apply the projection. After concatenating the inputs, we project inputs back"
                 "with a projection layer to the half dimension. We also consider the cases of `logits_addition`"
                 " and `logits_with_projection_addition` where we adds up the previous prediction to the logits,"
-                "possibly with a projection operation."
+                "possibly with a projection operation. `logits_mean`: gets the average of logits and `logits_max`"
+                "computes the maximum."
             )
         },
     )
