@@ -174,6 +174,7 @@ def main():
 
     metrics = evaluate_generation(
         results,
+        data_args,
         model,
         tokenizer,
         is_conditional_generation=True,

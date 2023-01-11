@@ -156,6 +156,7 @@ def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_to
 
 def evaluate_generation(
     results,
+    data_args,
     causal_model,
     causal_tokenizer,
     is_conditional_generation,
@@ -207,7 +208,8 @@ def evaluate_generation(
             # remained_prefixes = [text for i, text in enumerate(prefixes) if i in remained_indices]
             texts_with_context = join_texts(prefixes, texts)
             gold_with_context = join_texts(prefixes, gold_texts)
-            key_metrics.update(mauve(predictions=texts_with_context, references=gold_with_context))
+            length = data_args.max_seq_length - data_args.truncation_length
+            key_metrics.update(mauve(predictions=texts_with_context, references=gold_with_context, length=length))
 
         if key + "_tokens" in results and eval_for_all_metrics:
             key_metrics.update(repetition(results[key + "_tokens"], causal_tokenizer))

@@ -8,11 +8,12 @@ import operator
 import math
 import scipy
 import sklearn
+import pdb
 
 MAX_TEXT_LENGTH = 256
 
 
-def mauve(predictions, references, featurize_model_name="gpt2-large"):
+def mauve(predictions, references, featurize_model_name="gpt2-large", length=MAX_TEXT_LENGTH):
     """Computes MAUVE scores between two lists of generated text and reference text.
     Args:
     predictions (list of str) of predictions.
@@ -21,7 +22,7 @@ def mauve(predictions, references, featurize_model_name="gpt2-large"):
     results = compute_mauve(
         p_text=references,  # human-text.
         q_text=predictions,  # machine-text.
-        max_text_length=MAX_TEXT_LENGTH,
+        max_text_length=length,
         featurize_model_name=featurize_model_name,
         verbose=False,
         # These are the tricks to make `mauve` run faster if #examples > 5K.
