@@ -24,7 +24,11 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 # self-condition with addition
 # python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_addition" ${shared_params}  --self_condition "logits_addition" --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL}
 
+# self-condition with mean
+# python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_mean" ${shared_params}  --self_condition "logits_mean" --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL}
 
+# self-condition with max 
+# python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_max" ${shared_params}  --self_condition "logits_max" --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL}
 
 # Classifier-free guidance 
 # python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_conditioning_logits_with_guidance_scale_2" ${shared_params}  --self_condition logits --per_device_train_batch_size 12  --gradient_accumulation_steps 16 --guidance_scale 2 ${PARAMS_FOR_LOCAL}
@@ -39,7 +43,7 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 
 # DEBUG MODEL
-python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS}   ${PARAMS_FOR_LOCAL} --eval_steps 400 --temperature 1.0  --tokenized_data_path  "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_256_split" --eval_steps 30 --compute_eval_loss_with_simplex True --self_condition "logits_mean" 
+#python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS}   ${PARAMS_FOR_LOCAL} --eval_steps 400 --temperature 1.0  --tokenized_data_path  "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_256_split" --eval_steps 30 --compute_eval_loss_with_simplex True --self_condition "logits_mean" 
 
 # Train on the simple data
 # python run_mlm.py ${params_for_simple_data} --output_dir $BASE_DIR"/outputs/paper_experiments/simple_data"    --line_by_line ${PARAMS_FOR_LOCAL}
@@ -51,5 +55,5 @@ python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${sh
 #python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_length_50_context_25" ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25   
 
 # Debug model for length=50
-#python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug_ul2_length_50_context_25" ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25 --save_steps 500 --eval_steps 500  --compute_eval_loss_with_simplex True   
+python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug_low_lr_ul2_length_50_context_25" ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25 --save_steps 500 --eval_steps 500  --compute_eval_loss_with_simplex True  --learning_rate 1e-5 
 
