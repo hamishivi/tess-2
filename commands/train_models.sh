@@ -55,5 +55,9 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 #python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_length_50_context_25" ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25   
 
 # Debug model for length=50
-python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug_low_lr_ul2_length_50_context_25" ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25 --save_steps 500 --eval_steps 500  --compute_eval_loss_with_simplex True  --learning_rate 1e-5 
+#python -m torch.distributed.launch --nproc_per_node 4  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug_low_lr_ul2_length_50_context_25" ${params_for_length_50} ${PARAMS_FOR_LOCAL} --eval_context_size 25 --save_steps 500 --eval_steps 500  --compute_eval_loss_with_simplex True  --learning_rate 1e-5 
 
+
+
+# Train only with prefix_lm.
+python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/prefix_lm_length_256" ${shared_params} ${PARAMS_FOR_LOCAL} --gradient_accumulation_steps 16 --conditional_generation "prefix_lm"
