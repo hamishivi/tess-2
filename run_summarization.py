@@ -148,17 +148,6 @@ def main():
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
 
-    if (
-        hasattr(model.config, "max_position_embeddings")
-        and model.config.max_position_embeddings < data_args.max_source_length
-    ):
-        raise ValueError(
-            f"`--max_source_length` is set to {data_args.max_source_length}, but the model only has"
-            f" {model.config.max_position_embeddings} position encodings. Consider either reducing"
-            f" `--max_source_length` to {model.config.max_position_embeddings} or implement the"
-            "`resize_position_embeddings` function."
-        )
-
     total_seq2seq_length = data_args.max_source_length + data_args.max_target_length
     if hasattr(model.config, "max_position_embeddings") and model.config.max_position_embeddings < total_seq2seq_length:
         if model_args.resize_position_embeddings is None:
