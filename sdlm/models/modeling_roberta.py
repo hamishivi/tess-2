@@ -269,3 +269,23 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # Update other needed parameters.
         self.roberta.embeddings.position_ids = torch.arange(self.config.max_position_embeddings).expand((1, -1))
         self.roberta.embeddings.token_type_ids = torch.zeros(self.roberta.embeddings.position_ids.size(), dtype=torch.long)
+
+        # resize the distance embeddings.
+        for i in range(self.config.num_hidden_layers):
+            if (
+                self.config.position_embedding_type == "relative_key"
+                or self.config.position_embedding_type == "relative_key_query"
+            ):
+                self.roberta.encoder.layer[i].attention.self.distance_embedding = nn.Embedding(
+                    2 * self.config.max_position_embeddings - 1, self.attention_head_size
+                )
+                old_distance_embedding_weight = self.layer[i].attention.self.distance_embedding.weight.clone()
+                with torch.no_grad():
+                    if num_position_embeds_diff > 0:
+                        self.roberta.encoder.layer[i].attention.self.distance_embedding.weight[
+                            : -2 * num_position_embeds_diff
+                        ] = nn.Parameter(old_distance_embedding_weight)
+                    else:
+                        self.roberta.encoder.layer[i].attention.self.distance_embedding.weight = nn.Parameter(
+                            old_distance_embedding_weight[: 2 * num_position_embeds_diff]
+                        )
