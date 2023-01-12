@@ -229,3 +229,39 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             hidden_states=outputs.last_hidden_state,
             attentions=outputs.attentions,
         )
+
+    def resize_position_embeddings(self, new_num_position_embeddings: int):
+        """
+        Resizes position embeddings of the model if `new_num_position_embeddings != config.max_position_embeddings`.
+        Arguments:
+            new_num_position_embeddings (`int`):
+                The number of new position embedding matrix. If position embeddings are learned, increasing the size
+                will add newly initialized vectors at the end, whereas reducing the size will remove vectors from the
+                end. If position embeddings are not learned (*e.g.* sinusoidal position embeddings), increasing the
+                size will add correct vectors at the end following the position encoding algorithm, whereas reducing
+                the size will remove vectors from the end.
+        """
+        num_position_embeds_diff = new_num_position_embeddings - self.config.max_position_embeddings
+
+        # no resizing needs to be done if the length stays the same
+        if num_position_embeds_diff == 0:
+            return
+
+        logger.info(f"Setting `config.max_position_embeddings={new_num_position_embeddings}`...")
+        self.config.max_position_embeddings = new_num_position_embeddings
+        old_position_embeddings_weight = self.roberta.embeddings.position_embeddings.weight.clone()
+        self.roberta.embeddings.position_embeddings = nn.Embedding(
+            self.config.max_position_embeddings, self.config.hidden_size
+        )
+
+        with torch.no_grad():
+            if num_position_embeds_diff > 0:
+                self.roberta.embeddings.position_embeddings.weight[:-num_position_embeds_diff] = nn.Parameter(
+                    old_position_embeddings_weight
+                )
+            else:
+                self.roberta.embeddings.position_embeddings.weight = nn.Parameter(
+                    old_position_embeddings_weight[:num_position_embeds_diff]
+                )
+        # move position_embeddings to correct device
+        self.roberta.embeddings.position_embeddings.to(self.device)

@@ -160,6 +160,24 @@ def main():
             "`resize_position_embeddings` function."
         )
 
+    total_seq2seq_length = data_args.max_source_length + data_args.max_target_length
+    if hasattr(model.config, "max_position_embeddings") and model.config.max_position_embeddings < total_seq2seq_length:
+        if model_args.resize_position_embeddings is None:
+            logger.warning(
+                "Increasing the model's number of position embedding vectors from"
+                f" {model.config.max_position_embeddings} to {total_seq2seq_length}."
+            )
+            model.resize_position_embeddings(total_seq2seq_length)
+        elif model_args.resize_position_embeddings:
+            model.resize_position_embeddings(total_seq2seq_length)
+        else:
+            raise ValueError(
+                f"`max_source_length`+`max_target_length` is set to {total_seq2seq_length}, but the model only has"
+                f" {model.config.max_position_embeddings} position encodings. Consider either reducing"
+                f" `max_source_length`+`max_target_length` to {model.config.max_position_embeddings} or to automatically resize the"
+                " model's position encodings by passing `--resize_position_embeddings`."
+            )
+
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     if training_args.do_train:
