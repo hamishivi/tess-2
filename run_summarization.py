@@ -8,7 +8,6 @@ import sys
 
 import datasets
 import nltk
-from sdlm.data.data_utils import load_data
 
 import evaluate
 import transformers
