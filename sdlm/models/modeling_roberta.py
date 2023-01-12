@@ -250,10 +250,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         logger.info(f"Setting `config.max_position_embeddings={new_num_position_embeddings}`...")
         self.config.max_position_embeddings = new_num_position_embeddings
         old_position_embeddings_weight = self.roberta.embeddings.position_embeddings.weight.clone()
-        self.roberta.embeddings.position_embeddings = nn.Embedding(
-            self.config.max_position_embeddings, self.config.hidden_size
-        )
 
+        padding_idx = self.config.pad_token_id
+        self.roberta.embeddings.position_embeddings = nn.Embedding(
+            self.config.max_position_embeddings, self.config.hidden_size, padding_idx=padding_idx
+        )
         with torch.no_grad():
             if num_position_embeds_diff > 0:
                 self.roberta.embeddings.position_embeddings.weight[:-num_position_embeds_diff] = nn.Parameter(
