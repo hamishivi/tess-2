@@ -2,7 +2,8 @@ import pdb
 import json
 import numpy as np
 
-path = "/net/nfs.cirrascale/s2-research/rabeehk/ssd-lm/logging/ssd_dbs25/ctx25_trunc56_depth7_ctrlr0.0_step1000_topp0.9_ssd_gen_sampling_metrics.json"
+#path = "/net/nfs.cirrascale/s2-research/rabeehk/ssd-lm/logging/ssd_dbs25/ctx25_trunc56_depth7_ctrlr0.0_step1000_topp0.9_ssd_gen_sampling_metrics.json"
+path="/net/nfs.cirrascale/s2-research/rabeehk/ssdlm-baseline/logging/ssd_dbs25/ctx25_trunc206_depth1_ctrlr0.0_step1000_topp0.99_ssd_gen_sampling_metrics.json"
 
 name_to_short = {
     "perplexity": "PPL",
