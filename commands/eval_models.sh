@@ -47,7 +47,48 @@ model_path="self_condition_with_addition/checkpoint-11000/"
 # python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  
 #CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --eval_for_all_metrics 
 
+##########################################################
+# Running for a different checkpoint.
+truncation_length=56
+TOP_P=0.95
+model_path="self_condition_with_addition/checkpoint-7000/"
+python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition --max_eval_samples 1000 
+CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --eval_for_all_metrics --max_eval_samples 1000
+
+TOP_P=0.95
+model_path="self_condition_with_addition/checkpoint-28000/"
+python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition --max_eval_samples 1000 
+CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --eval_for_all_metrics --max_eval_samples 1000
+##########################################################
+
+
+
 # UL2 with self-condition with addition with guidance.
 model_path="self_condition_with_addition_guidance/checkpoint-7000/"
 # python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_guidance"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --guidance_scale 2
-python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_guidance"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --guidance_scale 2 --eval_for_all_metrics
+#python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_self_condition_with_addition_guidance"${truncation_length}"_top_p_"${TOP_P}"_context_25_"${model_path} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --guidance_scale 2 --eval_for_all_metrics
+
+
+: '
+# Evaluate the model of self-condition addition on the length=25 on two different checkpoints.
+truncation_length=206
+for TOP_P in 0.95 0.99 # 0.8 0.9 # 0.95 0.99 # 0.8 0.9 #0.95 0.99 # 0.8 0.9 
+do
+   for TEMPERATURE in 1 2 4
+   do
+      checkpoint="/checkpoint-28000/"
+      model_path="self_condition_with_addition/"${checkpoint}
+      output_dir=$BASE_DIR"/outputs/paper_experiments/tune_length_25_context_25_truncation_"${truncation_length}"/ul2_self_condition_with_addition_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
+      python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE}
+   done
+done 
+
+for TOP_P in 0.95 0.99 # 0.8 0.9 # 0.95 0.99 #  #  # 0.8 0.9
+do
+   for TEMPERATURE in 1 2 4
+   do
+      output_dir=$BASE_DIR"/outputs/paper_experiments/tune_length_25_context_25_truncation_"${truncation_length}"/ul2_self_condition_with_addition_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
+      CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE}
+   done
+done
+'
