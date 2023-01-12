@@ -62,6 +62,15 @@ class ModelArguments:
         default="EleutherAI/gpt-neo-1.3B",
         metadata={"help": "The autoregressive model used to measure the evaluation perplexity."},
     )
+    resize_position_embeddings: Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Whether to automatically resize the position embeddings if `max_source_length` exceeds "
+                "the model's position embeddings."
+            )
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
