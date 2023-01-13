@@ -8,7 +8,7 @@ num_inference_diffusion_steps=10
 
 
 DATASET="cola"
-model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/"${DATASET}"_steps_10_wd_0.01/checkpoint-74000"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/"${DATASET}"_steps_10_wd_0.01/checkpoint-75000"
 python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
 
 
