@@ -7,10 +7,51 @@ DEBUG_PARAMS="--eval_steps 2 --num_inference_diffusion_steps 3 --per_device_trai
 num_inference_diffusion_steps=10
 
 
+: '
 DATASET="cola"
-model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/"${DATASET}"_steps_10_wd_0.01/checkpoint-75000"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/cola_steps_10_wd_0.01/checkpoint-75000"
 python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
 
+
+DATASET="mrpc"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/mrpc_steps_10_wd_0.01/checkpoint-15000/"
+python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+
+
+DATASET="rte"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/rte_steps_10_wd_0.01/checkpoint-75000/"
+python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+
+
+
+DATASET="stsb"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/stsb_steps_10_wd_0.01/checkpoint-73000/"
+python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+
+
+DATASET="wnli"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/wnli_steps_10_wd_0.01/checkpoint-76000/"
+python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+
+DATASET="qqp"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/qqp_steps_10_wd_0.01_copied/checkpoint-72000/"
+python -m torch.distributed.launch --nproc_per_node 4  run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+
+
+DATASET="qnli"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/qnli_steps_10_wd_0.01_copied/checkpoint-73000"
+python -m torch.distributed.launch --nproc_per_node 4  run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+
+'
+
+DATASET="sst2"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/sst2_steps_10_wd_0.01_copied/checkpoint-74000"
+python -m torch.distributed.launch --nproc_per_node 4  run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+
+
+DATASET="mnli"
+model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/mnli_steps_10_wd_0.01_copied/checkpoint-55000"
+python -m torch.distributed.launch --nproc_per_node 4  run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
 
 
 
