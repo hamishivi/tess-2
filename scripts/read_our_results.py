@@ -49,9 +49,9 @@ def read_ours_temperatures_top_p():
     for temperature in [1]:  # [1, 2, 4]:
         for top_p in [0.9, 0.95, 0.99]:  # 0.8,
             print(f"Top-p {top_p} temperature {temperature}")
-            path = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_56/ul2_self_condition_mean_top_p_{top_p}_temperature_1/checkpoint-13000/eval_results.json"
+            # path = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_56/ul2_self_condition_mean_top_p_{top_p}_temperature_1/checkpoint-13000/eval_results.json"
             # path = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_56/ul2_self_condition_with_max_top_p_{top_p}_temperature_1/checkpoint-13000/eval_results.json"
-            # path = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_56/ul2_self_condition_with_addition_top_p_{top_p}_temperature_1/checkpoint-15000/eval_results.json"
+            path = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_56/ul2_self_condition_with_addition_top_p_{top_p}_temperature_1/checkpoint-15000/eval_results.json"
             # /net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/tune_length_25_context_25_truncation_206/ul2_self_condition_with_addition_top_p_{top_p}_temperature_{temperature}/checkpoint-28000/eval_results.json"
             print_values(path, prefix="logits")
 
