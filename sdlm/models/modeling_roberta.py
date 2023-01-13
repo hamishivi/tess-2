@@ -266,8 +266,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # move position_embeddings to correct device
         self.roberta.embeddings.position_embeddings.to(self.device)
         # Update other needed parameters.
-        self.roberta.embeddings.position_ids = torch.arange(self.config.max_position_embeddings).expand((1, -1))
-        self.roberta.embeddings.token_type_ids = torch.zeros(self.roberta.embeddings.position_ids.size(), dtype=torch.long)
+        self.roberta.embeddings.position_ids = (
+            torch.arange(self.config.max_position_embeddings).expand((1, -1)).type_as(self.roberta.embeddings.position_ids)
+        )
+        self.roberta.embeddings.token_type_ids = torch.zeros(
+            self.roberta.embeddings.position_ids.size(), dtype=torch.long
+        ).type_as(self.roberta.embeddings.token_type_ids)
 
         # resize the distance embeddings.
         for i in range(self.config.num_hidden_layers):
