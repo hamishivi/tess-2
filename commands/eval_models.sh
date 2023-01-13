@@ -84,6 +84,23 @@ do
    done
 done
 '
+
+# Evaluates prefix-lm under the same condition.
+truncation_length=206
+for TOP_P in 0.95 0.99  0.8 0.9
+do
+   for TEMPERATURE in 1 2 4
+   do
+      checkpoint="/checkpoint-5000/"
+      model_path="prefix_lm/"${checkpoint}
+      output_dir=$BASE_DIR"/outputs/paper_experiments/tune_length_25_context_25_truncation_"${truncation_length}"/prefix_lm_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
+      python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P} --conditional_generation "prefix_lm"
+      
+      CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params}  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P} --conditional_generation "prefix_lm"
+   done
+done
+
+
 ##########################################################
 # Evaluate the type of self-conditioning.
 : '
@@ -114,7 +131,6 @@ do
       output_dir=$BASE_DIR"/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_"${truncation_length}"/ul2_self_condition_mean_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
       CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_mean  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}
 done
-'
 
 
 TEMPERATURE=1
@@ -130,5 +146,7 @@ do
       output_dir=$BASE_DIR"/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_"${truncation_length}"/ul2_self_condition_with_addition_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
       CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}
 done
+'
+
 
 #######################################
