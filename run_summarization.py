@@ -155,9 +155,11 @@ def main():
                 "Increasing the model's number of position embedding vectors from"
                 f" {model.config.max_position_embeddings} to {total_seq2seq_length}."
             )
-            model.resize_position_embeddings(total_seq2seq_length)
+            # position_ids starts from `padding_idx + 1` (padding_index=1) and we therefore requires
+            # 2 more position embeddings.
+            model.resize_position_embeddings(total_seq2seq_length + 2)
         elif model_args.resize_position_embeddings:
-            model.resize_position_embeddings(total_seq2seq_length)
+            model.resize_position_embeddings(total_seq2seq_length + 2)
         else:
             raise ValueError(
                 f"`max_source_length`+`max_target_length` is set to {total_seq2seq_length}, but the model only has"

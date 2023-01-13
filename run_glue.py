@@ -345,7 +345,7 @@ def main():
         trainer.save_state()
 
     # We will load the best model here to avoid an issue when do_train is not set.
-    if training_args.load_states_in_eval_from_model_path:
+    if training_args.load_states_in_eval_from_model_path and not training_args.do_train:
         trainer.state = TrainerState.load_from_json(os.path.join(model_args.model_name_or_path, "trainer_state.json"))
         if training_args.load_best_model_at_end and trainer.state.best_model_checkpoint is not None:
             checkpoint_path = trainer.state.best_model_checkpoint

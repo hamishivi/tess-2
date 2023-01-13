@@ -192,7 +192,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             # TODO: we need to fix classifier-free guidance for the case of deepmind_conditional.
             if classifier_free_guidance:
                 inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
-
         outputs = self.roberta(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=None,  # attention_mask,
