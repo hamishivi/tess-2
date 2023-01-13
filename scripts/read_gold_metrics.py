@@ -2,7 +2,8 @@ import pdb
 import json
 import numpy as np
 
-path = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/gold_text_with_gpt_large_256"
+#path = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/gold_text_with_gpt_large_256"
+path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/gold_truncation__context_size_25"
 
 name_to_short = {
     "generated_texts_masked_perplexity": "PPL",

@@ -277,7 +277,7 @@ def main():
 
     # Metric
     # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("rouge", keep_in_memory=True)
+    metric = evaluate.load("rouge")  # , keep_in_memory=True)
 
     def postprocess_text(preds, labels):
         preds = [pred.strip() for pred in preds]
