@@ -85,6 +85,7 @@ do
 done
 '
 
+: '
 # Evaluates prefix-lm under the same condition.
 truncation_length=206
 for TOP_P in 0.95 0.99  0.8 0.9
@@ -99,6 +100,23 @@ do
       CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params}  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P} --conditional_generation "prefix_lm"
    done
 done
+'
+
+# Run one example without using skip_special_tokens.
+truncation_length=206
+for TOP_P in 0.95 0.99
+do
+   for TEMPERATURE in 1
+   do
+      checkpoint="/checkpoint-5000/"
+      model_path="prefix_lm/"${checkpoint}
+      output_dir=$BASE_DIR"/outputs/paper_experiments/tune_length_25_context_25_truncation_"${truncation_length}"/prefix_lm_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}"""_without_skip_special_tokens_"${checkpoint}
+      python run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P} --conditional_generation "prefix_lm" --skip_special_tokens False
+      
+      CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params}  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P} --conditional_generation "prefix_lm" --skip_special_tokens False
+   done
+done
+
 
 
 ##########################################################
