@@ -119,6 +119,7 @@ class TrainingArguments(HFTrainingArguments):
     compute_eval_loss_with_simplex: bool = field(
         default=False, metadata={"help": "If set, computes the evaluation loss from the simplex values."}
     )
+    ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses ssdlm optimizer."})
 
 
 @dataclass

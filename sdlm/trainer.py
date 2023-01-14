@@ -16,6 +16,7 @@ from transformers.trainer_pt_utils import (
     find_batch_size,
     nested_concat,
     nested_truncate,
+    get_parameter_names,
 )
 from transformers.integrations import TensorBoardCallback
 from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, seed_worker
@@ -26,6 +27,8 @@ from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
 from sdlm.utils import self_condition_preds
 from torch.nn import CrossEntropyLoss
+from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+from transformers.utils import is_sagemaker_mp_enabled
 
 if is_apex_available():
     from apex import amp
@@ -33,6 +36,9 @@ if is_apex_available():
 if is_datasets_available():
     import datasets
 
+
+if is_sagemaker_mp_enabled():
+    import smdistributed.modelparallel.torch as smp
 
 IS_SAGEMAKER_MP_POST_1_10 = False
 GENERATION_RESULTS = "generated"
@@ -612,3 +618,32 @@ class DiffusionTrainer(Trainer):
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
+
+    def create_optimizer(self):
+        """
+        Setup the optimizer.
+        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
+        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
+        """
+        if not self.args.ssdlm_optimizer:
+            return super().create_optimizer()
+
+        # SDDLM optimizer.
+        opt_model = self.model
+
+        if self.optimizer is None:
+            no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in opt_model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [p for n, p in opt_model.named_parameters() if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
+
+            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+        return self.optimizer
