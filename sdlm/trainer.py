@@ -29,6 +29,7 @@ from sdlm.utils import self_condition_preds
 from torch.nn import CrossEntropyLoss
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.utils import is_sagemaker_mp_enabled
+from transformers import AdamW
 
 if is_apex_available():
     from apex import amp
@@ -643,7 +644,5 @@ class DiffusionTrainer(Trainer):
                     "weight_decay": 0.0,
                 },
             ]
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
-
-            self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+            self.optimizer = AdamW(optimizer_grouped_parameters, lr=self.args.learning_rate)
         return self.optimizer

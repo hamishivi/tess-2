@@ -43,7 +43,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, device, max_beta=0.999, improve
     """
 
     def default_alpha_bar(time_step):
-        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+        return math.cos((time_step + 1e-4) / (1 + 1e-4) * math.pi / 2) ** 2
 
     if improved_ddpm:
         # Implements eqn. 17 in https://arxiv.org/pdf/2102.09672.pdf.
