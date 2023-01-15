@@ -255,29 +255,24 @@ def main():
     )
 
     # Metric
-    # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("rouge")  # , keep_in_memory=True)
+    metric = evaluate.load("sari")
 
-    def postprocess_text(preds, labels):
+    def postprocess_text(preds, labels, sources):
         preds = [pred.strip() for pred in preds]
         labels = [label.strip() for label in labels]
-
-        # rougeLSum expects newline after each sentence
-        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
-        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
-
-        return preds, labels
+        sources = [source.strip() for source in sources]
+        return preds, labels, sources
 
     def compute_metrics(results):
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
         for key in keys:
             decoded_preds = process_text(results[key])
-            # Note that since decoded_labels is getting updated after post-process, we
-            # need to compute it here for each key.
             decoded_labels = process_text(results["gold_texts_masked"])
-            decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-            key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+            sources = results["prefixes"]
+            decoded_preds, decoded_labels, sources = postprocess_text(decoded_preds, decoded_labels, sources)
+            decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
+            key_metrics = metric.compute(sources=sources, predictions=decoded_preds, references=decoded_labels)
             key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
             key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
             metrics.update(key_metrics)

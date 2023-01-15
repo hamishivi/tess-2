@@ -7,6 +7,7 @@ dependencies:
   - pytorch=1.12.0=py3.8_cuda11.3_cudnn8.3.2_0
   - pytorch-mutex=1.0=cuda
   - pip:
+    - sacremoses
     - rouge_score
     - accelerate==0.12.0
     - ipython==8.4.0

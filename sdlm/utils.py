@@ -110,3 +110,7 @@ def round_stsb_target(label):
 def lmap(f: Callable, x: Iterable) -> List:
     """list(map(f, x))"""
     return list(map(f, x))
+
+
+def pad_data(data_list, tokenizer):
+    return tokenizer.pad({"input_ids": data_list}, padding=True)["input_ids"]

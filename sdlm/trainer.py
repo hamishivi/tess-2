@@ -16,7 +16,6 @@ from transformers.trainer_pt_utils import (
     find_batch_size,
     nested_concat,
     nested_truncate,
-    get_parameter_names,
 )
 from transformers.integrations import TensorBoardCallback
 from transformers.trainer_utils import has_length, denumpify_detensorize, speed_metrics, seed_worker
@@ -25,9 +24,8 @@ from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
-from sdlm.utils import self_condition_preds
+from sdlm.utils import self_condition_preds, pad_data
 from torch.nn import CrossEntropyLoss
-from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.utils import is_sagemaker_mp_enabled
 from transformers import AdamW
 
@@ -201,7 +199,7 @@ class DiffusionTrainer(Trainer):
         """
         args = self.args
         is_conditional_generation = self.data_args.conditional_generation is not None
-        save_prefixes = is_conditional_generation and self.data_args.conditional_generation != "seq2seq"
+        save_prefixes = is_conditional_generation  # and self.data_args.conditional_generation != "seq2seq"
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
         # if eval is called w/o train init deepspeed here
@@ -294,7 +292,11 @@ class DiffusionTrainer(Trainer):
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
             if save_prefixes:
-                prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
+                prefixes = (
+                    pad_data([input[~mask] for input, mask in zip(inputs_decode, masks)], self.tokenizer)
+                    if has_mask
+                    else None
+                )
             else:
                 prefixes = None
             # Update containers on host
