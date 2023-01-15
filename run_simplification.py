@@ -16,7 +16,6 @@ from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
-from datasets import load_dataset
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
@@ -95,8 +94,7 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    # raw_datasets = load_data(data_args, model_args)
-    raw_datasets = datasets.DatasetDict()
+    raw_datasets = DatasetDict()
     for split in ["train", "dev", "test"]:
         s1s = open(f"wikilarge/s1.{split}", "r").readlines()
         s2s = open(f"wikilarge/s2.{split}", "r").readlines()
