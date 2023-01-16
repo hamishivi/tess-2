@@ -23,6 +23,7 @@ from transformers import (
     Seq2SeqTrainingArguments,
     set_seed,
 )
+import pdb
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
@@ -42,6 +43,13 @@ except (LookupError, OSError):
         raise LookupError("Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files")
     with FileLock(".lock") as lock:
         nltk.download("punkt", quiet=True)
+
+
+def extract_field(data, field_name):
+    results = []
+    for item in data:
+        results.append(item[field_name])
+    return results
 
 
 @dataclass
@@ -305,7 +313,7 @@ def main():
 
     train_dataset = raw_datasets["train"]
     eval_dataset = raw_datasets["dev"]
-    test_dataset = raw_datasets["test"]
+    predict_dataset = raw_datasets["test"]
     column_names = train_dataset.column_names
 
     config = AutoConfig.from_pretrained(
@@ -434,6 +442,7 @@ def main():
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on validation dataset",
             )
+        eval_input_ids = extract_field(eval_dataset, "input_ids")
 
     if training_args.do_predict:
         max_target_length = data_args.val_max_target_length
@@ -449,6 +458,7 @@ def main():
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on prediction dataset",
             )
+        predict_input_ids = extract_field(predict_dataset, "input_ids")
 
     # Data collator
     label_pad_token_id = -100 if data_args.ignore_pad_token_for_loss else tokenizer.pad_token_id
@@ -477,8 +487,10 @@ def main():
             # Replace -100 in the labels as we can't decode them.
             labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-        sources = None
-        decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels, sources)
+        # TODO: for having predict this one should be changed!!!!
+        sources = tokenizer.batch_decode(eval_input_ids, skip_special_tokens=True)
+        decoded_preds, decoded_labels, sources = postprocess_text(decoded_preds, decoded_labels, sources)
+        decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
         result = metric.compute(predictions=decoded_preds, references=decoded_labels, sources=sources)
         result = {k: round(v, 2) for k, v in result.items()}
         return result

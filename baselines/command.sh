@@ -1,5 +1,5 @@
 python run_simplification.py \
-    --model_name_or_path t5-small \
+    --model_name_or_path t5-base \
     --do_train \
     --do_eval \
     --dataset_name wikilarge \
