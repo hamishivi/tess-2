@@ -273,7 +273,7 @@ def main():
             decoded_preds, decoded_labels, sources = postprocess_text(decoded_preds, decoded_labels, sources)
             decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
             key_metrics = metric.compute(sources=sources, predictions=decoded_preds, references=decoded_labels)
-            key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
+            key_metrics = {k: round(v, 2) for k, v in key_metrics.items()}
             key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
             metrics.update(key_metrics)
         return metrics
