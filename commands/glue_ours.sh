@@ -29,6 +29,11 @@ python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BAS
 '
 
 # Training GLUE with self-conditioning max for now.
-DATASET="mrpc"
-python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue_self_condition_max/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --self_condition "logits_max" --per_device_train_batch_size 32  --gradient_accumulation_steps 4
+DATASET="qnli"
+python -m torch.distributed.launch --nproc_per_node 2 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue_self_condition_max/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --self_condition "logits_max" --per_device_train_batch_size 32  --gradient_accumulation_steps 2
 
+# Training GLUE with self-conditioning max for now.
+: '
+DATASET="qnli"
+python -m torch.distributed.launch --nproc_per_node 2 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue_self_condition_addition/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --self_condition "logits_addition" --per_device_train_batch_size 32  --gradient_accumulation_steps 2
+'
