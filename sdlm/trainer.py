@@ -297,6 +297,7 @@ class DiffusionTrainer(Trainer):
                     if has_mask
                     else None
                 )
+                prefixes = self._prepare_input(prefixes)
             else:
                 prefixes = None
             # Update containers on host
