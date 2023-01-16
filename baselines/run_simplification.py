@@ -226,15 +226,8 @@ class DataTrainingArguments:
     )
 
     def __post_init__(self):
-        if self.dataset_name is None and self.train_file is None and self.validation_file is None:
-            raise ValueError("Need either a dataset name or a training/validation file.")
-        else:
-            if self.train_file is not None:
-                extension = self.train_file.split(".")[-1]
-                assert extension in ["csv", "json"], "`train_file` should be a csv or a json file."
-            if self.validation_file is not None:
-                extension = self.validation_file.split(".")[-1]
-                assert extension in ["csv", "json"], "`validation_file` should be a csv or a json file."
+        if self.dataset_name is None:
+            raise ValueError("Need a dataset_name")
         if self.val_max_target_length is None:
             self.val_max_target_length = self.max_target_length
 
@@ -243,14 +236,8 @@ simplification_name_mapping = {"asset": ("original", "simplification"), "wikilar
 
 
 def main():
-    # See all possible arguments in src/transformers/training_args.py
-    # or by passing the --help flag to this script.
-    # We now keep distinct sets of args, for a cleaner separation of concerns.
-
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
@@ -318,7 +305,7 @@ def main():
 
     train_dataset = raw_datasets["train"]
     eval_dataset = raw_datasets["dev"]
-    predict_dataset = raw_datasets["test"]
+    test_dataset = raw_datasets["test"]
     column_names = train_dataset.column_names
 
     config = AutoConfig.from_pretrained(
