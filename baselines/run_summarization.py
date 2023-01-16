@@ -62,9 +62,7 @@ try:
     nltk.data.find("tokenizers/punkt")
 except (LookupError, OSError):
     if is_offline_mode():
-        raise LookupError(
-            "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
-        )
+        raise LookupError("Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files")
     with FileLock(".lock") as lock:
         nltk.download("punkt", quiet=True)
 
@@ -147,20 +145,14 @@ class DataTrainingArguments:
     validation_file: Optional[str] = field(
         default=None,
         metadata={
-            "help": (
-                "An optional input evaluation data file to evaluate the metrics (rouge) on (a jsonlines or csv file)."
-            )
+            "help": ("An optional input evaluation data file to evaluate the metrics (rouge) on (a jsonlines or csv file).")
         },
     )
     test_file: Optional[str] = field(
         default=None,
-        metadata={
-            "help": "An optional input test data file to evaluate the metrics (rouge) on (a jsonlines or csv file)."
-        },
+        metadata={"help": "An optional input test data file to evaluate the metrics (rouge) on (a jsonlines or csv file)."},
     )
-    overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
-    )
+    overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
     preprocessing_num_workers: Optional[int] = field(
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
@@ -242,9 +234,7 @@ class DataTrainingArguments:
     )
     ignore_pad_token_for_loss: bool = field(
         default=True,
-        metadata={
-            "help": "Whether to ignore the tokens corresponding to padded labels in the loss computation or not."
-        },
+        metadata={"help": "Whether to ignore the tokens corresponding to padded labels in the loss computation or not."},
     )
     source_prefix: Optional[str] = field(
         default="", metadata={"help": "A prefix to add before every source text (useful for T5 models)."}
@@ -493,9 +483,7 @@ def main():
     else:
         text_column = data_args.text_column
         if text_column not in column_names:
-            raise ValueError(
-                f"--text_column' value '{data_args.text_column}' needs to be one of: {', '.join(column_names)}"
-            )
+            raise ValueError(f"--text_column' value '{data_args.text_column}' needs to be one of: {', '.join(column_names)}")
     if data_args.summary_column is None:
         summary_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
     else:
@@ -656,9 +644,7 @@ def main():
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
         metrics = train_result.metrics
-        max_train_samples = (
-            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-        )
+        max_train_samples = data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
         metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.log_metrics("train", metrics)
@@ -673,7 +659,6 @@ def main():
         else data_args.val_max_target_length
     )
     num_beams = data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
-    print("@@@@ ", num_beams)
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate(max_length=max_length, num_beams=num_beams, metric_key_prefix="eval")
