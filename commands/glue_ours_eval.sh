@@ -50,8 +50,8 @@ python -m torch.distributed.launch --nproc_per_node 4  run_glue.py  --dataset_na
 '
 
 
-DATASETS=("mrpc", "rte" "stsb"  "wnli"  "qqp"   "qnli" "sst2" "mnli") # "cola" 
-CHECKPOINTS=("8000", "2000" "2000" "10000" "43000" "3000" "9000" "9000")
+DATASETS=("mrpc") #, "rte" "stsb"  "wnli"  "qqp"   "qnli" "sst2" "mnli", "cola") 
+CHECKPOINTS=("8000") #, "2000" "2000" "10000" "43000" "3000" "9000" "9000", "6000")
 for i in "${!DATASETS[@]}"; do
     DATASET=${DATASETS[i]}
     CHECKPOINT=${CHECKPOINTS[i]}

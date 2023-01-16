@@ -60,19 +60,19 @@ read_values(paths)
 """
 
 # Read glue values.
-output_dir = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue/"
+output_dir = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue_self_condition_mean"
 dirs = {
     "cola": "cola_steps_10_wd_0.01",
-    "mnli": "mnli_steps_10_wd_0.01_copied",
+    "mnli": "mnli_steps_10_wd_0.01",
     "mrpc": "mrpc_steps_10_wd_0.01",
-    "qnli": "qnli_steps_10_wd_0.01_copied",
-    "qqp": "qqp_steps_10_wd_0.01_copied",
+    "qnli": "qnli_steps_10_wd_0.01",
+    "qqp": "qqp_steps_10_wd_0.01",
     "sst2": "sst2_steps_10_wd_0.01",
     "stsb": "stsb_steps_10_wd_0.01",
     "mnli": "mnli_steps_10_wd_0.01",
     "mrpc": "mrpc_steps_10_wd_0.01",
     "rte": "rte_steps_10_wd_0.01",
-    "sst2": "sst2_steps_10_wd_0.01_copied",
+    "sst2": "sst2_steps_10_wd_0.01",
     "wnli": "wnli_steps_10_wd_0.01",
 }
 paths = {}
