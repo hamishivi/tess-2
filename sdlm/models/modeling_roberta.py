@@ -110,11 +110,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # If we have a mask, we need to mask the simplex values before softmax.
+        """
         if span_mask is not None:
             mask_value = torch.finfo(simplex.dtype).min
             mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
             simplex = torch.where(span_mask[:, :, None], simplex, mask_value)
-
+        """
         inputs_probs = F.softmax(simplex, dim=-1)
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
@@ -142,25 +143,39 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             else:
                 if previous_pred is None:
                     previous_pred = torch.zeros_like(simplex, device=simplex.device)
-
+                """
                 if span_mask is not None:
                     mask_value = torch.finfo(previous_pred.dtype).min
                     mask_value = torch.tensor(mask_value, dtype=previous_pred.dtype, device=previous_pred.device)
                     previous_pred = torch.where(span_mask[:, :, None], previous_pred, mask_value)
-
+                """
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
             previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if not self.config.deepmind_conditional:
-                if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
-                    inputs_embeds = inputs_embeds + previous_pred
-                elif self.config.self_condition == "logits_mean":
-                    inputs_embeds = (inputs_embeds + previous_pred) / 2.0
-                elif self.config.self_condition == "logits_max":
-                    inputs_embeds = torch.max(inputs_embeds, previous_pred)
-                elif self.config.self_condition in ["logits", "logits_with_projection"]:
-                    inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
+                # In this setting, we mix the probabilities then apply the weight.
+                if self.config.self_condition_mix_before_weights:
+                    if self.config.self_condition == "logits_addition":
+                        mixed_probs = inputs_probs + previous_pred_probs
+                    elif self.config.self_condition == "logits_mean":
+                        mixed_probs = (inputs_probs + previous_pred_probs) / 2.0
+                    elif self.config.self_condition == "logits_max":
+                        mixed_probs = torch.max(inputs_probs, previous_pred_probs)
+                    elif self.config.self_condition == "logits_multiply":
+                        mixed_probs = inputs_probs * previous_pred_probs
+                    inputs_embeds = self.vocab_to_hidden_dim_embed(mixed_probs)
                 else:
-                    raise NotImplementedError
+                    if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
+                        inputs_embeds = inputs_embeds + previous_pred
+                    elif self.config.self_condition == "logits_mean":
+                        inputs_embeds = (inputs_embeds + previous_pred) / 2.0
+                    elif self.config.self_condition == "logits_multiply":
+                        inputs_embeds = inputs_embeds * previous_pred
+                    elif self.config.self_condition == "logits_max":
+                        inputs_embeds = torch.max(inputs_embeds, previous_pred)
+                    elif self.config.self_condition in ["logits", "logits_with_projection"]:
+                        inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
+                    else:
+                        raise NotImplementedError
 
         if span_mask is not None:
             # Original word embeddings without noise.
