@@ -49,7 +49,7 @@ model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experi
 python -m torch.distributed.launch --nproc_per_node 4  run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
 '
 
-
+: '
 DATASETS=("mrpc") #, "rte" "stsb"  "wnli"  "qqp"   "qnli" "sst2" "mnli", "cola") 
 CHECKPOINTS=("8000") #, "2000" "2000" "10000" "43000" "3000" "9000" "9000", "6000")
 for i in "${!DATASETS[@]}"; do
@@ -58,5 +58,15 @@ for i in "${!DATASETS[@]}"; do
     model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue_self_condition_mean/"${DATASET}"_steps_10_wd_0.01/checkpoint-"${CHECKPOINT}
     python run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue_self_condition_mean/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
 done
+'
 
     
+# evaluate the models trained from a checkpoint.
+DATASETS=("mrpc"    "rte"  "stsb"  "wnli"  "qqp"   "qnli" "sst2" "mnli" "cola") 
+CHECKPOINTS=("6000" "1000" "6000" "1000"  "14000" "7000" "9000" "10000" "4000")
+for i in "${!DATASETS[@]}"; do
+    DATASET=${DATASETS[i]}
+    CHECKPOINT=${CHECKPOINTS[i]}
+    model_name_or_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue_self_condition_mean/"${DATASET}"_steps_10_wd_0.01_from_40K_checkpoint/checkpoint-"${CHECKPOINT}
+    python run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue_self_condition_mean/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01_from_40K_checkpoint"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path}
+done
