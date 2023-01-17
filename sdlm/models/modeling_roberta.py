@@ -10,6 +10,7 @@ import pdb
 import random
 from sdlm.utils import convert_to_simplex
 from transformers.activations import ACT2FN
+from sdlm.utils import mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
 
@@ -155,40 +156,18 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             if not self.config.deepmind_conditional:
                 # In this setting, we mix the probabilities then apply the weight.
                 if self.config.self_condition_mix_logits_before_weights:
-                    if self.config.self_condition == "logits_addition":
-                        mixed_logits = simplex + previous_pred
-                    elif self.config.self_condition == "logits_mean":
-                        mixed_logits = (simplex + previous_pred) / 2.0
-                    elif self.config.self_condition == "logits_max":
-                        mixed_logits = torch.max(simplex, previous_pred)
-                    elif self.config.self_condition == "logits_multiply":
-                        mixed_logits = simplex * previous_pred
+                    mixed_logits = mix_values_based_on_self_condition(self.config.self_condition, simplex, previous_pred)
                     mixed_probs = F.softmax(mixed_logits, dim=-1)
                     inputs_embeds = self.vocab_to_hidden_dim_embed(mixed_probs)
                 elif self.config.self_condition_mix_before_weights:
-                    if self.config.self_condition == "logits_addition":
-                        mixed_probs = inputs_probs + previous_pred_probs
-                    elif self.config.self_condition == "logits_mean":
-                        mixed_probs = (inputs_probs + previous_pred_probs) / 2.0
-                    elif self.config.self_condition == "logits_max":
-                        mixed_probs = torch.max(inputs_probs, previous_pred_probs)
-                    elif self.config.self_condition == "logits_multiply":
-                        mixed_probs = inputs_probs * previous_pred_probs
+                    mixed_probs = mix_values_based_on_self_condition(self.config.self_condition, inputs_probs, previous_pred_probs)
                     inputs_embeds = self.vocab_to_hidden_dim_embed(mixed_probs)
                 else:
-                    if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
-                        inputs_embeds = inputs_embeds + previous_pred
-                    elif self.config.self_condition == "logits_mean":
-                        inputs_embeds = (inputs_embeds + previous_pred) / 2.0
-                    elif self.config.self_condition == "logits_multiply":
-                        inputs_embeds = inputs_embeds * previous_pred
-                    elif self.config.self_condition == "logits_max":
-                        inputs_embeds = torch.max(inputs_embeds, previous_pred)
-                    elif self.config.self_condition in ["logits", "logits_with_projection"]:
+                    if self.config.self_condition in ["logits", "logits_with_projection"]:
                         inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
                     else:
-                        raise NotImplementedError
-
+                        inputs_embeds = mix_values_based_on_self_condition(self.config.self_condition, inputs_embeds, previous_pred)
+                        
         if span_mask is not None:
             # Original word embeddings without noise.
             if classifier_free_guidance_in_train and random.uniform(0, 1) < 0.1:

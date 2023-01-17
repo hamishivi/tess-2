@@ -90,6 +90,18 @@ def self_condition_preds(self_condition, logits, logits_projection=None):
         assert NotImplementedError(f"{self_condition} is not implemented.")
     return previous_pred
 
+def mix_values_based_on_self_condition(self_condition_type, value_1, value_2):
+    if self_condition_type in ["logits_with_projection_addition", "logits_addition"]:
+        mixed_values = value_1 + value_2
+    elif self_condition_type == "logits_mean":
+        mixed_values = (value_1 + value_2) / 2.0
+    elif self_condition_type == "logits_max":
+        mixed_values = torch.max(value_1, value_2)
+    elif self_condition_type == "logits_multiply":
+        mixed_values = value_1 * value_2
+    else:
+        assert NotImplementedError
+    return mixed_values
 
 def round_stsb_target(label):
     """STSB maps two sentences to a floating point number between 1 and 5
