@@ -9,6 +9,7 @@ import sys
 import datasets
 import nltk
 from datasets import DatasetDict, Dataset
+from transformers.trainer_callback import TrainerState
 import evaluate
 import transformers
 from filelock import FileLock
