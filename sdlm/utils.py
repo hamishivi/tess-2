@@ -8,6 +8,7 @@ from transformers.utils import logging
 import shutil
 import numpy as np
 from typing import Callable, Iterable, List
+import torch
 
 logger = logging.get_logger(__name__)
 
