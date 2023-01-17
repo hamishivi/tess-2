@@ -13,6 +13,7 @@ class RobertaDiffusionConfig(RobertaConfig):
         classifier_free_simplex_inputs: bool = False,
         classifier_free_uncond_input: str = "empty_token",
         self_condition_mlp_projection=False,
+        self_condition_mix_before_weights=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -22,3 +23,4 @@ class RobertaDiffusionConfig(RobertaConfig):
         self.classifier_free_simplex_inputs = classifier_free_simplex_inputs
         self.classifier_free_uncond_input = classifier_free_uncond_input
         self.self_condition_mlp_projection = self_condition_mlp_projection
+        self.self_condition_mix_before_weights=self_condition_mix_before_weights

@@ -152,16 +152,30 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
             previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if not self.config.deepmind_conditional:
-                if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
-                    inputs_embeds = inputs_embeds + previous_pred
-                elif self.config.self_condition == "logits_mean":
-                    inputs_embeds = (inputs_embeds + previous_pred) / 2.0
-                elif self.config.self_condition == "logits_max":
-                    inputs_embeds = torch.max(inputs_embeds, previous_pred)
-                elif self.config.self_condition in ["logits", "logits_with_projection"]:
-                    inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
+                # In this setting, we mix the probabilities then apply the weight.
+                if self.config.self_condition_mix_before_weights:
+                    if self.config.self_condition == "logits_addition":
+                        mixed_probs = inputs_probs + previous_pred_probs
+                    elif self.config.self_condition == "logits_mean":
+                        mixed_probs = (inputs_probs + previous_pred_probs) / 2.0
+                    elif self.config.self_condition == "logits_max":
+                        mixed_probs = torch.max(inputs_probs, previous_pred_probs)
+                    elif self.config.self_condition == "logits_multiply":
+                        mixed_probs = inputs_probs * previous_pred_probs
+                    inputs_embeds = self.vocab_to_hidden_dim_embed(mixed_probs)
                 else:
-                    raise NotImplementedError
+                    if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
+                        inputs_embeds = inputs_embeds + previous_pred
+                    elif self.config.self_condition == "logits_mean":
+                        inputs_embeds = (inputs_embeds + previous_pred) / 2.0
+                    elif self.config.self_condition == "logits_multiply":
+                        inputs_embeds = inputs_embeds * previous_pred
+                    elif self.config.self_condition == "logits_max":
+                        inputs_embeds = torch.max(inputs_embeds, previous_pred)
+                    elif self.config.self_condition in ["logits", "logits_with_projection"]:
+                        inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
+                    else:
+                        raise NotImplementedError
 
         if span_mask is not None:
             # Original word embeddings without noise.
