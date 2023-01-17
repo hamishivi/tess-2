@@ -110,11 +110,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # If we have a mask, we need to mask the simplex values before softmax.
+        """
         if span_mask is not None:
             mask_value = torch.finfo(simplex.dtype).min
             mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
             simplex = torch.where(span_mask[:, :, None], simplex, mask_value)
-
+        """
         inputs_probs = F.softmax(simplex, dim=-1)
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
@@ -142,12 +143,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             else:
                 if previous_pred is None:
                     previous_pred = torch.zeros_like(simplex, device=simplex.device)
-
+                """
                 if span_mask is not None:
                     mask_value = torch.finfo(previous_pred.dtype).min
                     mask_value = torch.tensor(mask_value, dtype=previous_pred.dtype, device=previous_pred.device)
                     previous_pred = torch.where(span_mask[:, :, None], previous_pred, mask_value)
-
+                """
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
             previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if not self.config.deepmind_conditional:
