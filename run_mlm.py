@@ -125,6 +125,7 @@ def main():
         classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
         self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
         self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
+        self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
         **config_kwargs,
     )
     tokenizer_kwargs = {

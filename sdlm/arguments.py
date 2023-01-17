@@ -409,6 +409,9 @@ class DiffusionArguments:
     self_condition_mix_before_weights: bool = field(
         default=False, metadata={"help": "If set, mixes the softmax of simplexes and then apply the weights."}
     )
+    self_condition_mix_logits_before_weights: bool = field(
+        default=False, metadata={"help": "If set, mixes simplexes and then apply the weights."}
+    )
     self_condition_mlp_projection: bool = field(default=False, metadata={"help": "If not set, uses a linear layer."})
     self_condition_zeros_after_softmax: bool = field(
         default=False,

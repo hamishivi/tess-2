@@ -150,10 +150,22 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                     previous_pred = torch.where(span_mask[:, :, None], previous_pred, mask_value)
                 """
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
-            previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
+            if not self.config.self_condition_mix_logits_before_weights:
+                previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if not self.config.deepmind_conditional:
                 # In this setting, we mix the probabilities then apply the weight.
-                if self.config.self_condition_mix_before_weights:
+                if self.config.self_condition_mix_logits_before_weights:
+                    if self.config.self_condition == "logits_addition":
+                        mixed_logits = simplex + previous_pred
+                    elif self.config.self_condition == "logits_mean":
+                        mixed_logits = (simplex + previous_pred) / 2.0
+                    elif self.config.self_condition == "logits_max":
+                        mixed_logits = torch.max(simplex, previous_pred)
+                    elif self.config.self_condition == "logits_multiply":
+                        mixed_logits = simplex * previous_pred
+                    mixed_probs = F.softmax(mixed_logits, dim=-1)
+                    inputs_embeds = self.vocab_to_hidden_dim_embed(mixed_probs)
+                elif self.config.self_condition_mix_before_weights:
                     if self.config.self_condition == "logits_addition":
                         mixed_probs = inputs_probs + previous_pred_probs
                     elif self.config.self_condition == "logits_mean":
