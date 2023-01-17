@@ -5,12 +5,11 @@ import os
 import random
 import sys
 from dataclasses import dataclass
-
+from transformers.trainer_callback import TrainerState
 import datasets
 import numpy as np
 from datasets import load_dataset
 import pdb
-
 import transformers
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
@@ -27,6 +26,7 @@ from sdlm.trainer import DiffusionTrainer
 from sdlm.inference.inference_utils import process_text
 from sdlm.metrics.metrics import get_glue_metrics
 from sdlm.data.postprocessors import get_post_processor
+from transformers.utils import WEIGHTS_NAME
 
 # This is computed with scripts/compute_max_tokens_of_labels.py
 MAX_LABEL_LENGTH = 5
@@ -344,6 +344,16 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
+    # We will load the best model here to avoid an issue when do_train is not set.
+    if training_args.load_states_in_eval_from_model_path and not training_args.do_train:
+        trainer.state = TrainerState.load_from_json(os.path.join(model_args.model_name_or_path, "trainer_state.json"))
+        if training_args.load_best_model_at_end and trainer.state.best_model_checkpoint is not None:
+            checkpoint_path = trainer.state.best_model_checkpoint
+        else:
+            checkpoint_path = model_args.model_name_or_path
+        trainer._load_from_checkpoint(checkpoint_path)
+        trainer._load_rng_state(checkpoint_path)
+
     # Evaluation
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
@@ -352,6 +362,16 @@ def main():
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
+    if training_args.do_predict:
+        logger.info("*** Test ***")
+        metrics = trainer.evaluate()
+        max_predict_samples = (
+            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+        )
+        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
 
 
 if __name__ == "__main__":

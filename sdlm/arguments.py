@@ -62,6 +62,15 @@ class ModelArguments:
         default="EleutherAI/gpt-neo-1.3B",
         metadata={"help": "The autoregressive model used to measure the evaluation perplexity."},
     )
+    resize_position_embeddings: Optional[bool] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Whether to automatically resize the position embeddings if `max_source_length` exceeds "
+                "the model's position embeddings."
+            )
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
@@ -107,6 +116,10 @@ class TrainingArguments(HFTrainingArguments):
             "If using this option, you can call `compute_mlm_metrics.py` to compute them on 1 GPU later on."
         },
     )
+    compute_eval_loss_with_simplex: bool = field(
+        default=False, metadata={"help": "If set, computes the evaluation loss from the simplex values."}
+    )
+    ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses ssdlm optimizer."})
 
 
 @dataclass
@@ -388,7 +401,8 @@ class DiffusionArguments:
                 "consider logits and apply the projection. After concatenating the inputs, we project inputs back"
                 "with a projection layer to the half dimension. We also consider the cases of `logits_addition`"
                 " and `logits_with_projection_addition` where we adds up the previous prediction to the logits,"
-                "possibly with a projection operation."
+                "possibly with a projection operation. `logits_mean`: gets the average of logits and `logits_max`"
+                "computes the maximum."
             )
         },
     )

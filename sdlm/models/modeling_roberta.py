@@ -46,6 +46,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         elif self.config.self_condition is not None and not self.config.self_condition in [
             "logits_addition",
             "logits_with_projection_addition",
+            "logits_max",
+            "logits_mean",
         ]:
             if config.self_condition_mlp_projection:
                 self.project_to_hidden_size = nn.Sequential(
@@ -151,6 +153,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             if not self.config.deepmind_conditional:
                 if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
                     inputs_embeds = inputs_embeds + previous_pred
+                elif self.config.self_condition == "logits_mean":
+                    inputs_embeds = (inputs_embeds + previous_pred) / 2.0
+                elif self.config.self_condition == "logits_max":
+                    inputs_embeds = torch.max(inputs_embeds, previous_pred)
                 elif self.config.self_condition in ["logits", "logits_with_projection"]:
                     inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
                 else:
@@ -186,7 +192,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             # TODO: we need to fix classifier-free guidance for the case of deepmind_conditional.
             if classifier_free_guidance:
                 inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
-
         outputs = self.roberta(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=None,  # attention_mask,
@@ -223,3 +228,67 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             hidden_states=outputs.last_hidden_state,
             attentions=outputs.attentions,
         )
+
+    def resize_position_embeddings(self, new_num_position_embeddings: int):
+        """
+        Resizes position embeddings of the model if `new_num_position_embeddings != config.max_position_embeddings`.
+        Arguments:
+            new_num_position_embeddings (`int`):
+                The number of new position embedding matrix. If position embeddings are learned, increasing the size
+                will add newly initialized vectors at the end, whereas reducing the size will remove vectors from the
+                end. If position embeddings are not learned (*e.g.* sinusoidal position embeddings), increasing the
+                size will add correct vectors at the end following the position encoding algorithm, whereas reducing
+                the size will remove vectors from the end.
+        """
+        num_position_embeds_diff = new_num_position_embeddings - self.config.max_position_embeddings
+
+        # no resizing needs to be done if the length stays the same
+        if num_position_embeds_diff == 0:
+            return
+
+        logger.info(f"Setting `config.max_position_embeddings={new_num_position_embeddings}`...")
+        self.config.max_position_embeddings = new_num_position_embeddings
+        old_position_embeddings_weight = self.roberta.embeddings.position_embeddings.weight.clone()
+
+        padding_idx = self.config.pad_token_id
+        self.roberta.embeddings.position_embeddings = nn.Embedding(
+            self.config.max_position_embeddings, self.config.hidden_size, padding_idx=padding_idx
+        )
+        with torch.no_grad():
+            if num_position_embeds_diff > 0:
+                self.roberta.embeddings.position_embeddings.weight[:-num_position_embeds_diff] = nn.Parameter(
+                    old_position_embeddings_weight
+                )
+            else:
+                self.roberta.embeddings.position_embeddings.weight = nn.Parameter(
+                    old_position_embeddings_weight[:num_position_embeds_diff]
+                )
+        # move position_embeddings to correct device
+        self.roberta.embeddings.position_embeddings.to(self.device)
+        # Update other needed parameters.
+        self.roberta.embeddings.position_ids = (
+            torch.arange(self.config.max_position_embeddings).expand((1, -1)).type_as(self.roberta.embeddings.position_ids)
+        )
+        self.roberta.embeddings.token_type_ids = torch.zeros(
+            self.roberta.embeddings.position_ids.size(), dtype=torch.long
+        ).type_as(self.roberta.embeddings.token_type_ids)
+
+        # resize the distance embeddings.
+        for i in range(self.config.num_hidden_layers):
+            if (
+                self.config.position_embedding_type == "relative_key"
+                or self.config.position_embedding_type == "relative_key_query"
+            ):
+                self.roberta.encoder.layer[i].attention.self.distance_embedding = nn.Embedding(
+                    2 * self.config.max_position_embeddings - 1, self.attention_head_size
+                )
+                old_distance_embedding_weight = self.layer[i].attention.self.distance_embedding.weight.clone()
+                with torch.no_grad():
+                    if num_position_embeds_diff > 0:
+                        self.roberta.encoder.layer[i].attention.self.distance_embedding.weight[
+                            : -2 * num_position_embeds_diff
+                        ] = nn.Parameter(old_distance_embedding_weight)
+                    else:
+                        self.roberta.encoder.layer[i].attention.self.distance_embedding.weight = nn.Parameter(
+                            old_distance_embedding_weight[: 2 * num_position_embeds_diff]
+                        )

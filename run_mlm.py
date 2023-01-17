@@ -48,6 +48,7 @@ def get_compute_metrics(data_args, training_args, model_args):
     prefix_lm_eval = True if data_args.conditional_generation in ["prefix_lm", "ul2", "ul2_with_unconditional"] else False
     compute_metrics = lambda results: evaluate_generation(
         results,
+        data_args,
         causal_model,
         causal_tokenizer,
         is_conditional_generation,

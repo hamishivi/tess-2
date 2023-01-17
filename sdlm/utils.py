@@ -82,7 +82,7 @@ def get_norm_stats(model):
 
 
 def self_condition_preds(self_condition, logits, logits_projection=None):
-    if self_condition in ["logits", "logits_addition"]:
+    if self_condition in ["logits", "logits_addition", "logits_mean", "logits_max"]:
         previous_pred = logits.detach()
     elif self_condition in ["logits_with_projection", "logits_with_projection_addition"]:
         previous_pred = logits_projection(logits.detach())
@@ -110,3 +110,7 @@ def round_stsb_target(label):
 def lmap(f: Callable, x: Iterable) -> List:
     """list(map(f, x))"""
     return list(map(f, x))
+
+
+def pad_data(data_list, tokenizer):
+    return tokenizer.pad({"input_ids": data_list}, padding=True)["input_ids"]

@@ -8,7 +8,7 @@ import sys
 
 import datasets
 import nltk
-
+from datasets import DatasetDict, Dataset
 import evaluate
 import transformers
 from filelock import FileLock
@@ -16,7 +16,6 @@ from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
-from sdlm.data.data_utils import load_data
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.schedulers import SimplexDDPMScheduler
@@ -41,20 +40,7 @@ except (LookupError, OSError):
         nltk.download("punkt", quiet=True)
 
 
-summarization_name_mapping = {
-    "amazon_reviews_multi": ("review_body", "review_title"),
-    "big_patent": ("description", "abstract"),
-    "cnn_dailymail": ("article", "highlights"),
-    "orange_sum": ("text", "summary"),
-    "pn_summary": ("article", "summary"),
-    "psc": ("extract_text", "summary_text"),
-    "samsum": ("dialogue", "summary"),
-    "thaisum": ("body", "summary"),
-    "xglue": ("news_body", "news_title"),
-    "xsum": ("document", "summary"),
-    "wiki_summary": ("article", "highlights"),
-    "multi_news": ("document", "summary"),
-}
+simplification_name_mapping = {"asset": ("original", "simplification")}
 
 
 def main():
@@ -108,7 +94,17 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    raw_datasets = load_data(data_args, model_args)
+    raw_datasets = DatasetDict()
+    for split in ["train", "dev", "test"]:
+        s1s = open(f"wikilarge/s1.{split}", "r").readlines()
+        s2s = open(f"wikilarge/s2.{split}", "r").readlines()
+        data = [{"original": s1, "simplification": s2} for s1, s2 in zip(s1s, s2s)]
+        raw_datasets[split] = Dataset.from_list(data)
+
+    train_dataset = raw_datasets["train"]
+    eval_dataset = raw_datasets["dev"]
+    test_dataset = raw_datasets["test"]
+    column_names = train_dataset.column_names
 
     config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
@@ -168,22 +164,11 @@ def main():
                 " model's position encodings by passing `--resize_position_embeddings`."
             )
 
-    # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    if training_args.do_train:
-        column_names = raw_datasets["train"].column_names
-    elif training_args.do_eval:
-        column_names = raw_datasets["validation"].column_names
-    elif training_args.do_predict:
-        column_names = raw_datasets["test"].column_names
-    else:
-        logger.info("There is nothing to do. Please pass `do_train`, `do_eval` and/or `do_predict`.")
-        return
-
     # Get the column names for input/target.
-    dataset_columns = summarization_name_mapping.get(data_args.dataset_name, None)
+    dataset_columns = simplification_name_mapping.get(data_args.dataset_name, None)
     assert dataset_columns is not None, "You need to provide the columns names."
-    text_column, summary_column = dataset_columns[0], dataset_columns[1]
+    text_column, simplification_column = dataset_columns[0], dataset_columns[1]
 
     # Temporarily set max_target_length for training.
     max_target_length = data_args.max_target_length
@@ -201,9 +186,9 @@ def main():
 
         inputs, targets = [], []
         for i in range(len(examples[text_column])):
-            if examples[text_column][i] and examples[summary_column][i]:
+            if examples[text_column][i] and examples[simplification_column][i]:
                 inputs.append(examples[text_column][i])
-                targets.append(examples[summary_column][i])
+                targets.append(examples[simplification_column][i])
         # TODO: we need to process first the target, then cut the inputs to the max_length-target length to use the
         # maximum number of tokens.
         model_inputs = tokenizer(inputs, max_length=data_args.max_source_length, padding=False, truncation=True)
@@ -213,9 +198,6 @@ def main():
         return model_inputs
 
     if training_args.do_train:
-        if "train" not in raw_datasets:
-            raise ValueError("--do_train requires a train dataset")
-        train_dataset = raw_datasets["train"]
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
@@ -231,9 +213,6 @@ def main():
 
     if training_args.do_eval:
         max_target_length = data_args.val_max_target_length
-        if "validation" not in raw_datasets:
-            raise ValueError("--do_eval requires a validation dataset")
-        eval_dataset = raw_datasets["validation"]
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
@@ -276,30 +255,25 @@ def main():
     )
 
     # Metric
-    # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("rouge")  # , keep_in_memory=True)
+    metric = evaluate.load("sari")
 
-    def postprocess_text(preds, labels):
+    def postprocess_text(preds, labels, sources):
         preds = [pred.strip() for pred in preds]
         labels = [label.strip() for label in labels]
-
-        # rougeLSum expects newline after each sentence
-        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
-        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
-
-        return preds, labels
+        sources = [source.strip() for source in sources]
+        return preds, labels, sources
 
     def compute_metrics(results):
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
         for key in keys:
             decoded_preds = process_text(results[key])
-            # Note that since decoded_labels is getting updated after post-process, we
-            # need to compute it here for each key.
             decoded_labels = process_text(results["gold_texts_masked"])
-            decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-            key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
-            key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
+            sources = results["prefixes"]
+            decoded_preds, decoded_labels, sources = postprocess_text(decoded_preds, decoded_labels, sources)
+            decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
+            key_metrics = metric.compute(sources=sources, predictions=decoded_preds, references=decoded_labels)
+            key_metrics = {k: round(v, 2) for k, v in key_metrics.items()}
             key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
             metrics.update(key_metrics)
         return metrics
@@ -340,11 +314,6 @@ def main():
 
     # Evaluation
     results = {}
-    max_length = (
-        training_args.generation_max_length
-        if training_args.generation_max_length is not None
-        else data_args.val_max_target_length
-    )
     num_beams = data_args.num_beams if data_args.num_beams is not None else training_args.generation_num_beams
     if training_args.do_eval:
         logger.info("*** Evaluate ***")

@@ -24,8 +24,10 @@ from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
-from sdlm.utils import self_condition_preds
-
+from sdlm.utils import self_condition_preds, pad_data
+from torch.nn import CrossEntropyLoss
+from transformers.utils import is_sagemaker_mp_enabled
+from transformers import AdamW
 
 if is_apex_available():
     from apex import amp
@@ -33,6 +35,9 @@ if is_apex_available():
 if is_datasets_available():
     import datasets
 
+
+if is_sagemaker_mp_enabled():
+    import smdistributed.modelparallel.torch as smp
 
 IS_SAGEMAKER_MP_POST_1_10 = False
 GENERATION_RESULTS = "generated"
@@ -171,6 +176,13 @@ class DiffusionTrainer(Trainer):
                     loss = None
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
+
+        # Computes the evaluation loss from the simplex values.
+        if self.args.compute_eval_loss_with_simplex and is_conditional_generation:
+            loss_fct = CrossEntropyLoss()
+            labels = torch.where(inputs["span_mask"], inputs["input_ids"], -100)
+            loss = loss_fct(simplex.view(-1, self.model.config.vocab_size), labels.view(-1)).detach()
+
         return (simplex, logits, loss)
 
     def evaluation_loop(
@@ -187,7 +199,7 @@ class DiffusionTrainer(Trainer):
         """
         args = self.args
         is_conditional_generation = self.data_args.conditional_generation is not None
-        save_prefixes = is_conditional_generation and self.data_args.conditional_generation != "seq2seq"
+        save_prefixes = is_conditional_generation  # and self.data_args.conditional_generation != "seq2seq"
 
         prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
         # if eval is called w/o train init deepspeed here
@@ -280,7 +292,12 @@ class DiffusionTrainer(Trainer):
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
             if save_prefixes:
-                prefixes = torch.stack([input[~mask] for input, mask in zip(inputs_decode, masks)]) if has_mask else None
+                prefixes = (
+                    pad_data([input[~mask] for input, mask in zip(inputs_decode, masks)], self.tokenizer)
+                    if has_mask
+                    else None
+                )
+                prefixes = self._prepare_input(prefixes)
             else:
                 prefixes = None
             # Update containers on host
@@ -444,13 +461,6 @@ class DiffusionTrainer(Trainer):
                         ]
                     }
                 )
-            # results.update(
-            #    {
-            #        "gold_texts": self.tokenizer.batch_decode(
-            #            all_inputs, skip_special_tokens=self.data_args.skip_special_tokens
-            #        )
-            #    }
-            # )
 
         # Metrics.
         if self.compute_metrics is not None:
@@ -537,7 +547,7 @@ class DiffusionTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         # Save the results
-        self.save_metrics(GENERATION_RESULTS+"_"+metric_key_prefix, output.results)
+        self.save_metrics(GENERATION_RESULTS + "_" + metric_key_prefix, output.results)
         logger.info("Results are saved now")
 
         return output.metrics
@@ -612,3 +622,30 @@ class DiffusionTrainer(Trainer):
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
+
+    def create_optimizer(self):
+        """
+        Setup the optimizer.
+        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
+        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
+        """
+        if not self.args.ssdlm_optimizer:
+            return super().create_optimizer()
+
+        # SDDLM optimizer.
+        opt_model = self.model
+
+        if self.optimizer is None:
+            no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in opt_model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [p for n, p in opt_model.named_parameters() if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
+            self.optimizer = AdamW(optimizer_grouped_parameters, lr=self.args.learning_rate)
+        return self.optimizer

@@ -8,11 +8,12 @@ import operator
 import math
 import scipy
 import sklearn
+import pdb
 
 MAX_TEXT_LENGTH = 256
 
 
-def mauve(predictions, references, featurize_model_name="gpt2-large"):
+def mauve(predictions, references, featurize_model_name="gpt2-large", length=MAX_TEXT_LENGTH):
     """Computes MAUVE scores between two lists of generated text and reference text.
     Args:
     predictions (list of str) of predictions.
@@ -21,7 +22,7 @@ def mauve(predictions, references, featurize_model_name="gpt2-large"):
     results = compute_mauve(
         p_text=references,  # human-text.
         q_text=predictions,  # machine-text.
-        max_text_length=MAX_TEXT_LENGTH,
+        max_text_length=length,
         featurize_model_name=featurize_model_name,
         verbose=False,
         # These are the tricks to make `mauve` run faster if #examples > 5K.
@@ -43,9 +44,14 @@ def distinct_n_grams(texts):
         unigrams = set(ngrams(text.split(), 1))
         bigrams = set(ngrams(text.split(), 2))
         trigrams = set(ngrams(text.split(), 3))
-        dist_1.append(len(unigrams) / total_words)
-        dist_2.append(len(bigrams) / total_words)
-        dist_3.append(len(trigrams) / total_words)
+        if total_words == 0:
+            dist_1.append(0)
+            dist_2.append(0)
+            dist_3.append(0)
+        else:
+            dist_1.append(len(unigrams) / total_words)
+            dist_2.append(len(bigrams) / total_words)
+            dist_3.append(len(trigrams) / total_words)
     return {"dist-1": np.nanmean(dist_1), "dist-2": np.nanmean(dist_2), "dist-3": np.nanmean(dist_3)}
 
 
