@@ -40,7 +40,7 @@ except (LookupError, OSError):
         nltk.download("punkt", quiet=True)
 
 
-simplification_name_mapping = {"asset": ("original", "simplification")}
+simplification_name_mapping = {"wikilarge": ("original", "simplification")}
 
 
 def main():
@@ -114,6 +114,7 @@ def main():
         classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
         classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
         self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
+        self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
