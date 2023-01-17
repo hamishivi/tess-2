@@ -8,7 +8,7 @@ import pdb
 from random import choices
 import torch
 from enum import Enum
-
+import random
 
 class Objective(Enum):
     # Prefix language modeling like GPT style pretraining.
@@ -110,6 +110,12 @@ class SpanInfillingDataCollator:
                 batch, **setting, rng=self.rng
             )
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
+        elif self.conditional_generation == "ul2_variable" and mode == "train":
+            self.mask_generator = {}
+            self.mask_generator[Objective.t5] = lambda batch, mask_ratio, mean_mask_span_length: t5_random_spans_mask_batch(
+                batch, mask_ratio=mask_ratio, mean_mask_span_length=mean_mask_span_length, rng=self.rng
+            )
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         [f.pop("attention_mask") for f in features]
@@ -143,7 +149,20 @@ class SpanInfillingDataCollator:
                 masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
-        elif self.mode == "eval" and self.conditional_generation in ["ul2", "ul2_with_unconditional"]:
+        elif self.conditional_generation == "ul2_variable" and self.mode == "train":
+            objectives = [Objective.t5, Objective.prefix]
+            weights = [0.5, 0.5]
+            objective = choices(objectives, weights)[0]
+            if objective  == objective.t5:
+                # Here we assume the length is the same for all data in a batch.
+                length=len(features[0]["input_ids"])
+                min_ratio = 1.0/length            
+                mask_ratio = random.uniform(min_ratio, 0.5)
+                mean_mask_span_length=int(random.uniform(1, mask_ratio*length))
+                masks = {"span_mask": self.mask_generator[objective](features, mask_ratio, mean_mask_span_length)}
+            else:
+                masks = {"span_mask": self.mask_generator[objective](features)}
+        elif self.mode == "eval" and self.conditional_generation in ["ul2", "ul2_with_unconditional", "ul2_variable"]:
             masks = {
                 "span_mask": gpt_span_mask_batch(
                     features, use_half_length_as_prefix_size=True, eval_context_size=self.eval_context_size

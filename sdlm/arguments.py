@@ -247,7 +247,8 @@ class DataTrainingArguments:
             "on completing the prefixes like GPT2. In `ul2`, it trains on a mixture of span_infilling, agressive"
             "span_infilling, or prefix_lm and evals on prefix_lm with masking half of the sequence. In case of"
             "`ul2_with_unconditional`: it uses ul2 with also including unconditional generation during training."
-            "`seq2seq` is used for translation or summarization tasks."
+            "`seq2seq` is used for translation or summarization tasks. `ul2_variable`: is ul2 for the different"
+            "T5 mask_ratio till half of the sequence."
         },
     )
     eval_context_size: Optional[int] = field(
@@ -355,7 +356,7 @@ class DataTrainingArguments:
             self.val_max_target_length = self.max_target_length
 
         if self.conditional_generation is not None:
-            assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq"]
+            assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq", "ul2_variable"]
 
 
 @dataclass
