@@ -201,7 +201,9 @@ def evaluate_generation(
         if prefixes is None:
             key_metrics.update({"perplexity": perplexity(non_empty_texts, causal_model, causal_tokenizer)["mean_perplexity"]})
         else:
-            key_metrics.update({"perplexity": conditional_perplexity(non_empty_texts, prefixes, causal_model, causal_tokenizer)["mean_perplexity"]})
+            non_empty_prefixes = [prefix for i, prefix in enumerate(prefixes) if i in remained_indices ]
+            perplexity_results = conditional_perplexity(non_empty_texts, non_empty_prefixes, causal_model, causal_tokenizer)
+            key_metrics.update({"perplexity": perplexity_results["mean_perplexity"], "total_perplexity":perplexity_results["mean_perplexity_total"]})
         
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))

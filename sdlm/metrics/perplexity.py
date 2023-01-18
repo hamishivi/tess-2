@@ -118,13 +118,18 @@ def conditional_perplexity(
     texts, prefixes, model, tokenizer, batch_size: int = 16, add_start_token: bool = True, max_length=None
 ):
     """Computes the conditional perplexity for the case of prefix language modeling."""
-    loss, lengths = perplexity(texts, model, tokenizer, batch_size, add_start_token, max_length, only_return_loss=True)
+    full_texts = [f"{prefix}{text}" for prefix,text in zip(prefixes, texts)]
+    loss, lengths = perplexity(full_texts, model, tokenizer, batch_size, add_start_token, max_length, only_return_loss=True)
     prefix_loss, prefix_lengths = perplexity(
         prefixes, model, tokenizer, batch_size, add_start_token, max_length, only_return_loss=True
     )
     # Computing the perplexity over the whole examples.
     ppls = []
+    total_nlls = 0
+    total_tokens = 0
     for i in range(len(loss)):
         perplexity_batch = torch.exp((loss[i] - prefix_loss[i]) / (lengths[i] - prefix_lengths[i]))
-        ppls += perplexity_batch.tolist()
-    return {"perplexities": ppls, "mean_perplexity": np.mean(ppls)}
+        ppls.extend(perplexity_batch.tolist())
+        total_nlls += torch.sum(loss[i] - prefix_loss[i]).item()
+        total_tokens += torch.sum(lengths[i] - prefix_lengths[i]).item()
+    return {"perplexities": ppls, "mean_perplexity": np.nanmean(ppls), "mean_perplexity_total": np.exp(total_nlls/total_tokens)}
