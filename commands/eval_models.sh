@@ -176,7 +176,6 @@ do
       CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_addition  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}
   done  
 done
-'
 
 for TOP_P in 0.95 0.99  0.9
 do
@@ -190,6 +189,7 @@ do
       CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params}  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}
   done  
 done
+'
 
 
 : '
