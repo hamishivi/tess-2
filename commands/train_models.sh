@@ -64,5 +64,4 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 # python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/prefix_lm_length_256_ssdlm_optimizer" ${shared_params} ${PARAMS_FOR_LOCAL} --gradient_accumulation_steps 16 --conditional_generation "prefix_lm" --ssdlm_optimizer
 
 # Train the models on the new ul2 objective.
-# TODO: this is a test, check all params.
-python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable" ${shared_params} ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"
+python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights" ${shared_params}  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true
