@@ -45,7 +45,7 @@ def get_compute_metrics(data_args, training_args, model_args):
     causal_tokenizer = AutoTokenizer.from_pretrained(model_args.autoregressive_eval_model)
 
     is_conditional_generation = data_args.conditional_generation is not None
-    prefix_lm_eval = True if data_args.conditional_generation in ["prefix_lm", "ul2", "ul2_with_unconditional"] else False
+    prefix_lm_eval = True if data_args.conditional_generation in ["prefix_lm", "ul2", "ul2_with_unconditional", "ul2_variable"] else False
     compute_metrics = lambda results: evaluate_generation(
         results,
         data_args,

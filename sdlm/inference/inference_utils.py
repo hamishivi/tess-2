@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 import pdb
 from sdlm.utils import convert_to_simplex, join_texts
-from sdlm.metrics.perplexity import perplexity
+from sdlm.metrics.perplexity import perplexity, conditional_perplexity
 from sdlm.metrics.metrics import distinct_n_grams, mauve, zipf
 from sdlm.metrics.repetition import repetition
 
@@ -184,6 +184,8 @@ def evaluate_generation(
             pass  # gold_texts = process_text(gold_texts)
     if "prefixes" in results:
         prefixes = results["prefixes"]
+    else:
+        prefixes = None 
 
     for key in keys:
         key_metrics = {}
@@ -196,8 +198,11 @@ def evaluate_generation(
             continue
 
         # Perplexity measured by a causal model.
-        key_metrics.update({"perplexity": perplexity(non_empty_texts, causal_model, causal_tokenizer)["mean_perplexity"]})
-
+        if prefixes is None:
+            key_metrics.update({"perplexity": perplexity(non_empty_texts, causal_model, causal_tokenizer)["mean_perplexity"]})
+        else:
+            key_metrics.update({"perplexity": conditional_perplexity(non_empty_texts, prefixes, causal_model, causal_tokenizer)["mean_perplexity"]})
+        
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
 
