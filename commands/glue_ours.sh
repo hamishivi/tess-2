@@ -19,8 +19,8 @@ python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BAS
 '
 
 # DEBUG
-DATASET="cola"
-python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/debug"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} ${DEBUG_PARAMS} --self_condition_mix_before_weights true --self_condition "logits_multiply" 
+# DATASET="cola"
+# python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/debug"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} ${DEBUG_PARAMS} --self_condition_mix_before_weights true --self_condition "logits_multiply" 
 
 # Training GLUE with self-conditioning mean for now.
 : '
@@ -46,3 +46,10 @@ DATASET="rte"
 python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue_self_condition_mean/"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01_from_40K_checkpoint"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --self_condition "logits_mean" --per_device_train_batch_size 32  --gradient_accumulation_steps 4 --model_name_or_path  "self_condition_mean/checkpoint-40000/"
 '
 
+##############################################################################
+# Running GLUE with the self-condition mean with the mix before weights setup
+##############################################################################
+DATASET="stsb"
+num_inference_diffusion_steps=10
+#python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 4  --self_condition_mix_before_weights true 
+python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 4  --self_condition_mix_before_weights true 
