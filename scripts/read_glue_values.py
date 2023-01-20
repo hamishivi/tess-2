@@ -20,14 +20,19 @@ task_to_metric = {
 glue_ordered = ["cola", "sst2", "mrpc", "qqp", "stsb", "mnli", "qnli", "rte", "wnli"]
 
 
-def read_values(paths):
+def read_values(paths, is_baseline=False):
     results = {}
     for task in task_to_metric:
         results[task] = {}
         path = paths[task]
         data = json.load(open(path))
         for metric in task_to_metric[task]:
-            results[task][metric] = np.round(data["eval_pred_texts_from_logits_masked_" + metric], 2)
+            if is_baseline:
+                scale=100
+                results[task][metric] = np.round(data["eval_" + metric]*scale, 2)
+            else:
+                scale=1
+                results[task][metric] = np.round(data["eval_pred_texts_from_logits_masked_" + metric]*scale, 2)
     print(results)
 
     # Computes average.
@@ -59,6 +64,7 @@ paths={task:os.path.join(output_dir, task, "test_results.json") for task in task
 read_values(paths)
 """
 
+'''
 # Read glue values.
 output_dir = "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ours_glue_self_condition_mean"
 dirs = {
@@ -79,3 +85,13 @@ paths = {}
 for task in dirs:
     paths[task] = os.path.join(output_dir, dirs[task], "test_results.json")
 read_values(paths)
+'''
+
+# Read the GLUE baseline results.
+paths = {}
+for task in task_to_metric.keys():
+    #path_task=f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd/"
+    path_task=f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_wd_0.01/"
+    #path_task =f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/baseline_{task}"
+    paths[task] = os.path.join(path_task, "test_results.json")
+read_values(paths, is_baseline=False)

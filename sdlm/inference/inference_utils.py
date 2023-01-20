@@ -181,7 +181,7 @@ def evaluate_generation(
     if is_conditional_generation:
         gold_texts = results[gold_text_key]
         if not skip_special_tokens:
-            pass  # gold_texts = process_text(gold_texts)
+           gold_texts = process_text(gold_texts)
     if "prefixes" in results:
         prefixes = results["prefixes"]
     else:
@@ -191,7 +191,7 @@ def evaluate_generation(
         key_metrics = {}
         texts = results[key]
         if not skip_special_tokens:
-            pass  # texts = process_text(texts)
+            texts = process_text(texts)
 
         non_empty_texts, remained_indices = filter_empty(texts)
         if len(non_empty_texts) == 0:

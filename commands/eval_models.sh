@@ -108,7 +108,7 @@ do
    for TEMPERATURE in 1 #2 #4
    do
       checkpoint="/checkpoint-3000/"
-      model_path="prefix_lm_ssdlm_optimizer/"${checkpoint}
+ours_self_condition_mean_mix_before_weights_cola_steps_10_no_wd      model_path="prefix_lm_ssdlm_optimizer/"${checkpoint}
       output_dir=$BASE_DIR"/outputs/paper_experiments/tune_length_25_context_25_truncation_"${truncation_length}"/prefix_lm_ssdlm_optimizer_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
       python -m torch.distributed.launch --nproc_per_node 2 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P} --conditional_generation "prefix_lm"
       
@@ -136,6 +136,7 @@ done
 '
 ##########################################################
 # Evaluate the type of self-conditioning.
+: '
 for TOP_P in 0.95 0.99 0.9
 do
   for TEMPERATURE in 1 2 4	
@@ -147,6 +148,7 @@ do
       CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_max  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}
   done
 done
+'
 
 : '
 for TOP_P in 0.95 0.99  0.9
@@ -155,7 +157,7 @@ do
    do  	   
       checkpoint="/checkpoint-53000/" #13000/"
       model_path="self_condition_mean/"${checkpoint}
-      output_dir=$BASE_DIR"/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_"${truncation_length}"/ul2_self_condition_mean_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
+ours_self_condition_mean_mix_before_weights_cola_steps_10_no_wd      output_dir=$BASE_DIR"/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_"${truncation_length}"/ul2_self_condition_mean_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
       python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_mean --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}
       output_dir=$BASE_DIR"/outputs/paper_experiments/self_condition/tune_length_25_context_25_truncation_"${truncation_length}"/ul2_self_condition_mean_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
       CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --self_condition logits_mean  --eval_for_all_metrics --max_seq_length 256 --truncation_length 206 --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}
@@ -208,3 +210,16 @@ do
 done
 '
 #######################################
+# evaluate the model trained with the new self-training with mean mix before weights.
+for TOP_P in 0.95 0.99  0.9
+do
+  for TEMPERATURE in 1 2 4 
+  do
+      truncation_length=56
+      checkpoint="/checkpoint-6000"
+      model_path="ul2-variable/"${checkpoint}
+      output_dir=$BASE_DIR"/outputs/paper_experiments/ul2_variable_eval/tune_length_175_context_25_truncation_"${truncation_length}"/ul2_variable_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
+      python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}  --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --skip_special_tokens false 
+      CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params}  --eval_for_all_metrics --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}  --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --skip_special_tokens false 
+  done  
+done

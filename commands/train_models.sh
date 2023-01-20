@@ -43,7 +43,7 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 
 # DEBUG MODEL
-#python  run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS}   ${PARAMS_FOR_LOCAL} --eval_steps 400 --temperature 1.0  --tokenized_data_path  "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_256_split" --eval_steps 30 --compute_eval_loss_with_simplex True --self_condition "logits_mean" --ssdlm_optimizer --conditional_generation "ul2_variable" ${DEBUG_PARAMS} --evaluation_strategy steps --max_eval_samples 10
+# python  run_mlm.py --output_dir "/data/outputs/paper_experiments/debug" ${shared_params} ${DEBUG_PARAMS}   ${PARAMS_FOR_LOCAL} --eval_steps 400 --temperature 1.0  --tokenized_data_path  "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_256_split" --eval_steps 30 --compute_eval_loss_with_simplex True --self_condition "logits_mean" --ssdlm_optimizer --conditional_generation "ul2_variable" ${DEBUG_PARAMS} --evaluation_strategy steps --max_eval_samples 10 --save_steps 2 --save_steps 2
 
 # Train on the simple data
 # python run_mlm.py ${params_for_simple_data} --output_dir $BASE_DIR"/outputs/paper_experiments/simple_data"    --line_by_line ${PARAMS_FOR_LOCAL}
@@ -64,4 +64,4 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 # python -m torch.distributed.launch --nproc_per_node 4 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/prefix_lm_length_256_ssdlm_optimizer" ${shared_params} ${PARAMS_FOR_LOCAL} --gradient_accumulation_steps 16 --conditional_generation "prefix_lm" --ssdlm_optimizer
 
 # Train the models on the new ul2 objective.
-python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights" ${shared_params}  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true
+python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights" ${shared_params}  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true --resume_from_checkpoint "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights/checkpoint-6000"

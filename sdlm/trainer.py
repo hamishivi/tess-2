@@ -456,7 +456,7 @@ class DiffusionTrainer(Trainer):
                 results.update(
                     {
                         "prefixes": [
-                            self.tokenizer.decode(x, skip_special_tokens=self.data_args.skip_special_tokens)
+                            self.tokenizer.decode(x, skip_special_tokens=True) #self.data_args.skip_special_tokens)
                             for x in all_prefixes
                         ]
                     }
