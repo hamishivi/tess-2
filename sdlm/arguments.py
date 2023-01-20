@@ -120,7 +120,7 @@ class TrainingArguments(HFTrainingArguments):
         default=False, metadata={"help": "If set, computes the evaluation loss from the simplex values."}
     )
     ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses ssdlm optimizer."})
-
+    save_checkpoints_on_s3: bool = field(default=False, metadata={"help": "If set, instead of deleting the checkpoints when passing the limit of save checkpoints, it saves them on S3."})
 
 @dataclass
 class Seq2SeqTrainingArguments(TrainingArguments):
