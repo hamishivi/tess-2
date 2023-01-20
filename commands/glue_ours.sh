@@ -19,8 +19,8 @@ python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BAS
 '
 
 # DEBUG
-# DATASET="cola"
-# python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/debug"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} ${DEBUG_PARAMS} --self_condition_mix_before_weights true --self_condition "logits_multiply" 
+#DATASET="cola"
+#python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/ours_glue/debug"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} ${DEBUG_PARAMS} --self_condition_mix_before_weights true --self_condition "logits_multiply" --save_steps 10 --eval_steps 10 
 
 # Training GLUE with self-conditioning mean for now.
 : '
@@ -49,12 +49,29 @@ python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BAS
 ##############################################################################
 # Running GLUE with the self-condition mean with the mix before weights setup
 ##############################################################################
-DATASET="wnli"
-num_inference_diffusion_steps=10
+# DATASET="qqp"
+# num_inference_diffusion_steps=10
 #python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_wd_0.01"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 4  --self_condition_mix_before_weights true --resume_from_checkpoint "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_mnli_steps_10_wd_0.01/checkpoint-12000/"
-# python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 4  --self_condition_mix_before_weights true --resume_from_checkpoint "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_sst2_steps_10_no_wd/checkpoint-16000/"
+
+# NOTE: to run for 4 GPU, modify and remove 4 GPUs. Also remove the copy at the end of the output dir.
+# python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 4  --self_condition_mix_before_weights true 
+
 # Training without wd for small data with checkpoint of 500 steps.
-
 # NOTE: runs on 2 GPUS, laters modify the grad_acc and then remove the 2 GPUS.
-python -m torch.distributed.launch --nproc_per_node 2 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_500_steps"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 2  --self_condition_mix_before_weights true --save_steps 500 --eval_steps 500
+#python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_500_steps"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true --save_steps 500 --eval_steps 500
 
+
+##############################################################################################################################
+# Running GLUE with the self-condition mean with the mix before weights setup for the selected max iterations.
+##############################################################################################################################
+
+# NOTE: to run for 4 GPU, modify and remove 4 GPUs. Also remove the copy at the end of the output dir.
+# For larger datasets 
+# sst2, mnli, qnli, qqp
+# DATASET="sst2"
+# num_inference_diffusion_steps=10
+# python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3 
+
+# For smaller datasets.
+DATASET="cola" # rte, mrpc, cola, stsb, wnli
+python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 12000 --save_checkpoints_on_s3

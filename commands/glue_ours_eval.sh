@@ -84,6 +84,7 @@ done
 '
 
 # evaluate our models with a wd.
+: '
 DATASETS=("mrpc"    "rte"  "stsb"  "wnli"  "qqp"   "qnli" "sst2" "mnli" "cola") 
 CHECKPOINTS=("6000" "2000" "2000" "9000" "7000"  "11000" "14000" "5000" "4000")
 for i in "${!DATASETS[@]}"; do
@@ -91,4 +92,15 @@ for i in "${!DATASETS[@]}"; do
     CHECKPOINT=${CHECKPOINTS[i]}
     model_name_or_path=$BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_wd_0.01/checkpoint-"${CHECKPOINT} 
     python run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_wd_0.01/"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.01 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
+done
+
+# does more steps help?
+# new for glue
+DATASETS=( "qqp"    "sst2" ) 
+CHECKPOINTS=("21000"  "22000")
+for i in "${!DATASETS[@]}"; do
+    DATASET=${DATASETS[i]}
+    CHECKPOINT=${CHECKPOINTS[i]}
+    model_name_or_path=$BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd/checkpoint-"${CHECKPOINT} 
+    python run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
 done

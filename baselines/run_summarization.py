@@ -42,14 +42,13 @@ from transformers import (
     MBart50TokenizerFast,
     MBartTokenizer,
     MBartTokenizerFast,
-    Seq2SeqTrainer,
-    Seq2SeqTrainingArguments,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
-
+from trainer_seq2seq import BaselineSeq2SeqTrainer
+from arguments import BaselineSeq2SeqTrainingArguments
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -286,7 +285,7 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, BaselineSeq2SeqTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
@@ -623,7 +622,7 @@ def main():
         return result
 
     # Initialize our Trainer
-    trainer = Seq2SeqTrainer(
+    trainer = BaselineSeq2SeqTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
