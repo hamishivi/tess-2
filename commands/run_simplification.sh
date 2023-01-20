@@ -107,5 +107,3 @@ num_inference_diffusion_steps=1000
 learning_rate=3e-5 
 num_inference_diffusion_steps=1000
 python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path "roberta-large" --do_train --do_eval --dataset_name wikilarge  --output_dir  "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/simplification_results/ours_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12   --report_to tensorboard --eval_steps 1000  --max_steps 500000 --max_source_length 64  --max_target_length 64 --max_seq_length 128 --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --top_p 0.99 --warmup_steps 2000 --logging_steps 50 --save_steps 1000    --self_condition "logits_mean"  --self_condition_mix_before_weights true --load_states_in_eval_from_model_path true --max_eval_samples 96 ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --save_checkpoints_on_s3
-
-
