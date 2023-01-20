@@ -160,14 +160,18 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                     mixed_probs = F.softmax(mixed_logits, dim=-1)
                     inputs_embeds = self.vocab_to_hidden_dim_embed(mixed_probs)
                 elif self.config.self_condition_mix_before_weights:
-                    mixed_probs = mix_values_based_on_self_condition(self.config.self_condition, inputs_probs, previous_pred_probs)
+                    mixed_probs = mix_values_based_on_self_condition(
+                        self.config.self_condition, inputs_probs, previous_pred_probs
+                    )
                     inputs_embeds = self.vocab_to_hidden_dim_embed(mixed_probs)
                 else:
                     if self.config.self_condition in ["logits", "logits_with_projection"]:
                         inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
                     else:
-                        inputs_embeds = mix_values_based_on_self_condition(self.config.self_condition, inputs_embeds, previous_pred)
-                        
+                        inputs_embeds = mix_values_based_on_self_condition(
+                            self.config.self_condition, inputs_embeds, previous_pred
+                        )
+
         if span_mask is not None:
             # Original word embeddings without noise.
             if classifier_free_guidance_in_train and random.uniform(0, 1) < 0.1:
@@ -235,7 +239,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             attentions=outputs.attentions,
         )
 
-    def resize_position_embeddings(self, new_num_position_embeddings: int):
+    def resize_position_embeddings(self, new_num_position_embeddings: int, with_alternatation=False):
         """
         Resizes position embeddings of the model if `new_num_position_embeddings != config.max_position_embeddings`.
         Arguments:
@@ -265,6 +269,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 self.roberta.embeddings.position_embeddings.weight[:-num_position_embeds_diff] = nn.Parameter(
                     old_position_embeddings_weight
                 )
+                if with_alternatation:
+                    self.roberta.embeddings.position_embeddings.weight[-num_position_embeds_diff:] = nn.Parameter(
+                        old_position_embeddings_weight[:num_position_embeds_diff]
+                    )
             else:
                 self.roberta.embeddings.position_embeddings.weight = nn.Parameter(
                     old_position_embeddings_weight[:num_position_embeds_diff]

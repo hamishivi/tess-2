@@ -71,6 +71,12 @@ class ModelArguments:
             )
         },
     )
+    resize_position_embeddings_alternatively: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "If set, resizes the position embedding alternatively, and copies from the original for the uncovered part."
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
@@ -120,7 +126,13 @@ class TrainingArguments(HFTrainingArguments):
         default=False, metadata={"help": "If set, computes the evaluation loss from the simplex values."}
     )
     ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses ssdlm optimizer."})
-    save_checkpoints_on_s3: bool = field(default=False, metadata={"help": "If set, instead of deleting the checkpoints when passing the limit of save checkpoints, it saves them on S3."})
+    save_checkpoints_on_s3: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, instead of deleting the checkpoints when passing the limit of save checkpoints, it saves them on S3."
+        },
+    )
+
 
 @dataclass
 class Seq2SeqTrainingArguments(TrainingArguments):
@@ -356,7 +368,14 @@ class DataTrainingArguments:
             self.val_max_target_length = self.max_target_length
 
         if self.conditional_generation is not None:
-            assert self.conditional_generation in ["span_infilling", "ul2", "ul2_with_unconditional", "prefix_lm", "seq2seq", "ul2_variable"]
+            assert self.conditional_generation in [
+                "span_infilling",
+                "ul2",
+                "ul2_with_unconditional",
+                "prefix_lm",
+                "seq2seq",
+                "ul2_variable",
+            ]
 
 
 @dataclass

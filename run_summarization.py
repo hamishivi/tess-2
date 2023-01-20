@@ -159,9 +159,13 @@ def main():
             )
             # position_ids starts from `padding_idx + 1` (padding_index=1) and we therefore requires
             # 2 more position embeddings.
-            model.resize_position_embeddings(total_seq2seq_length + 2)
+            model.resize_position_embeddings(
+                total_seq2seq_length + 2, with_alternatation=model_args.resize_position_embeddings_alternatively
+            )
         elif model_args.resize_position_embeddings:
-            model.resize_position_embeddings(total_seq2seq_length + 2)
+            model.resize_position_embeddings(
+                total_seq2seq_length + 2, with_alternatation=model_args.resize_position_embeddings_alternatively
+            )
         else:
             raise ValueError(
                 f"`max_source_length`+`max_target_length` is set to {total_seq2seq_length}, but the model only has"
