@@ -95,7 +95,7 @@ for i in "${!DATASETS[@]}"; do
 done
 '
 
-DATASETS=   ("mrpc"    "rte"  "stsb"  "wnli"  "qqp"   "qnli"    "sst2" "mnli" "cola") 
+DATASETS=("mrpc"    "rte"  "stsb"  "wnli"  "qqp"   "qnli"    "sst2" "mnli" "cola") 
 CHECKPOINTS=("7000"    "3000" "4000"  "8000"  "23000"  "19000" "18000" "14000" "6000")
 for i in "${!DATASETS[@]}"; do
     DATASET=${DATASETS[i]}

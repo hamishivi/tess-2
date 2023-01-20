@@ -211,12 +211,12 @@ done
 '
 #######################################
 # evaluate the model trained with the new self-training with mean mix before weights.
-for TOP_P in 0.95 0.99  0.9
+for TOP_P in 0.9 0.95 0.99  # 0.9
 do
   for TEMPERATURE in 1 2 4 
   do
       truncation_length=56
-      checkpoint="/checkpoint-6000"
+      checkpoint="/checkpoint-13000"
       model_path="ul2-variable/"${checkpoint}
       output_dir=$BASE_DIR"/outputs/paper_experiments/ul2_variable_eval/tune_length_175_context_25_truncation_"${truncation_length}"/ul2_variable_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
       python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}  --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --skip_special_tokens false 
