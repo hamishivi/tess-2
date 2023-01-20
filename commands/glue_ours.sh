@@ -81,5 +81,5 @@ DATASET="qqp"
 
 
 # DBEUG
-python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/debug"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3  --max_steps 6 --save_steps 2 --eval_steps 2 --max_eval_samples 6 
+python -m torch.distributed.launch --nproc_per_node 2  run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/debug"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3  --max_steps 6 --save_steps 2 --eval_steps 2 --max_eval_samples 6 
 
