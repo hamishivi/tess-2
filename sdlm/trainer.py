@@ -675,11 +675,8 @@ class DiffusionTrainer(Trainer):
         checkpoints_to_be_deleted = checkpoints_sorted[:number_of_checkpoints_to_delete]
         for checkpoint in checkpoints_to_be_deleted:
             logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
-            if self.is_world_process_zero():
-               if self.args.save_checkpoints_on_s3:
-                   # TODO: we need to remove this from the codes.
-                   command=f"AWS_ACCESS_KEY_ID=AKIA5BJLZJPW5VNOE6SI AWS_SECRET_ACCESS_KEY=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 aws s3 sync {checkpoint} s3://ai2-s2-research/rabeehk/{checkpoint}"
-                   os.system(command)
-                   shutil.rmtree(checkpoint)
-               else:       
-                   shutil.rmtree(checkpoint)
+            if self.args.save_checkpoints_on_s3:
+                # TODO: we need to remove this from the codes.
+                command=f"AWS_ACCESS_KEY_ID=AKIA5BJLZJPW5VNOE6SI AWS_SECRET_ACCESS_KEY=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 aws s3 sync {checkpoint} s3://ai2-s2-research/rabeehk/{checkpoint}"
+                os.system(command)
+            shutil.rmtree(checkpoint)
