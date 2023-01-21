@@ -18,11 +18,13 @@ task_to_metric = {
 }
 
 glue_ordered = ["cola", "sst2", "mrpc", "qqp", "stsb", "mnli", "qnli", "rte", "wnli"]
+small_datasets = ["cola", "mrpc", "rte", "stsb", "wnli"]
 
-
-def read_values(paths, is_baseline=False):
+def read_values(paths, is_baseline=False, tasks=None):
     results = {}
-    for task in task_to_metric:
+    ALL_TASKS = tasks if tasks is not None else task_to_metric
+    ORDERED_TASKS=glue_ordered if tasks is None else tasks
+    for task in ALL_TASKS:
         results[task] = {}
         path = paths[task]
         data = json.load(open(path))
@@ -45,7 +47,7 @@ def read_values(paths, is_baseline=False):
 
     # Show results in the format of latex.
     table_row = []
-    for task in glue_ordered:
+    for task in ORDERED_TASKS:
         task_results = []
         for metric in task_to_metric[task]:
             if metric == "combined_score":
@@ -90,9 +92,10 @@ read_values(paths)
 # Read the GLUE baseline results.
 paths = {}
 for task in task_to_metric.keys():
-    path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set"
+    path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_6k_for_small_data/"
+    # path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set"
     # path_task=f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd/"
     # path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_wd_0.01/"
     # path_task =f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/baseline_{task}"
     paths[task] = os.path.join(path_task, "test_results.json")
-read_values(paths, is_baseline=False)
+read_values(paths, is_baseline=False, tasks=small_datasets)
