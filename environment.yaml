@@ -20,3 +20,4 @@ dependencies:
     - sentencepiece
     - sacrebleu
     - evaluate
+    - bert_score  

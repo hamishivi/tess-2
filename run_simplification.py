@@ -5,10 +5,11 @@ Fine-tuning the library models for sequence to sequence.
 import logging
 import os
 import sys
-
+import json 
 import datasets
 import nltk
-from datasets import DatasetDict, Dataset
+import numpy as np 
+from datasets import DatasetDict, Dataset, load_dataset
 from transformers.trainer_callback import TrainerState
 import evaluate
 import transformers
@@ -40,8 +41,28 @@ except (LookupError, OSError):
     with FileLock(".lock") as lock:
         nltk.download("punkt", quiet=True)
 
+def read_wikilarge(data_args):
+    raw_datasets = DatasetDict()
+    for split in ["train", "dev", "test"]:
+        # TODO: change to f"{data_args.dataset_folder}/"
+        s1s = open(f"wikilarge/s1.{split}", "r").readlines() 
+        s2s = open(f"wikilarge/s2.{split}", "r").readlines()
+        data = [{"original": s1, "simplification": s2} for s1, s2 in zip(s1s, s2s)]
+        raw_datasets[split] = Dataset.from_list(data)
+    return raw_datasets 
 
-simplification_name_mapping = {"wikilarge": ("original", "simplification")}
+def read_wiki_alignment(data_args):
+    raw_datasets = DatasetDict()
+    for split in ["train", "valid", "test"]:
+        dataset = load_dataset("json", data_files=f"{data_args.dataset_folder}/{split}.jsonl")["train"]
+        data_split = split if split != "valid" else "dev"
+        raw_datasets[data_split] = dataset
+    return raw_datasets
+
+simplification_name_mapping = {
+    "wikilarge": ("original", "simplification"),
+    "wiki_alignment": ("src", "trg")
+}
 
 
 def main():
@@ -95,18 +116,14 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    raw_datasets = DatasetDict()
-    for split in ["train", "dev", "test"]:
-        s1s = open(f"wikilarge/s1.{split}", "r").readlines()
-        s2s = open(f"wikilarge/s2.{split}", "r").readlines()
-        data = [{"original": s1, "simplification": s2} for s1, s2 in zip(s1s, s2s)]
-        raw_datasets[split] = Dataset.from_list(data)
-
+    if data_args.dataset_name == "wikilarge":
+        raw_datasets = read_wikilarge(data_args)
+    elif data_args.dataset_name == "wiki_alignment":
+        raw_datasets = read_wiki_alignment(data_args)
     train_dataset = raw_datasets["train"]
     eval_dataset = raw_datasets["dev"]
     test_dataset = raw_datasets["test"]
     column_names = train_dataset.column_names
-
     config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
@@ -258,27 +275,62 @@ def main():
     )
 
     # Metric
-    metric = evaluate.load("sari")
+    eval_metrics = {
+        "sari": evaluate.load("sari"),
+        "bleu": evaluate.load("bleu"),
+        "bertscore": evaluate.load("bertscore"),
+        "rouge": evaluate.load("rouge")
+    }
 
-    def postprocess_text(preds, labels, sources):
+    def postprocess_text_for_sari(preds, labels, sources):
         preds = [pred.strip() for pred in preds]
         labels = [label.strip() for label in labels]
         sources = [source.strip() for source in sources]
         return preds, labels, sources
 
+    def postprocess_text_for_bertscore(preds, labels):
+        preds = [pred.strip() for pred in preds]
+        labels = [label.strip() for label in labels]
+        return preds, labels
+
+    def postprocess_text_for_rouge(preds, labels):
+        preds = [pred.strip() for pred in preds]
+        labels = [label.strip() for label in labels]
+        # rougeLSum expects newline after each sentence
+        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
+        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
+        return preds, labels
+
+    def postprocess_text_bleu(preds, labels):
+        preds = [pred.strip() for pred in preds]
+        labels = [[label.strip()] for label in labels]
+        return preds, labels
+
     def compute_metrics(results):
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
         for key in keys:
-            decoded_preds = process_text(results[key])
-            decoded_labels = process_text(results["gold_texts_masked"])
+            decoded_preds_original = process_text(results[key]) if not data_args.skip_special_tokens else results[key]
+            decoded_labels_original = process_text(results["gold_texts_masked"]) if not data_args.skip_special_tokens else results["gold_texts_masked"]
             sources = results["prefixes"]
-            decoded_preds, decoded_labels, sources = postprocess_text(decoded_preds, decoded_labels, sources)
-            decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
-            key_metrics = metric.compute(sources=sources, predictions=decoded_preds, references=decoded_labels)
-            key_metrics = {k: round(v, 2) for k, v in key_metrics.items()}
-            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
-            metrics.update(key_metrics)
+            for metric_name, metric in eval_metrics.items():
+                if metric_name == "sari":
+                    decoded_preds, decoded_labels, sources = postprocess_text_for_sari(decoded_preds_original, decoded_labels_original, sources)
+                    decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
+                    key_metrics = metric.compute(sources=sources, predictions=decoded_preds, references=decoded_labels)
+                elif metric_name == "bleu":
+                    decoded_preds, decoded_labels = postprocess_text_bleu(decoded_preds_original, decoded_labels_original)
+                    key_metrics = {"bleu": metric.compute(predictions=decoded_preds, references=decoded_labels)["bleu"]}
+                elif metric_name == "bertscore":
+                    decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
+                    key_metrics = {"bert_score": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels, lang="en")['f1'])}
+                elif metric_name == "rouge":
+                    decoded_preds, decoded_labels = postprocess_text_for_rouge(decoded_preds_original, decoded_labels_original)
+                    key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+
+                key_metrics = {k: round(v, 2) for k, v in key_metrics.items()}
+                key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
+                metrics.update(key_metrics)
         return metrics
 
     # Initialize our Trainer
