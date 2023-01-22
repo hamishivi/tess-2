@@ -420,8 +420,8 @@ def main():
         metrics = trainer.evaluate(test_dataset, metric_key_prefix="test")
         max_test_samples = data_args.max_predict_samples if data_args.max_predict_samples is not None else len(test_dataset)
         metrics["test_samples"] = min(max_test_samples, len(test_dataset))
-        trainer.log_metrics("test", metrics)
-        trainer.save_metrics("test", metrics)
+        trainer.log_metrics(f"test", metrics)
+        trainer.save_metrics(f"test", metrics)
 
     # TODO: we may want to add predict part back.
     return results

@@ -99,6 +99,16 @@ class DiffusionTrainer(Trainer):
         self.eos_token_id = self.tokenizer.eos_token_id
         self.classifier_free_guidance = diffusion_args.guidance_scale > 1.0 and data_args.conditional_generation is not None
 
+    def annotated_split(self, split):
+        return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}"
+
+    def save_metrics(self, split, metrics, combined=True):
+        super().save_metrics(self.annotated_split(split), metrics, combined)
+
+    def log_metrics(self, split, metrics):
+        super().log_metrics(self.annotated_split(split), metrics)
+
+
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
             if isinstance(cb, TensorBoardCallback):
