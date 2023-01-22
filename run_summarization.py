@@ -12,6 +12,7 @@ import nltk
 import evaluate
 import transformers
 from filelock import FileLock
+from transformers.trainer_callback import TrainerState
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
