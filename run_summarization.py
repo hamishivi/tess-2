@@ -317,10 +317,10 @@ def main():
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
         for key in keys:
-            decoded_preds = process_text(results[key])
+            decoded_preds = process_text(results[key]) if not data_args.skip_special_tokens else results[key]
             # Note that since decoded_labels is getting updated after post-process, we
             # need to compute it here for each key.
-            decoded_labels = process_text(results["gold_texts_masked"])
+            decoded_labels = process_text(results["gold_texts_masked"]) if not data_args.skip_special_tokens else  results["gold_texts_masked"]
             decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
             key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
             key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
