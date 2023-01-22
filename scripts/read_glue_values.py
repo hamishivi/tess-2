@@ -31,10 +31,10 @@ def read_values(paths, is_baseline=False, tasks=None):
         for metric in task_to_metric[task]:
             if is_baseline:
                 scale = 100
-                results[task][metric] = np.round(data["eval_" + metric] * scale, 2)
+                results[task][metric] = np.round(data["test_" + metric] * scale, 2)
             else:
                 scale = 1
-                results[task][metric] = np.round(data["eval_pred_texts_from_logits_masked_" + metric] * scale, 2)
+                results[task][metric] = np.round(data["test_pred_texts_from_logits_masked_" + metric] * scale, 2)
     print(results)
 
     # Computes average.
@@ -92,14 +92,21 @@ read_values(paths)
 # Read the GLUE baseline results.
 paths = {}
 for task in task_to_metric.keys():
+    '''
     if task in small_datasets:
        path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_16k_steps/"
     else:
        path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set"
-    #path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_6k_for_small_data/"
-    # path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set"
+    '''
+    # path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_16k_steps/"
+    
+    #**** this is selected *****
+    #path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set"
+    # **** baseline *****
+    path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/baseline_{task}" 
+   
     # path_task=f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd/"
     # path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_wd_0.01/"
     # path_task =f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/baseline_{task}"
     paths[task] = os.path.join(path_task, "test_results.json")
-read_values(paths, is_baseline=False) #, tasks=small_datasets)
+read_values(paths, is_baseline=True) #, tasks=small_datasets)

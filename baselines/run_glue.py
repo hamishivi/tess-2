@@ -337,7 +337,7 @@ def main():
     if training_args.do_predict:
         logger.info("*** Test ***")
 
-        metrics = trainer.evaluate(eval_dataset=predict_dataset)
+        metrics = trainer.evaluate(eval_dataset=predict_dataset, metric_key_prefix="test")
         max_predict_samples = (
             data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
         )

@@ -112,6 +112,7 @@ class TrainingArguments(HFTrainingArguments):
         metadata={
             "help": "In case of only using --do_eval without --do_train, use it to load the states before eval."
             "keep this to true, it causes otherwise an issue with huggingface when doing only --do_eval."
+            "This parameter when running baselines does not have any impact and is not needed."
         },
     )
     without_compute_metrics: bool = field(
