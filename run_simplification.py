@@ -314,6 +314,7 @@ def main():
             decoded_labels_original = process_text(results["gold_texts_masked"]) if not data_args.skip_special_tokens else results["gold_texts_masked"]
             sources = results["prefixes"]
             for metric_name, metric in eval_metrics.items():
+                scale = 100 if metric_name != "sari" else 1
                 if metric_name == "sari":
                     decoded_preds, decoded_labels, sources = postprocess_text_for_sari(decoded_preds_original, decoded_labels_original, sources)
                     decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
@@ -323,12 +324,12 @@ def main():
                     key_metrics = {"bleu": metric.compute(predictions=decoded_preds, references=decoded_labels)["bleu"]}
                 elif metric_name == "bertscore":
                     decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
-                    key_metrics = {"bert_score": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels, lang="en")['f1'])}
+                    key_metrics = {"bert_score": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels,  lang="en")['f1'])}
                 elif metric_name == "rouge":
                     decoded_preds, decoded_labels = postprocess_text_for_rouge(decoded_preds_original, decoded_labels_original)
                     key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
 
-                key_metrics = {k: round(v, 2) for k, v in key_metrics.items()}
+                key_metrics = {k: round(v*scale, 2) for k, v in key_metrics.items()}
                 key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
                 metrics.update(key_metrics)
         return metrics
@@ -391,6 +392,17 @@ def main():
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
+    if training_args.do_predict:
+        logger.info("*** Test ***")
+        # TODO: num_beans should be added for ours as well.
+        # metrics = trainer.evaluate(max_length=max_length, num_beams=num_beams, metric_key_prefix="eval")
+        metrics = trainer.evaluate()
+        max_test_samples = data_args.max_predict_samples if data_args.max_predict_samples is not None else len(test_dataset)
+        metrics["test_samples"] = min(max_test_samples, len(test_dataset))
+        
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
 
     # TODO: we may want to add predict part back.
     return results
