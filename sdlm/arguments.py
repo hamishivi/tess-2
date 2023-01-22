@@ -177,7 +177,7 @@ class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
-
+    glue_split_seed: int = field(default=42, metadata={"help": "Seed to split the glue data."})
     tokenized_data_path: Optional[str] = field(default=None, metadata={"help": "If set, reads a tokenized train data."})
     dataset_name: Optional[str] = field(
         default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}

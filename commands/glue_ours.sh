@@ -64,7 +64,7 @@ python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BAS
 ##############################################################################################################################
 # Running GLUE with the self-condition mean with the mix before weights setup for the selected max iterations.
 ##############################################################################################################################
-
+# ******this is selected*******
 # NOTE: to run for 4 GPU, modify and remove 4 GPUs. Also remove the copy at the end of the output dir.
 # For larger datasets 
 # sst2, mnli, qnli, qqp
@@ -72,24 +72,45 @@ python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BAS
 # num_inference_diffusion_steps=10
 # python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3 --resume_from_checkpoint "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_qqp_steps_10_no_wd_max_steps_set/checkpoint-23000" 
 
+# this is not selected.
 # For smaller datasets.
 # DATASET="cola" # rte, mrpc, cola, stsb, wnli
 # python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 12000 --save_checkpoints_on_s3
 
+# this is not selected.
 # Running small datasets for maximum 9K.
 # DATASET="mrpc" # rte, mrpc, cola, stsb, wnli
 #python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_9k_for_small_data"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 9000 --save_checkpoints_on_s3
 
+# this is not selected.
 # Running small datasets for 6K. => was not good.
 #DATASET="wnli" # rte, mrpc, cola, stsb, wnli
 #python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_6k_for_small_data"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 6000 --save_checkpoints_on_s3
 
+# *****this is selected.******
 # Running small data on 16K steps.
 DATASET="rte" # rte, mrpc, cola, stsb, wnli
-python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_16k_steps"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 16000 --save_checkpoints_on_s3
+#python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_16k_steps"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 16000 --save_checkpoints_on_s3
 
 
+###############################################################
+# We run cola for a different seed.
+DATASET="cola" 
+seed=66
+#python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_16k_steps_seed_"${seed}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 16000 --save_checkpoints_on_s3 --seed  ${seed}
 
+###############################################################
+# Running self-condition ablations on sst-2
+DATASET="sst2"
+num_inference_diffusion_steps=10
+max_steps=16000
+#python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results_self_condition_ablations/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_steps_"${max_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps ${max_steps} --save_checkpoints_on_s3  --model_name_or_path roberta-base 
+
+
+#python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results_self_condition_ablations/self_cond_logits_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_steps_"${max_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --max_steps ${max_steps} --save_checkpoints_on_s3  --model_name_or_path roberta-base 
+
+
+python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results_self_condition_ablations/no_self_cond_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_steps_"${max_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --max_steps ${max_steps} --save_checkpoints_on_s3  --model_name_or_path roberta-base 
 
 
 
