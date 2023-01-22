@@ -295,6 +295,7 @@ def main():
         "sari": evaluate.load("sari"),
         "bleu": evaluate.load("bleu"),
         "bertscore": evaluate.load("bertscore"),
+        "bertscore_them": evaluate.load("bertscore"),
         "rouge": evaluate.load("rouge")
     }
 
@@ -341,6 +342,9 @@ def main():
                 elif metric_name == "bertscore":
                     decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
                     key_metrics = {"bert_score": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels,  lang="en")['f1'])}
+                elif metric_name == "bertscore_them":
+                    decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
+                    key_metrics = {"bert_score_them": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels, model_type='microsoft/deberta-xlarge-mnli', lang="en")['f1'])}
                 elif metric_name == "rouge":
                     decoded_preds, decoded_labels = postprocess_text_for_rouge(decoded_preds_original, decoded_labels_original)
                     key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
