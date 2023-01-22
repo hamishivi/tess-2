@@ -205,8 +205,8 @@ def main():
                 desc="Running tokenizer on validation dataset",
             )
 
-        def preprocess_logits_for_metrics(logits):
-            return logits.argmax(dim=-1)
+    def preprocess_logits_for_metrics(logits):
+        return logits.argmax(dim=-1)
 
     # TODO: we may want to add predict back.
 
@@ -267,8 +267,8 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics if (training_args.do_eval or training_args.do_predict) else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics if (training_args.do_eval or training_args.do_predict) else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
@@ -308,13 +308,19 @@ def main():
         metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
-
-    # TODO: we may want to add predict part back.
+    
+    if training_args.do_predict:
+        logger.info("*** Test ***")
+        # TODO: num_beans should be added for ours as well.
+        # metrics = trainer.evaluate(max_length=max_length, num_beams=num_beams, metric_key_prefix="eval")
+        metrics = trainer.evaluate(test_dataset, metric_key_prefix="test")
+        max_predict_samples = data_args.max_predict_samples if data_args.max_predict_samples is not None else len(test_dataset)
+        metrics["test_samples"] = min(max_predict_samples, len(test_dataset))
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
     return results
-
 
 if __name__ == "__main__":
     main()

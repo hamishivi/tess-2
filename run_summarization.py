@@ -253,9 +253,26 @@ def main():
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on validation dataset",
             )
+    def preprocess_logits_for_metrics(logits):
+        return logits.argmax(dim=-1)
 
-        def preprocess_logits_for_metrics(logits):
-            return logits.argmax(dim=-1)
+    if training_args.do_predict:
+        max_target_length = data_args.val_max_target_length
+        if "test" not in raw_datasets:
+            raise ValueError("--do_predict requires a test dataset")
+        test_dataset = raw_datasets["test"]
+        if data_args.max_predict_samples is not None:
+            max_predict_samples = min(len(test_dataset), data_args.max_predict_samples)
+            test_dataset = test_dataset.select(range(max_predict_samples))
+        with training_args.main_process_first(desc="prediction dataset map pre-processing"):
+            test_dataset = test_dataset.map(
+                preprocess_function,
+                batched=True,
+                num_proc=data_args.preprocessing_num_workers,
+                remove_columns=column_names,
+                load_from_cache_file=not data_args.overwrite_cache,
+                desc="Running tokenizer on prediction dataset",
+            )
 
     # TODO: we may want to add predict back.
 
@@ -319,8 +336,8 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics if (training_args.do_eval or training_args.do_predict) else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics if (training_args.do_eval or training_args.do_predict) else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
@@ -370,15 +387,14 @@ def main():
         metrics = trainer.evaluate()
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
     if training_args.do_predict:
         logger.info("*** Test ***")
-        metrics = trainer.evaluate()
+        metrics = trainer.evaluate(test_dataset, metric_key_prefix="test")
         max_predict_samples = data_args.max_predict_samples if data_args.max_predict_samples is not None else len(test_dataset)
-        metrics["eval_samples"] = min(max_predict_samples, len(test_dataset))
+        metrics["test_samples"] = min(max_predict_samples, len(test_dataset))
         trainer.log_metrics("test", metrics)
         trainer.save_metrics("test", metrics)
 

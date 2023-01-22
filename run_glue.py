@@ -233,8 +233,8 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-        def preprocess_logits_for_metrics(logits):
-            return logits.argmax(dim=-1)
+    def preprocess_logits_for_metrics(logits):
+        return logits.argmax(dim=-1)
 
     if training_args.do_predict or data_args.dataset_name is not None or data_args.test_file is not None:
         if "test" not in raw_datasets:
@@ -319,8 +319,8 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics if (training_args.do_eval or training_args.do_predict) else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics if (training_args.do_eval or training_args.do_predict) else None,
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
@@ -366,7 +366,7 @@ def main():
 
     if training_args.do_predict:
         logger.info("*** Test ***")
-        metrics = trainer.evaluate()
+        metrics = trainer.evaluate(eval_dataset=predict_dataset, metric_key_prefix="test")
         max_predict_samples = (
             data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
         )
