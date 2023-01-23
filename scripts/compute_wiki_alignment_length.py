@@ -3,7 +3,7 @@ import datasets
 from transformers import AutoTokenizer
 import numpy as np
 
-dataset_folder = "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
+dataset_folder = "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/qqp/"
 raw_datasets = DatasetDict()
 for split in ["train", "valid", "test"]:
     dataset = load_dataset("json", data_files=f"{dataset_folder}/{split}.jsonl")["train"]
