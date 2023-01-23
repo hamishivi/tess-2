@@ -477,7 +477,7 @@ def main():
         sources = [source.strip() for source in sources]
         return preds, labels, sources
 
-    def compute_metrics(eval_preds):
+    def compute_metrics(eval_preds, split="eval"):
         preds, labels = eval_preds
         if isinstance(preds, tuple):
             preds = preds[0]
@@ -486,8 +486,10 @@ def main():
             # Replace -100 in the labels as we can't decode them.
             labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-        # TODO: for having predict this one should be changed!!!!
-        sources = tokenizer.batch_decode(eval_input_ids, skip_special_tokens=True)
+        if split == "eval":
+            sources = tokenizer.batch_decode(eval_input_ids, skip_special_tokens=True)
+        else:
+            sources = tokenizer.batch_decode(predict_input_ids, skip_special_tokens=True)
         decoded_preds, decoded_labels, sources = postprocess_text(decoded_preds, decoded_labels, sources)
         decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
         result = metric.compute(predictions=decoded_preds, references=decoded_labels, sources=sources)
@@ -542,7 +544,7 @@ def main():
 
     if training_args.do_predict:
         logger.info("*** Predict ***")
-
+        trainer.compute_metrics = lambda x: compute_metrics(x, split="test")
         predict_results = trainer.predict(
             predict_dataset, metric_key_prefix="predict", max_length=max_length, num_beams=num_beams, top_p=training_args.top_p, temperature=training_args.temperature
         )
