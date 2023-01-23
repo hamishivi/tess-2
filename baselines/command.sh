@@ -39,6 +39,11 @@ done
 '''
 
 
+# Running the baseline on wiki-alignment
+learning_rate=3e-5
+python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path facebook/bart-base --do_train --do_eval --do_predict --dataset_name wiki_alignment  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/roberta_base_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_eval_samples 96 --max_source_length 128  --max_target_length 128  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
+
+
 
 
 
@@ -108,7 +113,7 @@ done
 #####################################################################
 
 # DEBUG
-python run_simplification.py --model_name_or_path facebook/bart-large --do_train --do_eval --dataset_name wikilarge  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/debug/" --per_device_train_batch_size=12 --per_device_eval_batch_size=25 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 500000 --num_train_epochs 5 --max_source_length 64  --max_target_length 64  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL}   --predict_with_generate  --weight_decay 0.01 --eval_steps 10 
+# python run_simplification.py --model_name_or_path facebook/bart-large --do_train --do_eval --dataset_name wikilarge  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/debug/" --per_device_train_batch_size=12 --per_device_eval_batch_size=25 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 500000 --num_train_epochs 5 --max_source_length 64  --max_target_length 64  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL}   --predict_with_generate  --weight_decay 0.01 --eval_steps 10 
 
 # Debug
 #python run_summarization.py --model_name_or_path facebook/bart-large --do_train --do_eval --dataset_name xsum --dataset_config "3.0.0" --output_dir debug  --per_device_train_batch_size=6 --per_device_eval_batch_size=15 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 1000000 --max_eval_samples 96 --max_source_length 512  --max_target_length 120   --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate 1e-4 --pad_to_max_length  --weight_decay 0.01 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL} --resize_position_embeddings True --fp16 --gradient_accumulation_steps 2  --predict_with_generate --eval_steps 10
