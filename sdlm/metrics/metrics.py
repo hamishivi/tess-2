@@ -38,21 +38,24 @@ def distinct_n_grams(texts):
     Args:
         texts (list of str): representing the generated texts.
     """
-    dist_1, dist_2, dist_3 = [], [], []
+    dist_1, dist_2, dist_3, dist_4 = [], [], [], []
     for text in texts:
         total_words = len(text.split())
         unigrams = set(ngrams(text.split(), 1))
         bigrams = set(ngrams(text.split(), 2))
         trigrams = set(ngrams(text.split(), 3))
+        fourgrams = set(ngrams(text.split(), 4))
         if total_words == 0:
             dist_1.append(0)
             dist_2.append(0)
             dist_3.append(0)
+            dist_4.append(0)
         else:
             dist_1.append(len(unigrams) / total_words)
             dist_2.append(len(bigrams) / total_words)
             dist_3.append(len(trigrams) / total_words)
-    return {"dist-1": np.nanmean(dist_1), "dist-2": np.nanmean(dist_2), "dist-3": np.nanmean(dist_3)}
+            dist_4.append(len(fourgrams) / total_words)
+    return {"dist-1": np.nanmean(dist_1), "dist-2": np.nanmean(dist_2), "dist-3": np.nanmean(dist_3),  "dist-4": np.nanmean(dist_4)}
 
 
 def zipf(tokenized_texts, N=5000):

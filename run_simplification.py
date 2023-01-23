@@ -25,6 +25,7 @@ import pdb
 from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
+from sdlm.metrics.metrics import distinct_n_grams
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -296,7 +297,8 @@ def main():
         "bleu": evaluate.load("bleu"),
         "bertscore": evaluate.load("bertscore"),
         "bertscore_them": evaluate.load("bertscore"),
-        "rouge": evaluate.load("rouge")
+        "rouge": evaluate.load("rouge"),
+        "dist":  distinct_n_grams
     }
 
     def postprocess_text_for_sari(preds, labels, sources):
@@ -348,6 +350,9 @@ def main():
                 elif metric_name == "rouge":
                     decoded_preds, decoded_labels = postprocess_text_for_rouge(decoded_preds_original, decoded_labels_original)
                     key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+                elif metric_name == "dist":
+                    decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
+                    key_metrics = metric(decoded_preds)
 
                 key_metrics = {k: round(v*scale, 2) for k, v in key_metrics.items()}
                 key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}

@@ -2,10 +2,8 @@ DEBUG_params="--num_inference_diffusion_steps 10 --max_eval_samples 10 --per_dev
 PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 
-: '
 # debug
-python run_simplification.py --model_name_or_path roberta-large --do_train --do_eval --dataset_name asset  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/debug --per_device_train_batch_size=12 --per_device_eval_batch_size=64 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 1000000 --max_source_length 64  --max_target_length 64 --max_seq_length 128 --conditional_generation "seq2seq" --num_inference_diffusion_steps 200 --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate 1e-4 --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.01 --top_p 0.99 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL}  --fp16 --self_condition "logits_mean" --eval_steps 10 --max_eval_samples 64
-'
+python run_simplification.py --model_name_or_path roberta-large --do_train --do_eval --dataset_name wiki_alignment  --output_dir /net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/debug --per_device_train_batch_size=12 --per_device_eval_batch_size=64 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 1000000 --max_source_length 64  --max_target_length 64 --max_seq_length 128 --conditional_generation "seq2seq" --num_inference_diffusion_steps 200 --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate 1e-4 --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.01 --top_p 0.99 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL}  --fp16 --self_condition "logits_mean" --eval_steps 10 --max_eval_samples 64  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
 
 # data length=512
 : '
@@ -153,6 +151,7 @@ learning_rate=5e-5
 num_inference_diffusion_steps=1000
 #python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path "roberta-base" --do_train --do_eval --do_predict --dataset_name wiki_alignment  --output_dir  "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/ours_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12   --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_source_length 128  --max_target_length 128 --max_seq_length 256 --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --top_p 0.99 --warmup_steps 2000 --logging_steps 50 --save_steps 1000    --self_condition "logits_mean"  --self_condition_mix_before_weights true --load_states_in_eval_from_model_path true --max_eval_samples 96 ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --save_checkpoints_on_s3 --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
 
+: '
 # Evaluate the above model.
 for learning_rate in 3e-5 #2e-5 3e-5 5e-5
 do
@@ -168,12 +167,9 @@ python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --mo
   TEMPERATURE=1
   model_name="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/ours_lr_"${learning_rate}"_no_wd/checkpoint-80000"
   python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path ${model_name} --do_eval  --do_predict --dataset_name wiki_alignment  --output_dir  "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/ours_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12   --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_source_length 128  --max_target_length 128 --max_seq_length 256 --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm  --warmup_steps 2000 --logging_steps 50 --save_steps 1000    --self_condition "logits_mean"  --self_condition_mix_before_weights true --load_states_in_eval_from_model_path true --max_eval_samples 96 ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --save_checkpoints_on_s3 --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/" --load_states_in_eval_from_model_path true --temperature ${TEMPERATURE}
-
-
   done
 done  
-
-
+'
 
 
 # Set more max-steps and iters => did not worked.
