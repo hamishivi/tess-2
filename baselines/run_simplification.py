@@ -26,6 +26,7 @@ from transformers.utils.versions import require_version
 from trainer_seq2seq import BaselineSeq2SeqTrainer
 from arguments import BaselineSeq2SeqTrainingArguments
 from sdlm.data.postprocessors import postprocess_text_for_metric
+from sdlm.metrics.metrics import distinct_n_grams
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -460,25 +461,54 @@ def main():
     )
 
     # Metric
-    metric = evaluate.load("sari")
+    eval_metrics = {
+        "sari": evaluate.load("sari"),
+        "bleu": evaluate.load("bleu"),
+        "bertscore": evaluate.load("bertscore"),
+        "bertscore_them": evaluate.load("bertscore"),
+        "rouge": evaluate.load("rouge"),
+        "dist":  distinct_n_grams
+    }
+
     def compute_metrics(eval_preds, split="eval"):
         preds, labels = eval_preds
         if isinstance(preds, tuple):
             preds = preds[0]
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_preds_original = tokenizer.batch_decode(preds, skip_special_tokens=True)
         if data_args.ignore_pad_token_for_loss:
             # Replace -100 in the labels as we can't decode them.
             labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
-        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+        decoded_labels_original = tokenizer.batch_decode(labels, skip_special_tokens=True)
         if split == "eval":
             sources = tokenizer.batch_decode(eval_input_ids, skip_special_tokens=True)
         else:
             sources = tokenizer.batch_decode(predict_input_ids, skip_special_tokens=True)
-        decoded_preds, decoded_labels, sources = postprocess_text_for_metric("sari", decoded_preds, decoded_labels, sources)
-        decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
-        result = metric.compute(predictions=decoded_preds, references=decoded_labels, sources=sources)
-        result = {k: round(v, 2) for k, v in result.items()}
-        return result
+        metrics = {}
+        for metric_name, metric in eval_metrics.items(): 
+            scale = 100 if metric_name != "sari" else 1
+            if metric_name == "sari":
+                decoded_preds, decoded_labels, sources = postprocess_text_for_metric("sari", decoded_preds_original, decoded_labels_original, sources)
+                decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
+                key_metrics = metric.compute(sources=sources, predictions=decoded_preds, references=decoded_labels)
+            elif metric_name == "bleu":
+                decoded_preds, decoded_labels = postprocess_text_for_metric("bleu", decoded_preds_original, decoded_labels_original)
+                key_metrics = {"bleu": metric.compute(predictions=decoded_preds, references=decoded_labels)["bleu"]}
+            elif metric_name == "bertscore":
+                decoded_preds, decoded_labels = postprocess_text_for_metric("bertscore", decoded_preds_original, decoded_labels_original)
+                key_metrics = {"bert_score": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels,  lang="en")['f1'])}
+            elif metric_name == "bertscore_them":
+                decoded_preds, decoded_labels = postprocess_text_for_metric("bertscore_them", decoded_preds_original, decoded_labels_original)
+                key_metrics = {"bert_score_them": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels, model_type='microsoft/deberta-xlarge-mnli', lang="en")['f1'])}
+            elif metric_name == "rouge":
+                decoded_preds, decoded_labels = postprocess_text_for_metric("rouge", decoded_preds_original, decoded_labels_original)
+                key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+            elif metric_name == "dist":
+                decoded_preds = postprocess_text_for_metric("dist", decoded_preds_original)
+                key_metrics = metric(decoded_preds)
+
+            key_metrics = {k: round(v*scale, 2) for k, v in key_metrics.items()}
+            metrics.update(key_metrics)
+        return metrics
 
     # Initialize our Trainer
     trainer = BaselineSeq2SeqTrainer(
