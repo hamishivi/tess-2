@@ -407,7 +407,7 @@ class DiffusionArguments:
         },
     )
     sampling_type: str = field(default="top_p", metadata={"help": "Sampling type used during the logit projection."})
-    top_p: float = field(default=0.95, metadata={"help": "top_p value for nucleus (top_p) sampling."})
+    top_p: Optional[float] = field(default=None, metadata={"help": "top_p value for nucleus (top_p) sampling."})
     clip_sample: bool = field(
         default=False,
         metadata={
