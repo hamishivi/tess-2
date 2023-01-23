@@ -1,6 +1,8 @@
 
 # GLUE should be run with 128+label_length, where label_length=5.
 shared_params="--model_name_or_path roberta-large --do_eval --do_predict --max_seq_length 133 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy steps --save_strategy steps   --report_to tensorboard  --pad_to_max_length  --simplex_value 5 --num_diffusion_steps 5000 --conditional_generation seq2seq  --learning_rate 3e-5 --gradient_accumulation_steps 2 --lr_scheduler_type linear --beta_schedule squaredcos_improved_ddpm  --top_p 0.99 --warmup_steps 500 --logging_steps 50 --save_steps 1000  --add_t5_tags --max_steps 100000   --load_best_model_at_end true --checkpoint_best_model  --greater_is_better true --eval_steps 1000 --load_states_in_eval_from_model_path"
+shared_params_without_top_p="--model_name_or_path roberta-large --do_eval --do_predict --max_seq_length 133 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy steps --save_strategy steps   --report_to tensorboard  --pad_to_max_length  --simplex_value 5 --num_diffusion_steps 5000 --conditional_generation seq2seq  --learning_rate 3e-5 --gradient_accumulation_steps 2 --lr_scheduler_type linear --beta_schedule squaredcos_improved_ddpm   --warmup_steps 500 --logging_steps 50 --save_steps 1000  --add_t5_tags --max_steps 100000   --load_best_model_at_end true --checkpoint_best_model  --greater_is_better true --eval_steps 1000 --load_states_in_eval_from_model_path"
+
 BASE_DIR="/net/nfs.cirrascale/s2-research/rabeehk/"
 PARAMS_FOR_LOCAL=" --save_total_limit 1"
 DEBUG_PARAMS="--eval_steps 2 --num_inference_diffusion_steps 3 --per_device_train_batch_size 12 --max_eval_samples 6"
@@ -97,7 +99,6 @@ done
 
 ########################################
 
-: '
 # ****** this is selected *********
 # eval for the model with max_steps_set.
 DATASETS=("mrpc"    "rte"  "stsb"  "wnli"  "qqp"   "qnli"    "sst2" "mnli" "cola") 
@@ -106,10 +107,19 @@ for i in "${!DATASETS[@]}"; do
     DATASET=${DATASETS[i]}
     CHECKPOINT=${CHECKPOINTS[i]}
     output_dir=${BASE_DIR}"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd_max_steps_set/" 
-    model_name_or_path=${output_dir}"/checkpoint-"${CHECKPOINT} 
-    python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
+    model_name_or_path=${output_dir}"/checkpoint-"${CHECKPOINT}
+    for TOP_P in 0.9 0.95 0.99 
+    do	    
+    python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params_without_top_p} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true --top_p ${TOP_P}
+    done
+    # run with top-p=None
+    python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params_without_top_p} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
+
 done
 
+
+
+: '
 # evaluate for small data for max-steps 6k.
 DATASETS=("mrpc"    "rte"  "stsb"  "wnli" "cola") 
 CHECKPOINTS=("2000" "3000" "4000" "2000" "5000")
@@ -142,7 +152,7 @@ for i in "${!DATASETS[@]}"; do
     model_name_or_path=${output_dir}"/checkpoint-"${CHECKPOINT} 
     python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
 done
-'
+
 
 # evaluate the baseline model.
 DATASETS=("mrpc"    "rte"  "stsb"  "wnli"  "qqp"   "qnli"    "sst2"  "mnli" "cola") 
@@ -168,5 +178,5 @@ for i in "${!DATASETS[@]}"; do
     model_name_or_path=${output_dir}"/checkpoint-"${CHECKPOINT} 
     python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
 done
-
+'
 
