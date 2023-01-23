@@ -52,7 +52,7 @@ def read_wikilarge(data_args):
         raw_datasets[split] = Dataset.from_list(data)
     return raw_datasets 
 
-def read_wiki_alignment(data_args):
+def read_diffuseq_datasets(data_args):
     raw_datasets = DatasetDict()
     for split in ["train", "valid", "test"]:
         dataset = load_dataset("json", data_files=f"{data_args.dataset_folder}/{split}.jsonl")["train"]
@@ -62,7 +62,10 @@ def read_wiki_alignment(data_args):
 
 simplification_name_mapping = {
     "wikilarge": ("original", "simplification"),
-    "wiki_alignment": ("src", "trg")
+    "wiki_alignment": ("src", "trg"),
+    "qqp": ("src", "trg"),
+    "qg": ("src", "trg"),
+    "cc": ("src", "trg")
 }
 
 
@@ -119,8 +122,8 @@ def main():
 
     if data_args.dataset_name == "wikilarge":
         raw_datasets = read_wikilarge(data_args)
-    elif data_args.dataset_name == "wiki_alignment":
-        raw_datasets = read_wiki_alignment(data_args)
+    elif data_args.dataset_name in ["wiki_alignment", "qqp", "qg", "cc"]:
+        raw_datasets = read_diffuseq_datasets(data_args)
     train_dataset = raw_datasets["train"]
     eval_dataset = raw_datasets["dev"]
     test_dataset = raw_datasets["test"]
