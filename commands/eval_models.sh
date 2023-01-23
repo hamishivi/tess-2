@@ -1,6 +1,7 @@
 
 BASE_DIR="/net/nfs.cirrascale/s2-research/rabeehk/"
 shared_params=" --per_device_train_batch_size 24 --per_device_eval_batch_size 6  --do_eval  --evaluation_strategy steps --eval_steps 1000 --report_to tensorboard --overwrite_output_dir  --max_eval_samples 48 --simplex_value 5 --num_diffusion_steps 5000 --num_inference_diffusion_steps 1000 --lr_scheduler_type linear --learning_rate 1e-4 --pad_to_max_length --beta_schedule squaredcos_improved_ddpm --weight_decay 0.01 --tokenized_data_path processed_data/openwebtext_256_split_gpt_eval/ --top_p 0.99 --max_steps 100000 --gradient_accumulation_steps 8 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --conditional_generation ul2"
+shared_params_without_top_p=" --per_device_train_batch_size 24 --per_device_eval_batch_size 6  --do_eval  --evaluation_strategy steps --eval_steps 1000 --report_to tensorboard --overwrite_output_dir  --max_eval_samples 48 --simplex_value 5 --num_diffusion_steps 5000 --num_inference_diffusion_steps 1000 --lr_scheduler_type linear --learning_rate 1e-4 --pad_to_max_length --beta_schedule squaredcos_improved_ddpm --weight_decay 0.01 --tokenized_data_path processed_data/openwebtext_256_split_gpt_eval/  --max_steps 100000 --gradient_accumulation_steps 8 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --conditional_generation ul2"
 
 
 params_for_length_50=" --per_device_train_batch_size 24 --per_device_eval_batch_size 25  --do_eval  --evaluation_strategy steps --eval_steps 1000 --report_to tensorboard --overwrite_output_dir   --simplex_value 5 --num_diffusion_steps 5000 --num_inference_diffusion_steps 1000 --lr_scheduler_type linear --learning_rate 3e-5 --pad_to_max_length --beta_schedule squaredcos_improved_ddpm --weight_decay 0.01 --tokenized_data_path processed_data/openwebtext_50_split/ --top_p 0.99 --max_steps 200000 --gradient_accumulation_steps 1 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --conditional_generation prefix_lm"
@@ -211,15 +212,19 @@ done
 '
 #######################################
 # evaluate the model trained with the new self-training with mean mix before weights.
-for TOP_P in 0.9 0.95 0.99  # 0.9
-do
-  for TEMPERATURE in 1 2 4 
+#for TOP_P in 0.9 0.95 0.99  # 0.9
+#do
+  TOP_P="None"
+  for TEMPERATURE in 1 #2 4 
   do
       truncation_length=56
-      checkpoint="/checkpoint-13000"
+      checkpoint="/checkpoint-35000"
       model_path="ul2-variable/"${checkpoint}
       output_dir=$BASE_DIR"/outputs/paper_experiments/ul2_variable_eval/tune_length_175_context_25_truncation_"${truncation_length}"/ul2_variable_top_p_"${TOP_P}"_temperature_"${TEMPERATURE}""${checkpoint}
-      python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params} --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}  --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --skip_special_tokens false 
-      CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params} ${PARAMS_FOR_LOCAL} ${extra_params}  --eval_for_all_metrics --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE} --top_p ${TOP_P}  --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --skip_special_tokens false 
-  done  
-done
+      python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params_without_top_p} ${PARAMS_FOR_LOCAL} ${extra_params} --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE}  --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --skip_special_tokens false # --top_p ${TOP_P} 
+      CUDA_VISIBLE_DEVICES=0 python compute_mlm_metrics.py --model_name_or_path ${model_path} --truncation_length ${truncation_length} --output_dir ${output_dir} ${shared_params_without_top_p} ${PARAMS_FOR_LOCAL} ${extra_params}  --eval_for_all_metrics --max_seq_length 256 --truncation_length ${truncation_length} --max_eval_samples 1000 --per_device_eval_batch_size 25 --temperature ${TEMPERATURE}  --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --skip_special_tokens false  # --top_p ${TOP_P} 
+   done  
+#done
+
+
+
