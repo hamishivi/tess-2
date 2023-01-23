@@ -6,7 +6,7 @@ from typing import Optional
 
 import datasets
 import numpy as np
-from datasets import DatasetDict, Dataset
+from datasets import DatasetDict, Dataset, load_dataset
 import evaluate
 import transformers
 from transformers import (
@@ -41,6 +41,24 @@ def extract_field(data, field_name):
     for item in data:
         results.append(item[field_name])
     return results
+
+def read_wikilarge(data_args):
+    raw_datasets = DatasetDict()
+    for split in ["train", "dev", "test"]:
+        # TODO: change to f"{data_args.dataset_folder}/"
+        s1s = open(f"wikilarge/s1.{split}", "r").readlines() 
+        s2s = open(f"wikilarge/s2.{split}", "r").readlines()
+        data = [{"original": s1, "simplification": s2} for s1, s2 in zip(s1s, s2s)]
+        raw_datasets[split] = Dataset.from_list(data)
+    return raw_datasets 
+
+def read_diffuseq_datasets(data_args):
+    raw_datasets = DatasetDict()
+    for split in ["train", "valid", "test"]:
+        dataset = load_dataset("json", data_files=f"{data_args.dataset_folder}/{split}.jsonl")["train"]
+        data_split = split if split != "valid" else "dev"
+        raw_datasets[data_split] = dataset
+    return raw_datasets
 
 
 @dataclass
@@ -95,7 +113,7 @@ class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
-
+    dataset_folder: str = field(default=None, metadata={"help": "The dataset folder containing the dataset."})
     lang: Optional[str] = field(default=None, metadata={"help": "Language id for summarization."})
 
     dataset_name: Optional[str] = field(
@@ -230,8 +248,13 @@ class DataTrainingArguments:
         if self.val_max_target_length is None:
             self.val_max_target_length = self.max_target_length
 
-
-simplification_name_mapping = {"asset": ("original", "simplification"), "wikilarge": ("original", "simplification")}
+simplification_name_mapping = {
+    "wikilarge": ("original", "simplification"),
+    "wiki_alignment": ("src", "trg"),
+    "qqp": ("src", "trg"),
+    "qg": ("src", "trg"),
+    "cc": ("src", "trg")
+}
 
 
 def main():
@@ -295,12 +318,10 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    raw_datasets = DatasetDict()
-    for split in ["train", "dev", "test"]:
-        s1s = open(f"wikilarge/s1.{split}", "r").readlines()
-        s2s = open(f"wikilarge/s2.{split}", "r").readlines()
-        data = [{"original": s1, "simplification": s2} for s1, s2 in zip(s1s, s2s)]
-        raw_datasets[split] = Dataset.from_list(data)
+    if data_args.dataset_name == "wikilarge":
+        raw_datasets = read_wikilarge(data_args)
+    elif data_args.dataset_name in ["wiki_alignment", "qqp", "qg", "cc"]:
+        raw_datasets = read_diffuseq_datasets(data_args)
 
     train_dataset = raw_datasets["train"]
     eval_dataset = raw_datasets["dev"]
