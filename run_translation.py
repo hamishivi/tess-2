@@ -26,6 +26,7 @@ from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
 import torch
+from sdlm.data.postprocessors import postprocess_text_for_metric
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -234,14 +235,7 @@ def main():
     )
 
     # Metric
-    # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("sacrebleu")  # , keep_in_memory=True)
-
-    def postprocess_text(preds, labels):
-        preds = [pred.strip() for pred in preds]
-        labels = [[label.strip()] for label in labels]
-
-        return preds, labels
+    metric = evaluate.load("sacrebleu")
 
     def compute_metrics(results):
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
@@ -251,7 +245,7 @@ def main():
             # Note that since decoded_labels is getting updated after post-process, we
             # need to compute it here for each key.
             decoded_labels = process_text(results["gold_texts_masked"])
-            decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
+            decoded_preds, decoded_labels = postprocess_text_for_metric("bleu", decoded_preds, decoded_labels)
             key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
             key_metrics = {"bleu": key_metrics["score"]}
             key_metrics = {k: round(v, 4) for k, v in key_metrics.items()}

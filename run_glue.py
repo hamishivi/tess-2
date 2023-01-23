@@ -271,12 +271,9 @@ def main():
             decoded_preds = postprocess_text(process_text(results[key]))
             if post_processor is not None:
                 decoded_preds = [post_processor(x) for x in decoded_preds]
-
-            # TODO: check if we need use_stemmer=True.
             key_metrics = {}
             for metric in task_metrics:
                 key_metrics.update(metric(predictions=decoded_preds, targets=decoded_labels))
-            # key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels)
             if len(key_metrics) > 1:
                 key_metrics["combined_score"] = np.mean(list(key_metrics.values())).item()
             key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}

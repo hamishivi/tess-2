@@ -5,12 +5,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import datasets
-import nltk  # Here to have a nice missing dependency error message early on
 import numpy as np
 from datasets import DatasetDict, Dataset
 import evaluate
 import transformers
-from filelock import FileLock
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
@@ -23,10 +21,11 @@ from transformers import (
 )
 import pdb
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
+from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from trainer_seq2seq import BaselineSeq2SeqTrainer
 from arguments import BaselineSeq2SeqTrainingArguments
+from sdlm.data.postprocessors import postprocess_text_for_metric
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -34,14 +33,6 @@ check_min_version("4.25.0")
 require_version("datasets>=1.8.0")
 
 logger = logging.getLogger(__name__)
-
-try:
-    nltk.data.find("tokenizers/punkt")
-except (LookupError, OSError):
-    if is_offline_mode():
-        raise LookupError("Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files")
-    with FileLock(".lock") as lock:
-        nltk.download("punkt", quiet=True)
 
 
 def extract_field(data, field_name):
@@ -470,13 +461,6 @@ def main():
 
     # Metric
     metric = evaluate.load("sari")
-
-    def postprocess_text(preds, labels, sources):
-        preds = [pred.strip() for pred in preds]
-        labels = [label.strip() for label in labels]
-        sources = [source.strip() for source in sources]
-        return preds, labels, sources
-
     def compute_metrics(eval_preds, split="eval"):
         preds, labels = eval_preds
         if isinstance(preds, tuple):
@@ -490,7 +474,7 @@ def main():
             sources = tokenizer.batch_decode(eval_input_ids, skip_special_tokens=True)
         else:
             sources = tokenizer.batch_decode(predict_input_ids, skip_special_tokens=True)
-        decoded_preds, decoded_labels, sources = postprocess_text(decoded_preds, decoded_labels, sources)
+        decoded_preds, decoded_labels, sources = postprocess_text_for_metric("sari", decoded_preds, decoded_labels, sources)
         decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
         result = metric.compute(predictions=decoded_preds, references=decoded_labels, sources=sources)
         result = {k: round(v, 2) for k, v in result.items()}

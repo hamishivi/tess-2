@@ -11,11 +11,10 @@ import nltk
 
 import evaluate
 import transformers
-from filelock import FileLock
 from transformers.trainer_callback import TrainerState
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
+from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from sdlm.data.data_utils import load_data
 from sdlm.arguments import ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments, DiffusionArguments
@@ -25,22 +24,12 @@ import pdb
 from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
+from sdlm.data.postprocessors import postprocess_text_for_metric
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
-
 require_version("datasets>=1.8.0")
-
 logger = logging.getLogger(__name__)
-
-try:
-    nltk.data.find("tokenizers/punkt")
-except (LookupError, OSError):
-    if is_offline_mode():
-        raise LookupError("Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files")
-    with FileLock(".lock") as lock:
-        nltk.download("punkt", quiet=True)
-
 
 summarization_name_mapping = {
     "amazon_reviews_multi": ("review_body", "review_title"),
@@ -300,18 +289,7 @@ def main():
     )
 
     # Metric
-    # NOTE: remove keep_in_memory in case of memory issues.
-    metric = evaluate.load("rouge")  # , keep_in_memory=True)
-
-    def postprocess_text(preds, labels):
-        preds = [pred.strip() for pred in preds]
-        labels = [label.strip() for label in labels]
-
-        # rougeLSum expects newline after each sentence
-        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
-        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
-
-        return preds, labels
+    metric = evaluate.load("rouge")
 
     def compute_metrics(results):
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
@@ -321,7 +299,7 @@ def main():
             # Note that since decoded_labels is getting updated after post-process, we
             # need to compute it here for each key.
             decoded_labels = process_text(results["gold_texts_masked"]) if not data_args.skip_special_tokens else  results["gold_texts_masked"]
-            decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
+            decoded_preds, decoded_labels = postprocess_text_for_metric("rouge", decoded_preds, decoded_labels)
             key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
             key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
             key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}

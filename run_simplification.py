@@ -26,6 +26,8 @@ from sdlm.trainer import DiffusionTrainer
 from sdlm.data.data_collator import DataCollatorForSeq2Seq
 from sdlm.inference.inference_utils import process_text
 from sdlm.metrics.metrics import distinct_n_grams
+from sdlm.data.postprocessors import postprocess_text_for_metric
+
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -304,30 +306,6 @@ def main():
         "dist":  distinct_n_grams
     }
 
-    def postprocess_text_for_sari(preds, labels, sources):
-        preds = [pred.strip() for pred in preds]
-        labels = [label.strip() for label in labels]
-        sources = [source.strip() for source in sources]
-        return preds, labels, sources
-
-    def postprocess_text_for_bertscore(preds, labels):
-        preds = [pred.strip() for pred in preds]
-        labels = [label.strip() for label in labels]
-        return preds, labels
-
-    def postprocess_text_for_rouge(preds, labels):
-        preds = [pred.strip() for pred in preds]
-        labels = [label.strip() for label in labels]
-        # rougeLSum expects newline after each sentence
-        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
-        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
-        return preds, labels
-
-    def postprocess_text_bleu(preds, labels):
-        preds = [pred.strip() for pred in preds]
-        labels = [[label.strip()] for label in labels]
-        return preds, labels
-
     def compute_metrics(results):
         keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
@@ -338,23 +316,23 @@ def main():
             for metric_name, metric in eval_metrics.items():
                 scale = 100 if metric_name != "sari" else 1
                 if metric_name == "sari":
-                    decoded_preds, decoded_labels, sources = postprocess_text_for_sari(decoded_preds_original, decoded_labels_original, sources)
+                    decoded_preds, decoded_labels, sources = postprocess_text_for_metric("sari", decoded_preds_original, decoded_labels_original, sources)
                     decoded_labels = [[decoded_label] for decoded_label in decoded_labels]
                     key_metrics = metric.compute(sources=sources, predictions=decoded_preds, references=decoded_labels)
                 elif metric_name == "bleu":
-                    decoded_preds, decoded_labels = postprocess_text_bleu(decoded_preds_original, decoded_labels_original)
+                    decoded_preds, decoded_labels = postprocess_text_for_metric("bleu", decoded_preds_original, decoded_labels_original)
                     key_metrics = {"bleu": metric.compute(predictions=decoded_preds, references=decoded_labels)["bleu"]}
                 elif metric_name == "bertscore":
-                    decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
+                    decoded_preds, decoded_labels = postprocess_text_for_metric("bertscore", decoded_preds_original, decoded_labels_original)
                     key_metrics = {"bert_score": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels,  lang="en")['f1'])}
                 elif metric_name == "bertscore_them":
-                    decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
+                    decoded_preds, decoded_labels = postprocess_text_for_metric("bertscore_them", decoded_preds_original, decoded_labels_original)
                     key_metrics = {"bert_score_them": np.mean(metric.compute(predictions=decoded_preds, references=decoded_labels, model_type='microsoft/deberta-xlarge-mnli', lang="en")['f1'])}
                 elif metric_name == "rouge":
-                    decoded_preds, decoded_labels = postprocess_text_for_rouge(decoded_preds_original, decoded_labels_original)
+                    decoded_preds, decoded_labels = postprocess_text_for_metric("rouge", decoded_preds_original, decoded_labels_original)
                     key_metrics = metric.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
                 elif metric_name == "dist":
-                    decoded_preds, decoded_labels = postprocess_text_for_bertscore(decoded_preds_original, decoded_labels_original)
+                    decoded_preds = postprocess_text_for_metric("dist", decoded_preds_original)
                     key_metrics = metric(decoded_preds)
 
                 key_metrics = {k: round(v*scale, 2) for k, v in key_metrics.items()}
