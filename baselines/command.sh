@@ -34,7 +34,17 @@ max_steps=60000
 model_name=facebook/bart-base
 #python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_train --do_eval --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/summarization_results/baseline_lr_"${learning_rate}"_steps_"${max_steps}"_model_"${model_name} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120   --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --weight_decay 0.0 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL}  --gradient_accumulation_steps 1  --predict_with_generate --save_checkpoints_on_s3 
 
-
+# evaluate the base model.
+for TOP_P in 0.9 0.95 0.99
+do 
+	for TEMPERATURE in 1 2 4 
+	do
+        learning_rate=2e-5
+	max_steps=60000
+	model_name="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/summarization_results/baseline_lr_"${learning_rate}"_steps_"${max_steps}"_model_facebook/bart-base/checkpoint-60000/"
+        python  run_summarization.py --model_name_or_path ${model_name}  --do_eval --do_predict --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/summarization_results/baseline_lr_"${learning_rate}"_steps_"${max_steps}"_model_facebook/bart-base" --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120   --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --weight_decay 0.0 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL}  --gradient_accumulation_steps 1  --predict_with_generate --save_checkpoints_on_s3 --top_p ${TOP_P} --temperature ${TEMPERATURE}
+	done
+done
 
 
 : '

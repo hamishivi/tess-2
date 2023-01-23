@@ -1,5 +1,6 @@
 from transformers import Seq2SeqTrainingArguments
 from dataclasses import dataclass, field
+from typing import Optional
 
 @dataclass
 class BaselineSeq2SeqTrainingArguments(Seq2SeqTrainingArguments):
@@ -11,3 +12,6 @@ class BaselineSeq2SeqTrainingArguments(Seq2SeqTrainingArguments):
             "keep this to true, it causes otherwise an issue with huggingface when doing only --do_eval."
         },
     )
+    top_p: Optional[float] = field(default=None, metadata={"help": "top_p value for nucleus (top_p) sampling."})
+    temperature: float = field(default=1.0, metadata={"help": "Defines the softmax temperature before doing the sampling."})
+

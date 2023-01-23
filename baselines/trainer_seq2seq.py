@@ -6,6 +6,15 @@ from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
 class BaselineSeq2SeqTrainer(Seq2SeqTrainer):
+    def annotated_split(self, split):
+        return f"{split}_top_p_{self.args.top_p}_temperature_{self.args.temperature}"
+
+    def save_metrics(self, split, metrics, combined=True):
+        super().save_metrics(self.annotated_split(split), metrics, combined)
+
+    def log_metrics(self, split, metrics):
+        super().log_metrics(self.annotated_split(split), metrics)
+
     def _rotate_checkpoints(self, use_mtime=False, output_dir=None) -> None:
         if self.args.save_total_limit is None or self.args.save_total_limit <= 0:
             return
