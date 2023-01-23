@@ -17,7 +17,7 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 
 # evaluate the baseline model.
-for TOP_P in 0.9 0.95 0.99 None
+for TOP_P in 0.9 0.95 0.99 
 do 
 	for TEMPERATURE in 1 2 4 
 	do
