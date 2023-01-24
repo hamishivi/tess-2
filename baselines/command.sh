@@ -1,4 +1,4 @@
-PARAMS_FOR_LOCAL=" --save_total_limit 1 "
+ARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 #######################
 # Run simplification.
@@ -53,9 +53,18 @@ model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wi
 learning_rate=3e-5
 #python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path ${model_path} --do_eval --do_predict --dataset_name wiki_alignment  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/roberta_base_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_eval_samples 96 --max_source_length 128  --max_target_length 128  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
 
+#====================================================================
+# running the baseline bart-base for the dataset qqp.
+learning_rate=3e-5
+max_steps=90000
+python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path facebook/bart-base --do_train --do_eval --do_predict --dataset_name qqp  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/qqp_tune_steps/bart_base_lr_"${learning_rate}"_no_wd_max_steps_"${max_steps} --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 100  --max_target_length 85  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/qqp/"
 
 
 
+
+
+
+#====================================================================
 
 # Run summarization.
 # data length=512
@@ -70,7 +79,7 @@ max_steps=60000
 learning_rate=3e-5
 max_steps=170000
 model_name=facebook/bart-base
-python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_train --do_eval --do_predict --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/baseline_lr_"${learning_rate}"_steps_"${max_steps}"_model_bart_base" --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 10000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120   --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --weight_decay 0.0 --warmup_steps 2000 --logging_steps 50 --save_steps 10000 ${PARAMS_FOR_LOCAL}  --gradient_accumulation_steps 1  --predict_with_generate --save_checkpoints_on_s3 
+#python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_train --do_eval --do_predict --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/baseline_lr_"${learning_rate}"_steps_"${max_steps}"_model_bart_base" --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 10000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120   --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --weight_decay 0.0 --warmup_steps 2000 --logging_steps 50 --save_steps 10000 ${PARAMS_FOR_LOCAL}  --gradient_accumulation_steps 1  --predict_with_generate --save_checkpoints_on_s3 
 
 
 
