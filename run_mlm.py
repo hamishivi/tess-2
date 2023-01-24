@@ -126,6 +126,7 @@ def main():
         self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
         self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
         self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
+        empty_token_be_mask=diffusion_args.empty_token_be_mask,
         **config_kwargs,
     )
     tokenizer_kwargs = {

@@ -456,6 +456,7 @@ class DiffusionArguments:
     classifier_free_uncond_input: str = field(
         default="empty_token", metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."}
     )
+    empty_token_be_mask: bool = field(default=False, metadata={"help": "If set, makes the empty token a mask."})
     # TODO: remove this, this option is very bad.
     classifier_free_guided_prev_outputs: bool = field(
         default=False,

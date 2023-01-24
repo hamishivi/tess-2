@@ -98,6 +98,7 @@ def main():
         self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
         self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
         self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
+        empty_token_be_mask=diffusion_args.empty_token_be_mask,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
