@@ -100,7 +100,7 @@ class DiffusionTrainer(Trainer):
         self.classifier_free_guidance = diffusion_args.guidance_scale > 1.0 and data_args.conditional_generation is not None
 
     def annotated_split(self, split):
-        return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}"
+        return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}_seed_{self.args.seed}"
 
     def save_metrics(self, split, metrics, combined=True):
         super().save_metrics(self.annotated_split(split), metrics, combined)

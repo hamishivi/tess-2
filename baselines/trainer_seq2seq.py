@@ -7,7 +7,7 @@ logger = logging.get_logger(__name__)
 
 class BaselineSeq2SeqTrainer(Seq2SeqTrainer):
     def annotated_split(self, split):
-        return f"{split}_top_p_{self.args.top_p}_temperature_{self.args.temperature}"
+        return f"{split}_top_p_{self.args.top_p}_temperature_{self.args.temperature}_seed_{self.args.seed}"
 
     def save_metrics(self, split, metrics, combined=True):
         super().save_metrics(self.annotated_split(split), metrics, combined)
