@@ -51,7 +51,7 @@ learning_rate=3e-5
 # evaluate the model.
 model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/roberta_base_lr_3e-5_no_wd/checkpoint-80000"
 learning_rate=3e-5
-python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path ${model_path} --do_eval --do_predict --dataset_name wiki_alignment  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/roberta_base_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_eval_samples 96 --max_source_length 128  --max_target_length 128  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
+#python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path ${model_path} --do_eval --do_predict --dataset_name wiki_alignment  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/roberta_base_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_eval_samples 96 --max_source_length 128  --max_target_length 128  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
 
 
 
@@ -63,6 +63,15 @@ learning_rate=2e-5
 max_steps=60000
 # max position embedding for BART is 1024, so we do not need to resize it.
 #python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path facebook/bart-large --do_train --do_eval --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/summarization_results/baseline_lr_"${learning_rate}"_steps_"${max_steps} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120   --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --weight_decay 0.0 --warmup_steps 2000 --logging_steps 50 --save_steps 1000 ${PARAMS_FOR_LOCAL}  --gradient_accumulation_steps 1  --predict_with_generate --save_checkpoints_on_s3 
+
+
+# run roberta-base for more iterations.
+# max position embedding for BART is 1024, so we do not need to resize it.
+learning_rate=3e-5
+max_steps=170000
+model_name=facebook/bart-base
+python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_train --do_eval --do_predict --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/baseline_lr_"${learning_rate}"_steps_"${max_steps}"_model_bart_base" --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 10000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120   --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --weight_decay 0.0 --warmup_steps 2000 --logging_steps 50 --save_steps 10000 ${PARAMS_FOR_LOCAL}  --gradient_accumulation_steps 1  --predict_with_generate --save_checkpoints_on_s3 
+
 
 
 # run for smaller model.
@@ -130,4 +139,3 @@ done
 # DEBUG
 # DATASET="mnli"
 # python run_glue.py --model_name_or_path roberta-large  --dataset_name ${DATASET} --do_train --do_eval --do_predict --max_seq_length 128 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy epoch --save_strategy epoch  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/debug" --report_to tensorboard  --overwrite_output_dir --pad_to_max_length --learning_rate 3e-5 --num_train_epochs 3 --logging_steps 50  --load_best_model_at_end true --checkpoint_best_model --greater_is_better true --warmup_steps 500  --tokenizer_name roberta-large --save_total_limit 1 --lr_scheduler_type linear  --gradient_accumulation_steps 2
-
