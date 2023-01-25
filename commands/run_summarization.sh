@@ -29,12 +29,21 @@ model_name="roberta-base"
 
 # Training roberta-base with lr=3e-5, lets eval every 10K with no TOP_P
 learning_rate=3e-5
-max_steps=170000 #100000 #140000 #100000
+max_steps=140000 #100000 #140000 #100000
 model_name="roberta-base"
 #checkpoint="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/ours_lr_3e-5_max_steps_100000_model_roberta-base/checkpoint-100000"
 #checkpoint="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/ours_lr_3e-5_max_steps_140000_model_roberta-base/checkpoint-100000"
-checkpoint="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/ours_lr_3e-5_max_steps_170000_model_roberta-base/checkpoint-100000"
-python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_train --do_eval --do_predict --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/ours_lr_"${learning_rate}"_max_steps_"${max_steps}"_model_"${model_name} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 10000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps 1000 --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 10000 ${PARAMS_FOR_LOCAL} --self_condition "logits_mean" --self_condition_mix_before_weights true  --gradient_accumulation_steps 1  --save_checkpoints_on_s3  --resume_from_checkpoint ${checkpoint}
+#checkpoint="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/ours_lr_3e-5_max_steps_170000_model_roberta-base/checkpoint-100000"
+#python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_train --do_eval --do_predict --dataset_name xsum --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/ours_lr_"${learning_rate}"_max_steps_"${max_steps}"_model_"${model_name} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 10000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps 1000 --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 10000 ${PARAMS_FOR_LOCAL} --self_condition "logits_mean" --self_condition_mix_before_weights true  --gradient_accumulation_steps 1  --save_checkpoints_on_s3  --resume_from_checkpoint ${checkpoint}
+
+# eval summarization on checkpoint of 140k.
+learning_rate=3e-5
+max_steps=140000 #100000 #140000 #100000
+model_name="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/new_summarization_results/ours_lr_3e-5_max_steps_140000_model_roberta-base/checkpoint-140000/"
+for top_p in 0.99 #0.95 0.99
+do 
+python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --top_p ${top_p}  --do_eval --do_predict --dataset_name xsum --dataset_config "3.0.0" --output_dir ${model_name} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 10000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps 1000 --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 10000 ${PARAMS_FOR_LOCAL} --self_condition "logits_mean" --self_condition_mix_before_weights true  --gradient_accumulation_steps 1  --save_checkpoints_on_s3 
+done 
 
 
 # with guidance

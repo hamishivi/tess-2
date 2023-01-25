@@ -1,4 +1,4 @@
-ARAMS_FOR_LOCAL=" --save_total_limit 1 "
+PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 #######################
 # Run simplification.
