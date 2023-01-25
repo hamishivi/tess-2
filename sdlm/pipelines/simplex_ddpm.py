@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import numpy as np
 from diffusers.utils import BaseOutput
 from sdlm.utils import convert_to_simplex
-
+import torch.nn.functional as F
 
 @dataclass
 class SimplexDiffusionPipelineOutput(BaseOutput):
@@ -45,8 +45,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         is_conditional_generation,
         tokenizer,
         classifier_free_uncond_input,
-        classifier_free_guided_prev_outputs,
         temperature,
+        guidance_softmax_combination
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
@@ -56,8 +56,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.is_conditional_generation = is_conditional_generation
         self.tokenizer = tokenizer
         self.classifier_free_uncond_input = classifier_free_uncond_input
-        self.classifier_free_guided_prev_outputs = classifier_free_guided_prev_outputs
         self.temperature = temperature
+        self.guidance_softmax_combination=guidance_softmax_combination
 
     @torch.no_grad()
     def __call__(
@@ -133,10 +133,13 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # Performs classifier-free guidance.
             if classifier_free_guidance:
                 logits_uncond, logits_pred = model_output_logits.chunk(2)
-                model_output_logits = logits_uncond + guidance_scale * (logits_pred - logits_uncond)
+                if self.guidance_softmax_combination:
+                    model_output_logits = F.softmax(logits_uncond, dim=-1) +  guidance_scale * (F.softmax(logits_pred, dim=-1) - F.softmax(logits_uncond, dim=-1))
+                else:
+                    model_output_logits = logits_uncond + guidance_scale * (logits_pred - logits_uncond)
 
             if self.model.config.self_condition is not None:
-                if classifier_free_guidance and not self.classifier_free_guided_prev_outputs:
+                if classifier_free_guidance:
                     prev_output_logits = model_output.logits.chunk(2)[1]
                 else:
                     prev_output_logits = model_output_logits

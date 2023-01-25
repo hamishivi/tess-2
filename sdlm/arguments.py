@@ -457,12 +457,8 @@ class DiffusionArguments:
         default="empty_token", metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."}
     )
     empty_token_be_mask: bool = field(default=False, metadata={"help": "If set, makes the empty token a mask."})
-    # TODO: remove this, this option is very bad.
-    classifier_free_guided_prev_outputs: bool = field(
-        default=False,
-        metadata={"help": "In case this is set to True, we would use the guided outputs as the previous outputs."},
-    )
     classifier_free_simplex_inputs: bool = field(
         default=False, metadata={"help": "If set to true, uses simplex representation for the unconditional input."}
     )
     temperature: float = field(default=1.0, metadata={"help": "Defines the softmax temperature before doing the sampling."})
+    guidance_softmax_combination: bool = field(default=False, metadata={"help": "If set, first applies softmax, then combines logits."})

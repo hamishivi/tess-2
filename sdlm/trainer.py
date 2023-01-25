@@ -276,8 +276,8 @@ class DiffusionTrainer(Trainer):
             is_conditional_generation=is_conditional_generation,
             tokenizer=self.tokenizer,
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
-            classifier_free_guided_prev_outputs=self.diffusion_args.classifier_free_guided_prev_outputs,
             temperature=self.diffusion_args.temperature,
+            guidance_softmax_combination=self.diffusion_args.guidance_softmax_combination
         )
 
         self.callback_handler.eval_dataloader = dataloader
