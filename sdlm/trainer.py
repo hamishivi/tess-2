@@ -203,6 +203,7 @@ class DiffusionTrainer(Trainer):
                     seq_length=self.data_args.max_seq_length - self.data_args.truncation_length,
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
+                    generator=torch.Generator(device=self.args.device).manual_seed(self.args.seed) if self.diffusion_args.generate_with_seed else None,
                 )
                 if is_conditional_generation:
                     loss = outputs.loss.mean().detach()

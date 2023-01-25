@@ -461,4 +461,5 @@ class DiffusionArguments:
         default=False, metadata={"help": "If set to true, uses simplex representation for the unconditional input."}
     )
     temperature: float = field(default=1.0, metadata={"help": "Defines the softmax temperature before doing the sampling."})
-    guidance_softmax_combination: bool = field(default=False, metadata={"help": "If set, first applies softmax, then combines logits."})
+    guidance_softmax_combination: bool = field(default=True, metadata={"help": "If set, first applies softmax, then combines logits."})
+    generate_with_seed: bool = field(default=False, metadata={"help": "If set, generates with seed."})
