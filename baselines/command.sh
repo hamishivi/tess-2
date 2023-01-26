@@ -16,6 +16,13 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 # python -m torch.distributed.launch --nproc_per_node 4 run_simplification.py --model_name_or_path facebook/bart-large --do_train --do_eval --dataset_name wikilarge  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/simplification_results/baseline_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 500000 --max_eval_samples 96 --max_source_length 64  --max_target_length 64  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 2 
 
 
+# *** Running the baseline for base size ***
+learning_rate=2e-5
+max_steps=300000
+#python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path facebook/bart-base --do_train --do_eval --do_predict --dataset_name wikilarge  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/simplification_results/baseline_base_lr_"${learning_rate}"_no_wd_max_steps_"${max_steps} --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 20000  --max_steps 500000 --max_eval_samples 96 --max_source_length 64  --max_target_length 64  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 20000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1 
+
+max_steps=200000
+python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path facebook/bart-base --do_train --do_eval --do_predict --dataset_name wikilarge  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/simplification_results/baseline_base_lr_"${learning_rate}"_no_wd_max_steps_"${max_steps} --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 20000  --max_steps 500000 --max_eval_samples 96 --max_source_length 64  --max_target_length 64  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 20000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1
 
 
 
@@ -48,6 +55,7 @@ learning_rate=3e-5
 #python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path facebook/bart-base --do_train --do_eval --do_predict --dataset_name wiki_alignment  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/roberta_base_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_eval_samples 96 --max_source_length 128  --max_target_length 128  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
 
 
+# ****** this is reported for wiki-alignment ********
 # evaluate the model.
 model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/roberta_base_lr_3e-5_no_wd/checkpoint-80000"
 learning_rate=3e-5
@@ -63,7 +71,7 @@ max_steps=90000
 # running the baseline on qg.
 learning_rate=3e-5
 max_steps=120000 # 120000
-python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path facebook/bart-base --do_train --do_eval --do_predict --dataset_name qg  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/qg_tune_steps/bart_base_lr_"${learning_rate}"_no_wd_max_steps_"${max_steps} --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 155  --max_target_length 65  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/qg/"
+# python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path facebook/bart-base --do_train --do_eval --do_predict --dataset_name qg  --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/qg_tune_steps/bart_base_lr_"${learning_rate}"_no_wd_max_steps_"${max_steps} --per_device_train_batch_size=1 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 1000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 155  --max_target_length 65  --evaluation_strategy steps  --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --warmup_steps 2000 --logging_steps 50 --save_steps 1000 --predict_with_generate  ${PARAMS_FOR_LOCAL} --save_checkpoints_on_s3 --gradient_accumulation_steps 1  --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/qg/"
 
 
 
