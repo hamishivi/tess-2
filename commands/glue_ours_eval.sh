@@ -101,6 +101,7 @@ done
 
 # ****** this is selected *********
 # eval for the model with max_steps_set.
+: '
 DATASETS=("mrpc"    "rte"  "stsb"  "wnli"  "qqp"   "qnli"    "sst2" "mnli" "cola") 
 CHECKPOINTS=("7000"    "3000" "4000"  "8000"  "23000"  "19000" "18000" "14000" "6000")
 for i in "${!DATASETS[@]}"; do
@@ -116,6 +117,13 @@ for i in "${!DATASETS[@]}"; do
     python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params_without_top_p} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
 
 done
+'
+
+# evaluate mrpc for different number of steps.
+DATASET="mrpc"
+model_path=${BASE_DIR}"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd_max_steps_set/checkpoint-7000" 
+num_inference_diffusion_steps=10
+python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASET} ${shared_params_without_top_p} --output_dir ${model_path}"/inference_ablation/step_"${num_inference_diffusion_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_path} --self_condition "logits_mean" --self_condition_mix_before_weights true   --max_predict_samples 1000
 
 
 
