@@ -51,6 +51,7 @@ from transformers.utils.versions import require_version
 from trainer_seq2seq import BaselineSeq2SeqTrainer
 from arguments import BaselineSeq2SeqTrainingArguments
 from sdlm.data.postprocessors import postprocess_text_for_metric
+GENERATION_RESULTS="generations"
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -687,13 +688,11 @@ def main():
 
         if trainer.is_world_process_zero():
             if training_args.predict_with_generate:
-                predictions = tokenizer.batch_decode(
-                    predict_results.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True
-                )
-                predictions = [pred.strip() for pred in predictions]
-                output_prediction_file = os.path.join(training_args.output_dir, "generated_predictions.txt")
-                with open(output_prediction_file, "w") as writer:
-                    writer.write("\n".join(predictions))
+                predictions = tokenizer.batch_decode(predict_results.predictions, skip_special_tokens=True)
+                labels = np.where(predict_results.label_ids != -100, predict_results.label_ids, tokenizer.pad_token_id)
+                decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+                prediction_results = {"predictions": predictions, "gold_text":decoded_labels}
+                trainer.save_metrics(GENERATION_RESULTS + "_predict", prediction_results)
 
     return results
 
