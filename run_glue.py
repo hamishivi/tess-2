@@ -140,8 +140,9 @@ def main():
     )
 
     # Split dataset, since test sets of GLUE do not have the labels.
-    raw_datasets = split_glue(raw_datasets, data_args.dataset_name, data_args.glue_split_seed)
-
+    if data_args.split_glue:
+        raw_datasets = split_glue(raw_datasets, data_args.dataset_name, data_args.glue_split_seed) 
+        
     # Labels
     is_regression = data_args.dataset_name == "stsb"
     config = RobertaDiffusionConfig.from_pretrained(

@@ -4,8 +4,9 @@ import numpy as np
 def read_results(path, is_baseline, key=None):
    prefix="test_pred_texts_from_logits_masked_" if not is_baseline else "predict_"
    #metrics = ["sari", "bleu", "bert_score",  "rouge1", "rouge2", "rougelsum", "dist-1", "dist-4"] # "bert_score_them", 
-   # metrics = ["bleu", "bert_score_them",  "rougeLsum", "dist-1", "dist-4"]
-   metrics = ["rouge1", "rouge2", "rougeLsum"]
+   #metrics = ["bleu", "bert_score_them",  "rougeLsum", "dist-1", "dist-4"]
+   #metrics = ["rouge1", "rouge2", "rougeLsum"]
+   metrics=  ["sari", "bleu", "bert_score", "bert_score_them", "rougeLsum"]
    results = json.load(open(path, "r"))
    values = []
    results_metrics = []
@@ -84,8 +85,8 @@ for k, path in paths.items():
 
 
 # newsela less iterations.
-#path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/ours_lr_3e-5_no_wd/checkpoint-80000/inference_steps_ablation_all_data/step_10"
-#read_results(path, False)
+path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/ours_lr_3e-5_no_wd/checkpoint-80000/inference_steps_ablation_all_data/step_100/test_top_p_None_temperature_1.0_seed_42_guidance_scale_1.0_results.json"
+read_results(path, False)
 
 
 # qg dataset.
@@ -93,5 +94,5 @@ for k, path in paths.items():
 # read_results(path, False)
 
 # text summarization.
-path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/cnn_dailymail_results/ours_lr_3e-5_max_steps_120000_model_roberta-base/checkpoint-120000/inference_steps_ablation_on_all_data/step_100/test_top_p_None_temperature_1.0_seed_42_guidance_scale_1.0_results.json"
-read_results(path, False)
+#path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/cnn_dailymail_results/ours_lr_3e-5_max_steps_120000_model_roberta-base/checkpoint-120000/inference_steps_ablation_on_all_data/step_100/test_top_p_None_temperature_1.0_seed_42_guidance_scale_1.0_results.json"
+#read_results(path, False)

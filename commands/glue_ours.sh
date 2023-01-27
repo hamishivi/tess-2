@@ -1,7 +1,9 @@
 
 # GLUE should be run with 128+label_length, where label_length=5.
-shared_params="--model_name_or_path roberta-large  --do_train --do_eval --do_predict --max_seq_length 133 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy steps --save_strategy steps   --report_to tensorboard --overwrite_output_dir --pad_to_max_length  --simplex_value 5 --num_diffusion_steps 5000 --conditional_generation seq2seq  --learning_rate 3e-5 --gradient_accumulation_steps 2 --lr_scheduler_type linear --beta_schedule squaredcos_improved_ddpm  --top_p 0.99 --warmup_steps 500 --logging_steps 50 --save_steps 1000  --add_t5_tags --max_steps 100000   --load_best_model_at_end true --checkpoint_best_model  --greater_is_better true --eval_steps 1000"
+shared_params="--model_name_or_path roberta-large  --do_train --do_eval --do_predict --max_seq_length 133 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy steps --save_strategy steps   --report_to tensorboard --overwrite_output_dir --pad_to_max_length  --simplex_value 5 --num_diffusion_steps 5000 --conditional_generation seq2seq  --learning_rate 3e-5 --gradient_accumulation_steps 2 --lr_scheduler_type linear --beta_schedule squaredcos_improved_ddpm   --warmup_steps 500 --logging_steps 50 --save_steps 1000  --add_t5_tags --max_steps 100000   --load_best_model_at_end true --checkpoint_best_model  --greater_is_better true --eval_steps 1000"
 shared_params_no_topp="--model_name_or_path roberta-large  --do_train --do_eval --do_predict --max_seq_length 133 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy steps --save_strategy steps   --report_to tensorboard --overwrite_output_dir --pad_to_max_length  --simplex_value 5 --num_diffusion_steps 5000 --conditional_generation seq2seq  --learning_rate 3e-5 --gradient_accumulation_steps 2 --lr_scheduler_type linear --beta_schedule squaredcos_improved_ddpm   --warmup_steps 500 --logging_steps 50 --save_steps 1000  --add_t5_tags --max_steps 100000   --load_best_model_at_end true --checkpoint_best_model  --greater_is_better true --eval_steps 1000"
+shared_params_without_predict="--model_name_or_path roberta-large  --do_train --do_eval --max_seq_length 133 --per_device_train_batch_size 64 --per_device_eval_batch_size 64 --evaluation_strategy steps --save_strategy steps   --report_to tensorboard --overwrite_output_dir --pad_to_max_length  --simplex_value 5 --num_diffusion_steps 5000 --conditional_generation seq2seq  --learning_rate 3e-5 --gradient_accumulation_steps 2 --lr_scheduler_type linear --beta_schedule squaredcos_improved_ddpm  --warmup_steps 500 --logging_steps 50 --save_steps 1000  --add_t5_tags --max_steps 100000   --load_best_model_at_end true --checkpoint_best_model  --greater_is_better true --eval_steps 1000"
+
 
 BASE_DIR="/net/nfs.cirrascale/s2-research/rabeehk/"
 PARAMS_FOR_LOCAL=" --save_total_limit 1"
@@ -84,7 +86,7 @@ python run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BAS
 # For smaller datasets.
 DATASET="mrpc" # rte, mrpc, cola, stsb, wnli
 num_inference_diffusion_steps=10
-python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_no_topp} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/mrpc_no_self_condition_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0   --per_device_train_batch_size 32  --gradient_accumulation_steps 1    --max_steps 12000 --save_checkpoints_on_s3
+# python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_no_topp} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/mrpc_no_self_condition_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0   --per_device_train_batch_size 32  --gradient_accumulation_steps 1    --max_steps 12000 --save_checkpoints_on_s3
 
 
 
@@ -123,7 +125,7 @@ max_steps=16000
 
 #python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results_self_condition_ablations/no_self_cond_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_steps_"${max_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --max_steps ${max_steps} --save_checkpoints_on_s3  --model_name_or_path roberta-base 
 
-
+: '
 # run their evals.
 output_dir=$BASE_DIR"outputs/paper_experiments/glue_results_self_condition_ablations/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_steps_"${max_steps}
 model_path=${output_dir}"/checkpoint-13000"
@@ -136,8 +138,24 @@ model_path=${output_dir}"/checkpoint-10000"
 output_dir=$BASE_DIR"outputs/paper_experiments/glue_results_self_condition_ablations/no_self_cond_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_steps_"${max_steps}
 model_path=${output_dir}"/checkpoint-16000"
 #python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --max_steps ${max_steps} --save_checkpoints_on_s3  --model_name_or_path ${model_path} ${EVAL_PARAMS}
+'
 ###############################################################
 
 # DBEUG
 #python -m torch.distributed.launch --nproc_per_node 2  run_glue.py  --dataset_name ${DATASET} ${shared_params} --output_dir $BASE_DIR"outputs/debug"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3  --max_steps 6 --save_steps 2 --eval_steps 2 --max_eval_samples 6 
+
+
+
+#==============================================================
+# train on the whole glue dataset without splitting dev/train.
+# For larger datasets 
+# sst2, mnli, qnli, qqp
+# DATASET="qqp"
+# num_inference_diffusion_steps=10
+python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_predict} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3 --split_glue false
+
+# *****this is selected.******
+# For smaller datasets.
+# DATASET="cola" # rte, mrpc, cola, stsb, wnli
+# python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_predict} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 12000 --save_checkpoints_on_s3 --split_glue false
 
