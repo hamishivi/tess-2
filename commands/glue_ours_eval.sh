@@ -120,11 +120,24 @@ done
 '
 
 # evaluate mrpc for different number of steps.
-DATASET="mrpc"
-model_path=${BASE_DIR}"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd_max_steps_set/checkpoint-7000" 
-num_inference_diffusion_steps=10
-python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASET} ${shared_params_without_top_p} --output_dir ${model_path}"/inference_ablation/step_"${num_inference_diffusion_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_path} --self_condition "logits_mean" --self_condition_mix_before_weights true   --max_predict_samples 1000
+#DATASET="mrpc"
+#model_path=${BASE_DIR}"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd_max_steps_set/checkpoint-7000" 
+#num_inference_diffusion_steps=10
+#python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASET} ${shared_params_without_top_p} --output_dir ${model_path}"/inference_ablation/step_"${num_inference_diffusion_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_path} --self_condition "logits_mean" --self_condition_mix_before_weights true   --max_predict_samples 1000
 
+# evaluate mrpc for different number of steps.
+# All data.
+DATASET="mrpc"
+#model_path=${BASE_DIR}"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd_max_steps_set/checkpoint-7000" 
+#num_inference_diffusion_steps=100
+#python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASET} ${shared_params_without_top_p} --output_dir ${model_path}"/inference_ablation_all_data/step_"${num_inference_diffusion_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_path} --self_condition "logits_mean" --self_condition_mix_before_weights true 
+
+
+# evaluate mrpc without self-condition for different number of steps.
+DATASET="mrpc" # rte, mrpc, cola, stsb, wnli
+num_inference_diffusion_steps=10
+model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/mrpc_no_self_condition_mrpc_steps_10_no_wd_max_steps_set/checkpoint-3000"
+python -m torch.distributed.launch --nproc_per_node 8 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_top_p} --output_dir ${model_path}"/inference_ablation_all_data/step_"${num_inference_diffusion_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0   --per_device_train_batch_size 32  --gradient_accumulation_steps 1    --max_steps 12000 --save_checkpoints_on_s3 --model_name_or_path ${model_path}
 
 
 : '

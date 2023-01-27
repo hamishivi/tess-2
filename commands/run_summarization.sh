@@ -76,7 +76,31 @@ learning_rate=3e-5
 max_steps=120000
 num_inference_diffusion_steps=2000
 model_name="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/cnn_dailymail_results/ours_lr_3e-5_max_steps_120000_model_roberta-base/checkpoint-120000/"
-python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_eval --do_predict --dataset_name "cnn_dailymail" --dataset_config "3.0.0" --output_dir  ${model_name}"/inference_steps_ablation/step_"${num_inference_diffusion_steps} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 20000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 20000 ${PARAMS_FOR_LOCAL} --self_condition "logits_mean" --self_condition_mix_before_weights true  --gradient_accumulation_steps 1  --save_checkpoints_on_s3  --max_predict_samples 1000
+#python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_eval --do_predict --dataset_name "cnn_dailymail" --dataset_config "3.0.0" --output_dir  ${model_name}"/inference_steps_ablation/step_"${num_inference_diffusion_steps} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 20000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 20000 ${PARAMS_FOR_LOCAL} --self_condition "logits_mean" --self_condition_mix_before_weights true  --gradient_accumulation_steps 1  --save_checkpoints_on_s3  --max_predict_samples 1000
+
+
+# ablation on the inference steps.
+# do this for the whole data.
+learning_rate=3e-5
+max_steps=120000
+num_inference_diffusion_steps=10
+#model_name="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/cnn_dailymail_results/ours_lr_3e-5_max_steps_120000_model_roberta-base/checkpoint-120000/"
+#python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_eval --do_predict --dataset_name "cnn_dailymail" --dataset_config "3.0.0" --output_dir  ${model_name}"/inference_steps_ablation_on_all_data/step_"${num_inference_diffusion_steps} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 20000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 20000 ${PARAMS_FOR_LOCAL} --self_condition "logits_mean" --self_condition_mix_before_weights true  --gradient_accumulation_steps 1  --save_checkpoints_on_s3
+
+
+# train summarization without the self-conditioning.
+learning_rate=3e-5
+max_steps=120000 #200000 #100000
+model_name="roberta-base"
+#num_inference_diffusion_steps=1000
+#python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_name} --do_train --do_eval --do_predict --dataset_name "cnn_dailymail" --dataset_config "3.0.0" --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/cnn_dailymail_results/ours_no_self_lr_"${learning_rate}"_max_steps_"${max_steps}"_model_"${model_name} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 20000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps 1000 --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 20000 ${PARAMS_FOR_LOCAL}   --gradient_accumulation_steps 1  --save_checkpoints_on_s3
+
+# evaluate this model for different number of inference steps.
+learning_rate=3e-5
+max_steps=120000 #200000 #100000
+num_inference_diffusion_steps=10
+model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/cnn_dailymail_results/ours_no_self_lr_3e-5_max_steps_120000_model_roberta-base/checkpoint-120000/"
+python -m torch.distributed.launch --nproc_per_node 8 run_summarization.py --model_name_or_path ${model_path}  --do_eval --do_predict --dataset_name "cnn_dailymail" --dataset_config "3.0.0" --output_dir ${model_path}"/inference_steps_ablation_all_data/step_"${num_inference_diffusion_steps} --per_device_train_batch_size=6 --per_device_eval_batch_size=12 --overwrite_output_dir  --report_to tensorboard --eval_steps 20000  --max_steps ${max_steps} --max_eval_samples 96 --max_source_length 392  --max_target_length 120 --max_seq_length 512  --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --weight_decay 0.0  --warmup_steps 2000 --logging_steps 50 --save_steps 20000 ${PARAMS_FOR_LOCAL}   --gradient_accumulation_steps 1  --save_checkpoints_on_s3
 
 
 
