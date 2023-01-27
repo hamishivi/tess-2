@@ -150,12 +150,12 @@ model_path=${output_dir}"/checkpoint-16000"
 # train on the whole glue dataset without splitting dev/train.
 # For larger datasets 
 # sst2, mnli, qnli, qqp
-# DATASET="qqp"
-# num_inference_diffusion_steps=10
-python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_predict} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3 --split_glue false
+DATASET="mnli"
+num_inference_diffusion_steps=10
+#python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_predict} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 25000 --save_checkpoints_on_s3 --split_glue false
 
 # *****this is selected.******
 # For smaller datasets.
-# DATASET="cola" # rte, mrpc, cola, stsb, wnli
-# python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_predict} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 12000 --save_checkpoints_on_s3 --split_glue false
+DATASET="wnli" # rte, mrpc, cola, stsb, wnli
+python -m torch.distributed.launch --nproc_per_node 4 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_predict} --output_dir $BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_"${num_inference_diffusion_steps}"_no_wd_max_steps_set"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --self_condition "logits_mean"  --per_device_train_batch_size 32  --gradient_accumulation_steps 1  --self_condition_mix_before_weights true  --max_steps 12000 --save_checkpoints_on_s3 --split_glue false
 
