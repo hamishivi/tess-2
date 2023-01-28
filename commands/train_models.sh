@@ -68,4 +68,12 @@ PARAMS_FOR_LOCAL=" --save_total_limit 1 "
 
 
 # Train the base model on the UL2 objective.
-python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size" ${shared_params}  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --model_name_or_path "roberta-base" 
+#python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size" ${shared_params}  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --model_name_or_path "roberta-base"
+
+
+# Base size model length=512.
+#python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size_length_512" ${shared_params}  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --model_name_or_path "roberta-base" --max_seq_length 512   --tokenized_data_path processed_data/openwebtext_512_split/
+
+
+
+python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_large_size_length_512" ${shared_params}  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --max_seq_length 512   --tokenized_data_path processed_data/openwebtext_512_split/
