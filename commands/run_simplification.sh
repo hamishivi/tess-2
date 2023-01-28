@@ -372,11 +372,18 @@ num_inference_diffusion_steps=1000
 #python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path ${model_path}  --do_eval --do_predict --dataset_name wiki_alignment  --output_dir  ${model_path}"/inference_steps_ablation/step_"${num_inference_diffusion_steps}  --per_device_train_batch_size=1 --per_device_eval_batch_size=12   --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_source_length 128  --max_target_length 128 --max_seq_length 256 --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm --top_p 0.99 --warmup_steps 2000 --logging_steps 50 --save_steps 1000    --self_condition "logits_mean"  --self_condition_mix_before_weights true --load_states_in_eval_from_model_path true --max_eval_samples 96 ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --save_checkpoints_on_s3 --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/" --max_predict_samples 1000
 
 
-
+: '
 # ablation on number of inference steps on all data
 learning_rate=3e-5 
 for num_inference_diffusion_steps in 10 100
 do 
 model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tune_lr/ours_lr_"${learning_rate}"_no_wd/checkpoint-80000"
 python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path ${model_path}  --do_eval --do_predict --dataset_name wiki_alignment  --output_dir  ${model_path}"/inference_steps_ablation_all_data/step_"${num_inference_diffusion_steps}  --per_device_train_batch_size=1 --per_device_eval_batch_size=12   --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_source_length 128  --max_target_length 128 --max_seq_length 256 --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm  --warmup_steps 2000 --logging_steps 50 --save_steps 1000    --self_condition "logits_mean"  --self_condition_mix_before_weights true --load_states_in_eval_from_model_path true --max_eval_samples 96 ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --save_checkpoints_on_s3 --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
-done 
+done
+'
+
+# run the wiki-alignment on the checkpoint model from ul2 variable with length=256.
+learning_rate=3e-5 
+num_inference_diffusion_steps=1000
+model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size/checkpoint-20000"
+python -m torch.distributed.launch --nproc_per_node 8 run_simplification.py --model_name_or_path ${model_path} --do_train --do_eval --do_predict --dataset_name wiki_alignment  --output_dir  "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/wiki_alignment_tuned_from_ul2_variable_len_256_checkpoint/ours_lr_"${learning_rate}"_no_wd" --per_device_train_batch_size=1 --per_device_eval_batch_size=12   --report_to tensorboard --eval_steps 1000  --max_steps 80000 --max_source_length 128  --max_target_length 128 --max_seq_length 256 --conditional_generation "seq2seq" --num_inference_diffusion_steps ${num_inference_diffusion_steps} --evaluation_strategy steps --simplex_value 5 --num_diffusion_steps 5000 --lr_scheduler_type linear --learning_rate ${learning_rate} --pad_to_max_length  --beta_schedule squaredcos_improved_ddpm  --warmup_steps 2000 --logging_steps 50 --save_steps 1000    --self_condition "logits_mean"  --self_condition_mix_before_weights true --load_states_in_eval_from_model_path true --max_eval_samples 96 ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --save_checkpoints_on_s3 --dataset_folder "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/wiki_alignment/"
