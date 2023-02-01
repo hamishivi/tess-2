@@ -132,13 +132,13 @@ DATASET="mrpc"
 #num_inference_diffusion_steps=100
 #python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASET} ${shared_params_without_top_p} --output_dir ${model_path}"/inference_ablation_all_data/step_"${num_inference_diffusion_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_path} --self_condition "logits_mean" --self_condition_mix_before_weights true 
 
-
+'''
 # evaluate mrpc without self-condition for different number of steps.
 DATASET="mrpc" # rte, mrpc, cola, stsb, wnli
 num_inference_diffusion_steps=10
 model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/mrpc_no_self_condition_mrpc_steps_10_no_wd_max_steps_set/checkpoint-3000"
 python -m torch.distributed.launch --nproc_per_node 8 run_glue.py  --dataset_name ${DATASET} ${shared_params_without_top_p} --output_dir ${model_path}"/inference_ablation_all_data/step_"${num_inference_diffusion_steps}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0   --per_device_train_batch_size 32  --gradient_accumulation_steps 1    --max_steps 12000 --save_checkpoints_on_s3 --model_name_or_path ${model_path}
-
+'''
 
 : '
 # evaluate for small data for max-steps 6k.
@@ -201,3 +201,14 @@ for i in "${!DATASETS[@]}"; do
 done
 '
 
+
+# eval for the model with max_steps_set when using the whole eval datasets.
+DATASETS=("mrpc"    "rte"  "stsb"  "wnli"  "qqp"     "qnli"    "sst2" "mnli" "cola") 
+CHECKPOINTS=("3000" "12000" "3000"  "4000"  "22000"  "24000"   "2000" "14000" "12000")
+for i in "${!DATASETS[@]}"; do
+    DATASET=${DATASETS[i]}
+    CHECKPOINT=${CHECKPOINTS[i]}
+    output_dir=$BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd_max_steps_set"
+    model_name_or_path=${output_dir}"/checkpoint-"${CHECKPOINT}
+    python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params_without_top_p} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
+done
