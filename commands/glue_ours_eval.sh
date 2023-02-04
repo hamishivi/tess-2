@@ -210,5 +210,5 @@ for i in "${!DATASETS[@]}"; do
     CHECKPOINT=${CHECKPOINTS[i]}
     output_dir=$BASE_DIR"outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_"${DATASET}"_steps_10_no_wd_max_steps_set"
     model_name_or_path=${output_dir}"/checkpoint-"${CHECKPOINT}
-    python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params_without_top_p} --output_dir ${output_dir}  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
+    python  -m torch.distributed.launch --nproc_per_node 8  run_glue.py  --dataset_name ${DATASETS[i]} ${shared_params_without_top_p} --output_dir ${output_dir}"/all_data_eval"  --num_inference_diffusion_steps ${num_inference_diffusion_steps} ${PARAMS_FOR_LOCAL} --weight_decay 0.0 --model_name_or_path ${model_name_or_path} --self_condition "logits_mean" --self_condition_mix_before_weights true
 done
