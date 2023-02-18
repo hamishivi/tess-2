@@ -228,24 +228,19 @@ done
 #done
 '
 
-
-
-: '
 # evaluate the trained checkpoint with ul2 variable of length=256 on top-p = None
 truncation_length=206
-model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size/checkpoint-20000"
+model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size_length_512/checkpoint-55000"
 eval_context_size=25
 shared_params="  --load_states_in_eval_from_model_path true"
-python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size/eval_truncation_length_"${truncation_length}"_context_size_"${eval_context_size} ${shared_params}  --do_eval --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --model_name_or_path "roberta-base" --truncation_length ${truncation_length}   --max_eval_samples 1000  --model_name_or_path ${model_path}  --tokenized_data_path processed_data/openwebtext_256_split_gpt_eval/ --eval_context_size ${eval_context_size}
-'
+python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size_length_512/checkpoint-55000/eval_truncation_length_"${truncation_length}"_context_size_"${eval_context_size} ${shared_params}  --do_eval --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --model_name_or_path "roberta-base" --truncation_length ${truncation_length}   --max_eval_samples 1000  --model_name_or_path ${model_path}  --tokenized_data_path processed_data/openwebtext_256_split_gpt_eval/ --eval_context_size ${eval_context_size}  --truncation_length ${truncation_length} --max_seq_length 256 --eval_for_all_metrics true
 
 # evaluate the trained checkpoint with ul2 variable of length=256 on top-p not None.
 for TOP_P in 0.95 0.99 0.9
 do
 truncation_length=206
-model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size/checkpoint-20000"
+model_path="/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size_length_512/checkpoint-55000"
 eval_context_size=25
 shared_params=" --load_states_in_eval_from_model_path true"
-python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir $BASE_DIR"/outputs/paper_experiments/ul2_variable_self_condition_mean_mix_before_weights_base_size/eval_truncation_length_"${truncation_length}"_context_size_"${eval_context_size} ${shared_params} --do_eval  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --model_name_or_path "roberta-base" --truncation_length ${truncation_length}   --max_eval_samples 1000 --top_p ${TOP_P} --model_name_or_path ${model_path} --tokenized_data_path processed_data/openwebtext_256_split_gpt_eval/ --eval_context_size ${eval_context_size}
+python -m torch.distributed.launch --nproc_per_node 8 run_mlm.py --output_dir ${model_path}/"eval_truncation_length_"${truncation_length}"_context_size_"${eval_context_size} ${shared_params} --do_eval  --per_device_train_batch_size 12  --gradient_accumulation_steps 16 ${PARAMS_FOR_LOCAL} --conditional_generation "ul2_variable"  --self_condition "logits_mean"  --self_condition_mix_before_weights true --compute_eval_loss_with_simplex true  --save_checkpoints_on_s3  --model_name_or_path "roberta-base" --truncation_length ${truncation_length}   --max_eval_samples 1000 --top_p ${TOP_P} --model_name_or_path ${model_path} --tokenized_data_path processed_data/openwebtext_256_split_gpt_eval/   --eval_context_size ${eval_context_size}  --truncation_length ${truncation_length} --max_seq_length 256 --eval_for_all_metrics true
 done
-

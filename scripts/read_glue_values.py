@@ -17,7 +17,7 @@ task_to_metric = {
     "wnli": ["accuracy"],
 }
 
-glue_ordered = ["cola", "sst2", "mrpc", "qqp", "stsb", "mnli", "qnli", "rte", "wnli"]
+glue_ordered = ["mnli", "qnli", "qqp", "rte", "sst2", "mrpc", "cola", "stsb", "wnli"] # "mrpc"
 small_datasets = ["cola", "mrpc", "rte", "stsb", "wnli"]
 
 def read_values(paths, is_baseline=False, tasks=None):
@@ -34,7 +34,7 @@ def read_values(paths, is_baseline=False, tasks=None):
                 results[task][metric] = np.round(data["test_" + metric] * scale, 2)
             else:
                 scale = 1
-                results[task][metric] = np.round(data["test_pred_texts_from_logits_masked_" + metric] * scale, 2)
+                results[task][metric] = np.round(data["eval_pred_texts_from_logits_masked_" + metric] * scale, 2)
     print(results)
 
     # Computes average.
@@ -101,12 +101,16 @@ for task in task_to_metric.keys():
     # path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_16k_steps/"
     
     #**** this is selected *****
-    path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set"
+    #path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set"
     # **** baseline *****
     #path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/baseline_{task}" 
    
+    # glue on all data.
+    path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd_max_steps_set_all_eval_data"
+
     # path_task=f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_no_wd/"
     # path_task = f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/ours_self_condition_mean_mix_before_weights_{task}_steps_10_wd_0.01/"
     # path_task =f"/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/glue_results/baseline_{task}"
-    paths[task] = os.path.join(path_task, f"test_top_p_None_temperature_1.0_results.json") #"test_results.json")
+    paths[task] = os.path.join(path_task, "eval_top_p_None_temperature_1.0_seed_42_guidance_scale_1.0_results.json") #f"eval_0_top_p_None_temperature_1.0_results.json") #"test_results.json")
+print(glue_ordered)
 read_values(paths, is_baseline=False) #, tasks=small_datasets)

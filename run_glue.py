@@ -142,7 +142,10 @@ def main():
     # Split dataset, since test sets of GLUE do not have the labels.
     if data_args.split_glue:
         raw_datasets = split_glue(raw_datasets, data_args.dataset_name, data_args.glue_split_seed) 
-        
+    elif data_args.dataset_name == "mnli":
+        raw_datasets["validation"] =  raw_datasets["validation_matched"] # mismatched is for reverse, and for normal is matched.
+        raw_datasets["test"] = raw_datasets["test_matched"]
+      
     # Labels
     is_regression = data_args.dataset_name == "stsb"
     config = RobertaDiffusionConfig.from_pretrained(
@@ -241,10 +244,14 @@ def main():
     if training_args.do_predict or data_args.dataset_name is not None or data_args.test_file is not None:
         if "test" not in raw_datasets:
             raise ValueError("--do_predict requires a test dataset")
-        predict_dataset = raw_datasets["test"]
+        predict_datasets = [raw_datasets["test"]] if data_args.dataset_name != "mnli" else [raw_datasets["test_matched"]]
+        if data_args.dataset_name == "mnli":
+            predict_datasets.append(raw_datasets["test_mismatched"])
+
         if data_args.max_predict_samples is not None:
-            max_predict_samples = min(len(predict_dataset), data_args.max_predict_samples)
-            predict_dataset = predict_dataset.select(range(max_predict_samples))
+            for i in range(len(predict_datasets)):
+                max_predict_samples = min(len(predict_datasets[i]), data_args.max_predict_samples)
+                predict_datasets[i] = predict_datasets[i].select(range(max_predict_samples))
 
     # Log a few random samples from the training set:
     if training_args.do_train:
@@ -365,13 +372,15 @@ def main():
 
     if training_args.do_predict:
         logger.info("*** Test ***")
-        metrics = trainer.evaluate(eval_dataset=predict_dataset, metric_key_prefix="test")
-        max_predict_samples = (
-            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
-        )
-        metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
-        trainer.log_metrics("test", metrics)
-        trainer.save_metrics("test", metrics)
+        for i, predict_dataset in enumerate(predict_datasets):
+            metric_key_prefix=f"test_{i}"
+            metrics = trainer.evaluate(eval_dataset=predict_dataset, metric_key_prefix=metric_key_prefix)
+            max_predict_samples = (
+                data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+            )
+            metrics["test_samples"] = min(max_predict_samples, len(predict_dataset))
+            trainer.log_metrics(metric_key_prefix, metrics)
+            trainer.save_metrics(metric_key_prefix, metrics)
 
 
 if __name__ == "__main__":
