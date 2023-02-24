@@ -1,53 +1,58 @@
-from transformers import Trainer
-from transformers.utils import is_apex_available
-from typing import Dict, Union, Any, Optional, List, Tuple, NamedTuple
-from torch.utils.data import Dataset
-import torch
-import pdb
 import math
-import time
 import os
+import shutil
+import sys
+import time
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+
 import numpy as np
-from torch import nn
-import torch.nn.functional as F
-from sdlm.utils import convert_to_simplex, scale
-from transformers.trainer_pt_utils import (
-    nested_detach,
-    nested_numpify,
-    find_batch_size,
-    nested_concat,
-    nested_truncate,
-    IterableDatasetShard,
-)
+import torch
 import torch.distributed as dist
+import torch.nn.functional as F
+from torch import nn
+from torch.nn import CrossEntropyLoss
+from torch.optim import AdamW
+from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.auto import tqdm
-from torch.utils.data import RandomSampler
+from transformers import Trainer
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-import sys
-from transformers.trainer_callback import TrainerState
-from transformers.integrations import TensorBoardCallback, hp_params
-from transformers.trainer_utils import (
-    has_length,
-    denumpify_detensorize,
-    speed_metrics,
-    seed_worker,
-    HPSearchBackend,
-    TrainOutput,
-    ShardedDDPOption,
-)
-from transformers.utils import logging, is_datasets_available, is_torch_tpu_available
-from transformers.pytorch_utils import is_torch_less_than_1_11
-from torch.utils.data import DataLoader
 from transformers.deepspeed import deepspeed_init
-from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
-from sdlm.inference.inference_utils import predict_conditional_generated, logits_projection
-from sdlm.utils import self_condition_preds, pad_data
-from torch.nn import CrossEntropyLoss
-from transformers.utils import is_sagemaker_mp_enabled
-from transformers import AdamW
-import shutil
+from transformers.integrations import TensorBoardCallback, hp_params
+from transformers.pytorch_utils import is_torch_less_than_1_11
 from transformers.trainer import TRAINER_STATE_NAME
+from transformers.trainer_callback import TrainerState
+from transformers.trainer_pt_utils import (
+    IterableDatasetShard,
+    find_batch_size,
+    nested_concat,
+    nested_detach,
+    nested_numpify,
+    nested_truncate,
+)
+from transformers.trainer_utils import (
+    HPSearchBackend,
+    ShardedDDPOption,
+    TrainOutput,
+    denumpify_detensorize,
+    has_length,
+    seed_worker,
+    speed_metrics,
+)
+from transformers.utils import (
+    is_apex_available,
+    is_datasets_available,
+    is_sagemaker_mp_enabled,
+    is_torch_tpu_available,
+    logging,
+)
+
+from sdlm.inference.inference_utils import (
+    logits_projection,
+    predict_conditional_generated,
+)
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from sdlm.utils import convert_to_simplex, pad_data, scale, self_condition_preds
 
 if is_apex_available():
     from apex import amp
@@ -97,7 +102,10 @@ class DiffusionTrainer(Trainer):
         self.inference_noise_scheduler = inference_noise_scheduler
         self.tb_writer = self.get_tb_writer()
         self.eos_token_id = self.tokenizer.eos_token_id
-        self.classifier_free_guidance = diffusion_args.guidance_scale > 1.0 and data_args.conditional_generation is not None
+        self.classifier_free_guidance = (
+            diffusion_args.guidance_scale > 1.0
+            and data_args.conditional_generation is not None
+        )
 
     def annotated_split(self, split):
         return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}_seed_{self.args.seed}_guidance_scale_{self.diffusion_args.guidance_scale}"
@@ -108,14 +116,15 @@ class DiffusionTrainer(Trainer):
     def log_metrics(self, split, metrics):
         super().log_metrics(self.annotated_split(split), metrics)
 
-
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
             if isinstance(cb, TensorBoardCallback):
                 return cb
         return None
 
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]) -> torch.Tensor:
+    def training_step(
+        self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
+    ) -> torch.Tensor:
         """
         Perform a training step on a batch of inputs.
         Subclass and override to inject custom behavior.
@@ -134,15 +143,29 @@ class DiffusionTrainer(Trainer):
 
         # Truncate the length if needed.
         if self.data_args.truncation_length > 0:
-            inputs["input_ids"] = inputs["input_ids"][:, : -self.data_args.truncation_length]
-            inputs["span_mask"] = inputs["span_mask"][:, : -self.data_args.truncation_length]
+            inputs["input_ids"] = inputs["input_ids"][
+                :, : -self.data_args.truncation_length
+            ]
+            inputs["span_mask"] = inputs["span_mask"][
+                :, : -self.data_args.truncation_length
+            ]
 
         # Creates the noisy simplex and timesteps.
-        simplex = convert_to_simplex(inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size)
-        noise = self.diffusion_args.simplex_value * torch.randn(simplex.shape, device=simplex.device, dtype=simplex.dtype)
+        simplex = convert_to_simplex(
+            inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size
+        )
+        noise = self.diffusion_args.simplex_value * torch.randn(
+            simplex.shape, device=simplex.device, dtype=simplex.dtype
+        )
         bsz = simplex.shape[0]
         # Sample a random timestep for each simplex token representation.
-        timesteps = torch.randint(0, len(self.noise_scheduler), (bsz,), device=simplex.device, dtype=torch.int64)
+        timesteps = torch.randint(
+            0,
+            len(self.noise_scheduler),
+            (bsz,),
+            device=simplex.device,
+            dtype=torch.int64,
+        )
         # Adds noise to each simplex representation (Forward diffusion process).
         noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
         timesteps = scale(timesteps, len(self.noise_scheduler))
@@ -152,7 +175,7 @@ class DiffusionTrainer(Trainer):
             previous_pred = None
             if np.random.rand(1) > 0.5:
                 outputs = model(**inputs, previous_pred=previous_pred)
-                logits_projection_fct = lambda x: logits_projection(
+                logits_projection_fct = lambda x: logits_projection(  # noqa: E731
                     x,
                     self.diffusion_args.sampling_type,
                     self.diffusion_args.top_p,
@@ -160,11 +183,15 @@ class DiffusionTrainer(Trainer):
                     self.diffusion_args.temperature,
                 )
                 previous_pred = self_condition_preds(
-                    self.diffusion_args.self_condition, outputs.logits, logits_projection_fct
+                    self.diffusion_args.self_condition,
+                    outputs.logits,
+                    logits_projection_fct,
                 )
             inputs.update({"previous_pred": previous_pred})
         # NOTE: we do this after computation of self-conditioning to not affect that one.
-        inputs.update({"classifier_free_guidance_in_train": self.classifier_free_guidance})
+        inputs.update(
+            {"classifier_free_guidance_in_train": self.classifier_free_guidance}
+        )
         with self.autocast_smart_context_manager():
             loss = self.compute_loss(model, inputs)
 
@@ -200,10 +227,15 @@ class DiffusionTrainer(Trainer):
                     batch_size=inputs["input_ids"].shape[0]
                     if is_conditional_generation
                     else self.args.per_device_eval_batch_size,
-                    seq_length=self.data_args.max_seq_length - self.data_args.truncation_length,
+                    seq_length=self.data_args.max_seq_length
+                    - self.data_args.truncation_length,
                     batch=inputs,
                     guidance_scale=self.diffusion_args.guidance_scale,
-                    generator=torch.Generator(device=self.args.device).manual_seed(self.args.seed) if self.diffusion_args.generate_with_seed else None,
+                    generator=torch.Generator(device=self.args.device).manual_seed(
+                        self.args.seed
+                    )
+                    if self.diffusion_args.generate_with_seed
+                    else None,
                 )
                 if is_conditional_generation:
                     loss = outputs.loss.mean().detach()
@@ -216,7 +248,9 @@ class DiffusionTrainer(Trainer):
         if self.args.compute_eval_loss_with_simplex and is_conditional_generation:
             loss_fct = CrossEntropyLoss()
             labels = torch.where(inputs["span_mask"], inputs["input_ids"], -100)
-            loss = loss_fct(simplex.view(-1, self.model.config.vocab_size), labels.view(-1)).detach()
+            loss = loss_fct(
+                simplex.view(-1, self.model.config.vocab_size), labels.view(-1)
+            ).detach()
 
         return (simplex, logits, loss)
 
@@ -236,13 +270,19 @@ class DiffusionTrainer(Trainer):
         is_conditional_generation = self.data_args.conditional_generation is not None
         save_prefixes = is_conditional_generation  # and self.data_args.conditional_generation != "seq2seq"
 
-        prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else args.prediction_loss_only
+        prediction_loss_only = (
+            prediction_loss_only
+            if prediction_loss_only is not None
+            else args.prediction_loss_only
+        )
         # if eval is called w/o train init deepspeed here
         if args.deepspeed and not self.deepspeed:
 
             # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
             # from the checkpoint eventually
-            deepspeed_engine, _, _ = deepspeed_init(self, num_training_steps=0, resume_from_checkpoint=None, inference=True)
+            deepspeed_engine, _, _ = deepspeed_init(
+                self, num_training_steps=0, resume_from_checkpoint=None, inference=True
+            )
             self.model = deepspeed_engine.module
             self.model_wrapped = deepspeed_engine
             self.deepspeed = deepspeed_engine
@@ -278,7 +318,7 @@ class DiffusionTrainer(Trainer):
             tokenizer=self.tokenizer,
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
             temperature=self.diffusion_args.temperature,
-            guidance_softmax_combination=self.diffusion_args.guidance_softmax_combination
+            guidance_softmax_combination=self.diffusion_args.guidance_softmax_combination,
         )
 
         self.callback_handler.eval_dataloader = dataloader
@@ -309,9 +349,15 @@ class DiffusionTrainer(Trainer):
 
             # Truncate the length if needed.
             if self.data_args.truncation_length > 0:
-                inputs["input_ids"] = inputs["input_ids"][:, : -self.data_args.truncation_length]
-                inputs["span_mask"] = inputs["span_mask"][:, : -self.data_args.truncation_length]
-                max_seq_length = self.data_args.max_seq_length - self.data_args.truncation_length
+                inputs["input_ids"] = inputs["input_ids"][
+                    :, : -self.data_args.truncation_length
+                ]
+                inputs["span_mask"] = inputs["span_mask"][
+                    :, : -self.data_args.truncation_length
+                ]
+                max_seq_length = (
+                    self.data_args.max_seq_length - self.data_args.truncation_length
+                )
                 assert self.data_args.eval_context_size < max_seq_length
 
             # Update the observed num examples
@@ -328,7 +374,10 @@ class DiffusionTrainer(Trainer):
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
             if save_prefixes:
                 prefixes = (
-                    pad_data([input[~mask] for input, mask in zip(inputs_decode, masks)], self.tokenizer)
+                    pad_data(
+                        [input[~mask] for input, mask in zip(inputs_decode, masks)],
+                        self.tokenizer,
+                    )
                     if has_mask
                     else None
                 )
@@ -337,84 +386,134 @@ class DiffusionTrainer(Trainer):
                 prefixes = None
             # Update containers on host
             if prefixes is not None:
-                prefixes = self._pad_across_processes(prefixes, pad_index=self.eos_token_id)
+                prefixes = self._pad_across_processes(
+                    prefixes, pad_index=self.eos_token_id
+                )
                 prefixes = self._nested_gather(prefixes)
                 prefixes_host = (
                     prefixes
                     if prefixes_host is None
-                    else nested_concat(prefixes_host, prefixes, padding_index=self.eos_token_id)
+                    else nested_concat(
+                        prefixes_host, prefixes, padding_index=self.eos_token_id
+                    )
                 )
             if inputs_decode is not None:
-                inputs_decode = self._pad_across_processes(inputs_decode, pad_index=self.eos_token_id)
+                inputs_decode = self._pad_across_processes(
+                    inputs_decode, pad_index=self.eos_token_id
+                )
                 inputs_decode = self._nested_gather(inputs_decode)
                 inputs_host = (
                     inputs_decode
                     if inputs_host is None
-                    else nested_concat(inputs_host, inputs_decode, padding_index=self.eos_token_id)
+                    else nested_concat(
+                        inputs_host, inputs_decode, padding_index=self.eos_token_id
+                    )
                 )
             if loss is not None:
                 losses = self._nested_gather(loss.repeat(batch_size))
-                losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+                losses_host = (
+                    losses
+                    if losses_host is None
+                    else torch.cat((losses_host, losses), dim=0)
+                )
             # Note that this block should be before masks block, since we need masks here.
             if simplex is not None:
                 # In case of having a mask softmax is applied over the simplex non-masked values.
                 if has_mask:
                     mask_value = torch.finfo(simplex.dtype).min
-                    mask_value = torch.tensor(mask_value, dtype=simplex.dtype, device=simplex.device)
+                    mask_value = torch.tensor(
+                        mask_value, dtype=simplex.dtype, device=simplex.device
+                    )
                     simplex = torch.where(masks[:, :, None], simplex, mask_value)
                 simplex = F.softmax(simplex, dim=-1)
                 if self.preprocess_logits_for_metrics is not None:
                     simplex = self.preprocess_logits_for_metrics(simplex)
-                simplex = self._pad_across_processes(simplex, pad_index=self.eos_token_id)
+                simplex = self._pad_across_processes(
+                    simplex, pad_index=self.eos_token_id
+                )
                 simplex = self._nested_gather(simplex)
                 # TODO: note that this is no more a simplex, but the processed one.
                 simplex_host = (
                     simplex
                     if simplex_host is None
-                    else nested_concat(simplex_host, simplex, padding_index=self.eos_token_id)
+                    else nested_concat(
+                        simplex_host, simplex, padding_index=self.eos_token_id
+                    )
                 )
             if masks is not None:
                 masks = self._pad_across_processes(masks, pad_index=0)
                 masks = self._nested_gather(masks)
                 # We pad masks with False tokens.
-                masks_host = masks if masks_host is None else nested_concat(masks_host, masks, padding_index=0)
+                masks_host = (
+                    masks
+                    if masks_host is None
+                    else nested_concat(masks_host, masks, padding_index=0)
+                )
             if logits is not None:
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits)
                 logits = self._pad_across_processes(logits, pad_index=self.eos_token_id)
                 logits = self._nested_gather(logits)
                 logits_host = (
-                    logits if logits_host is None else nested_concat(logits_host, logits, padding_index=self.eos_token_id)
+                    logits
+                    if logits_host is None
+                    else nested_concat(
+                        logits_host, logits, padding_index=self.eos_token_id
+                    )
                 )
 
-            self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
+            self.control = self.callback_handler.on_prediction_step(
+                args, self.state, self.control
+            )
 
         # Gather all remaining tensors and put them back on the CPU
         if losses_host is not None:
             losses = nested_numpify(losses_host)
-            all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+            all_losses = (
+                losses
+                if all_losses is None
+                else np.concatenate((all_losses, losses), axis=0)
+            )
         if logits_host is not None:
             logits = nested_numpify(logits_host)
-            all_logits = logits if all_logits is None else nested_concat(all_logits, logits, padding_index=self.eos_token_id)
+            all_logits = (
+                logits
+                if all_logits is None
+                else nested_concat(all_logits, logits, padding_index=self.eos_token_id)
+            )
         if simplex_host is not None:
             simplex = nested_numpify(simplex_host)
             all_simplex = (
-                simplex if all_simplex is None else nested_concat(all_simplex, simplex, padding_index=self.eos_token_id)
+                simplex
+                if all_simplex is None
+                else nested_concat(
+                    all_simplex, simplex, padding_index=self.eos_token_id
+                )
             )
         if inputs_host is not None:
             inputs_decode = nested_numpify(inputs_host)
             all_inputs = (
                 inputs_decode
                 if all_inputs is None
-                else nested_concat(all_inputs, inputs_decode, padding_index=self.eos_token_id)
+                else nested_concat(
+                    all_inputs, inputs_decode, padding_index=self.eos_token_id
+                )
             )
         if masks_host is not None:
             masks = nested_numpify(masks_host)
-            all_masks = masks if all_masks is None else nested_concat(all_masks, masks, padding_index=0)
+            all_masks = (
+                masks
+                if all_masks is None
+                else nested_concat(all_masks, masks, padding_index=0)
+            )
         if prefixes_host is not None:
             prefixes = nested_numpify(prefixes_host)
             all_prefixes = (
-                prefixes if all_prefixes is None else nested_concat(all_prefixes, prefixes, padding_index=self.eos_token_id)
+                prefixes
+                if all_prefixes is None
+                else nested_concat(
+                    all_prefixes, prefixes, padding_index=self.eos_token_id
+                )
             )
 
         # Number of samples
@@ -466,14 +565,16 @@ class DiffusionTrainer(Trainer):
             results.update(
                 {
                     "pred_texts_from_simplex": self.tokenizer.batch_decode(
-                        all_simplex, skip_special_tokens=self.data_args.skip_special_tokens
+                        all_simplex,
+                        skip_special_tokens=self.data_args.skip_special_tokens,
                     )
                 }
             )
             results.update(
                 {
                     "pred_texts_from_logits": self.tokenizer.batch_decode(
-                        all_logits, skip_special_tokens=self.data_args.skip_special_tokens
+                        all_logits,
+                        skip_special_tokens=self.data_args.skip_special_tokens,
                     )
                 }
             )
@@ -482,7 +583,10 @@ class DiffusionTrainer(Trainer):
             results.update(
                 {
                     "gold_texts_masked": [
-                        self.tokenizer.decode(input[mask], skip_special_tokens=self.data_args.skip_special_tokens)
+                        self.tokenizer.decode(
+                            input[mask],
+                            skip_special_tokens=self.data_args.skip_special_tokens,
+                        )
                         for mask, input in zip(all_masks, all_inputs)
                     ]
                 }
@@ -491,7 +595,9 @@ class DiffusionTrainer(Trainer):
                 results.update(
                     {
                         "prefixes": [
-                            self.tokenizer.decode(x, skip_special_tokens=True)  # self.data_args.skip_special_tokens)
+                            self.tokenizer.decode(
+                                x, skip_special_tokens=True
+                            )  # self.data_args.skip_special_tokens)
                             for x in all_prefixes
                         ]
                     }
@@ -578,7 +684,9 @@ class DiffusionTrainer(Trainer):
             )
         )
         self.log(output.metrics)
-        self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+        self.control = self.callback_handler.on_evaluate(
+            self.args, self.state, self.control, output.metrics
+        )
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         # Save the results
@@ -595,7 +703,9 @@ class DiffusionTrainer(Trainer):
             total_text = ""
             for k, v in output.results.items():
                 total_text += f"*** {k} ***: {v[i]}" + "  \n"
-            self.tb_writer.tb_writer.add_text(f"sample_{i}", total_text, state.global_step)
+            self.tb_writer.tb_writer.add_text(
+                f"sample_{i}", total_text, state.global_step
+            )
 
     def get_train_dataloader(self) -> DataLoader:
         """
@@ -610,9 +720,13 @@ class DiffusionTrainer(Trainer):
         train_dataset = self.train_dataset
         data_collator = self.data_collator("train")
         if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
-            train_dataset = self._remove_unused_columns(train_dataset, description="training")
+            train_dataset = self._remove_unused_columns(
+                train_dataset, description="training"
+            )
         else:
-            data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+            data_collator = self._get_collator_with_removed_columns(
+                data_collator, description="training"
+            )
 
         train_sampler = self._get_train_sampler()
 
@@ -642,9 +756,13 @@ class DiffusionTrainer(Trainer):
         data_collator = self.data_collator("eval")
 
         if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
-            eval_dataset = self._remove_unused_columns(eval_dataset, description="evaluation")
+            eval_dataset = self._remove_unused_columns(
+                eval_dataset, description="evaluation"
+            )
         else:
-            data_collator = self._get_collator_with_removed_columns(data_collator, description="evaluation")
+            data_collator = self._get_collator_with_removed_columns(
+                data_collator, description="evaluation"
+            )
 
         eval_sampler = self._get_eval_sampler(eval_dataset)
 
@@ -671,18 +789,33 @@ class DiffusionTrainer(Trainer):
         opt_model = self.model
 
         if self.optimizer is None:
-            no_decay = ["bias", "LayerNorm.weight", "timestep_embed.weight", "timestep_embed.bias"]
+            no_decay = [
+                "bias",
+                "LayerNorm.weight",
+                "timestep_embed.weight",
+                "timestep_embed.bias",
+            ]
             optimizer_grouped_parameters = [
                 {
-                    "params": [p for n, p in opt_model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "params": [
+                        p
+                        for n, p in opt_model.named_parameters()
+                        if not any(nd in n for nd in no_decay)
+                    ],
                     "weight_decay": self.args.weight_decay,
                 },
                 {
-                    "params": [p for n, p in opt_model.named_parameters() if any(nd in n for nd in no_decay)],
+                    "params": [
+                        p
+                        for n, p in opt_model.named_parameters()
+                        if any(nd in n for nd in no_decay)
+                    ],
                     "weight_decay": 0.0,
                 },
             ]
-            self.optimizer = AdamW(optimizer_grouped_parameters, lr=self.args.learning_rate)
+            self.optimizer = AdamW(
+                optimizer_grouped_parameters, lr=self.args.learning_rate
+            )
         return self.optimizer
 
     def _rotate_checkpoints(self, use_mtime=False, output_dir=None) -> None:
@@ -690,7 +823,9 @@ class DiffusionTrainer(Trainer):
             return
 
         # Check if we should delete older checkpoint(s)
-        checkpoints_sorted = self._sorted_checkpoints(use_mtime=use_mtime, output_dir=output_dir)
+        checkpoints_sorted = self._sorted_checkpoints(
+            use_mtime=use_mtime, output_dir=output_dir
+        )
         if len(checkpoints_sorted) <= self.args.save_total_limit:
             return
 
@@ -704,10 +839,14 @@ class DiffusionTrainer(Trainer):
         ):
             save_total_limit = 2
 
-        number_of_checkpoints_to_delete = max(0, len(checkpoints_sorted) - save_total_limit)
+        number_of_checkpoints_to_delete = max(
+            0, len(checkpoints_sorted) - save_total_limit
+        )
         checkpoints_to_be_deleted = checkpoints_sorted[:number_of_checkpoints_to_delete]
         for checkpoint in checkpoints_to_be_deleted:
-            logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+            logger.info(
+                f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
+            )
             if self.args.save_checkpoints_on_s3:
                 # TODO: we need to remove this from the codes.
                 command = f"AWS_ACCESS_KEY_ID=AKIA5BJLZJPW5VNOE6SI AWS_SECRET_ACCESS_KEY=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 aws s3 sync {checkpoint} s3://ai2-s2-research/rabeehk/{checkpoint}"
@@ -715,7 +854,12 @@ class DiffusionTrainer(Trainer):
             shutil.rmtree(checkpoint)
 
     def _inner_training_loop(
-        self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
+        self,
+        batch_size=None,
+        args=None,
+        resume_from_checkpoint=None,
+        trial=None,
+        ignore_keys_for_eval=None,
     ):
         self._train_batch_size = batch_size
         # Data loader and number of training steps
@@ -725,12 +869,16 @@ class DiffusionTrainer(Trainer):
         # number of training epochs: num_train_epochs
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
-        total_train_batch_size = args.train_batch_size * args.gradient_accumulation_steps * args.world_size
+        total_train_batch_size = (
+            args.train_batch_size * args.gradient_accumulation_steps * args.world_size
+        )
 
         len_dataloader = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
-            num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
+            num_update_steps_per_epoch = (
+                len_dataloader // args.gradient_accumulation_steps
+            )
             num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
             num_examples = self.num_examples(train_dataloader)
             if args.max_steps > 0:
@@ -742,10 +890,16 @@ class DiffusionTrainer(Trainer):
                 # the best we can do.
                 num_train_samples = args.max_steps * total_train_batch_size
             else:
-                max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
+                max_steps = math.ceil(
+                    args.num_train_epochs * num_update_steps_per_epoch
+                )
                 num_train_epochs = math.ceil(args.num_train_epochs)
-                num_train_samples = self.num_examples(train_dataloader) * args.num_train_epochs
-        elif args.max_steps > 0:  # Rely on max_steps when dataloader does not have a working size
+                num_train_samples = (
+                    self.num_examples(train_dataloader) * args.num_train_epochs
+                )
+        elif (
+            args.max_steps > 0
+        ):  # Rely on max_steps when dataloader does not have a working size
             max_steps = args.max_steps
             # Setting a very large number of epochs so we go as many times as necessary over the iterator.
             num_train_epochs = sys.maxsize
@@ -777,7 +931,9 @@ class DiffusionTrainer(Trainer):
         )
         if args.deepspeed:
             deepspeed_engine, optimizer, lr_scheduler = deepspeed_init(
-                self, num_training_steps=max_steps, resume_from_checkpoint=resume_from_checkpoint
+                self,
+                num_training_steps=max_steps,
+                resume_from_checkpoint=resume_from_checkpoint,
             )
             self.model = deepspeed_engine.module
             self.model_wrapped = deepspeed_engine
@@ -817,11 +973,19 @@ class DiffusionTrainer(Trainer):
         logger.info("***** Running training *****")
         logger.info(f"  Num examples = {num_examples}")
         logger.info(f"  Num Epochs = {num_train_epochs}")
-        logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size}")
-        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
-        logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+        logger.info(
+            f"  Instantaneous batch size per device = {args.per_device_train_batch_size}"
+        )
+        logger.info(
+            f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}"
+        )
+        logger.info(
+            f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}"
+        )
         logger.info(f"  Total optimization steps = {max_steps}")
-        logger.info(f"  Number of trainable parameters = {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+        logger.info(
+            f"  Number of trainable parameters = {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
+        )
 
         self.state.epoch = 0
         start_time = time.time()
@@ -830,18 +994,28 @@ class DiffusionTrainer(Trainer):
         steps_trained_progress_bar = None
 
         # Check if continuing training from a checkpoint
-        if resume_from_checkpoint is not None and os.path.isfile(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)):
-            self.state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
+        if resume_from_checkpoint is not None and os.path.isfile(
+            os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)
+        ):
+            self.state = TrainerState.load_from_json(
+                os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)
+            )
             epochs_trained = self.state.global_step // num_update_steps_per_epoch
             if not args.ignore_data_skip:
-                steps_trained_in_current_epoch = self.state.global_step % (num_update_steps_per_epoch)
+                steps_trained_in_current_epoch = self.state.global_step % (
+                    num_update_steps_per_epoch
+                )
                 steps_trained_in_current_epoch *= args.gradient_accumulation_steps
             else:
                 steps_trained_in_current_epoch = 0
 
-            logger.info("  Continuing training from checkpoint, will skip to saved global_step")
+            logger.info(
+                "  Continuing training from checkpoint, will skip to saved global_step"
+            )
             logger.info(f"  Continuing training from epoch {epochs_trained}")
-            logger.info(f"  Continuing training from global step {self.state.global_step}")
+            logger.info(
+                f"  Continuing training from global step {self.state.global_step}"
+            )
             if not args.ignore_data_skip:
                 logger.info(
                     f"  Will skip the first {epochs_trained} epochs then the first {steps_trained_in_current_epoch} "
@@ -849,8 +1023,12 @@ class DiffusionTrainer(Trainer):
                     "flag to your launch command, but you will resume the training on data already seen by your model."
                 )
                 if self.is_local_process_zero() and not args.disable_tqdm:
-                    steps_trained_progress_bar = tqdm(total=steps_trained_in_current_epoch)
-                    steps_trained_progress_bar.set_description("Skipping the first batches")
+                    steps_trained_progress_bar = tqdm(
+                        total=steps_trained_in_current_epoch
+                    )
+                    steps_trained_progress_bar.set_description(
+                        "Skipping the first batches"
+                    )
 
         # Update the references
         self.callback_handler.model = self.model
@@ -862,7 +1040,11 @@ class DiffusionTrainer(Trainer):
             # parameter to Train when using DDP.
             self.state.trial_name = self.hp_name(self._trial)
         if trial is not None:
-            assignments = trial.assignments if self.hp_search_backend == HPSearchBackend.SIGOPT else trial
+            assignments = (
+                trial.assignments
+                if self.hp_search_backend == HPSearchBackend.SIGOPT
+                else trial
+            )
             self.state.trial_params = hp_params(assignments)
         else:
             self.state.trial_params = None
@@ -880,7 +1062,9 @@ class DiffusionTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
         model.zero_grad()
 
-        self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
+        self.control = self.callback_handler.on_train_begin(
+            args, self.state, self.control
+        )
 
         # Skip the first epochs_trained epochs to get the random state of the dataloader at the right point.
         if not args.ignore_data_skip:
@@ -899,13 +1083,19 @@ class DiffusionTrainer(Trainer):
                     _ = list(train_dataloader.sampler)
 
         for epoch in range(epochs_trained, num_train_epochs):
-            if isinstance(train_dataloader, DataLoader) and isinstance(train_dataloader.sampler, DistributedSampler):
+            if isinstance(train_dataloader, DataLoader) and isinstance(
+                train_dataloader.sampler, DistributedSampler
+            ):
                 train_dataloader.sampler.set_epoch(epoch)
-            elif hasattr(train_dataloader, "dataset") and isinstance(train_dataloader.dataset, IterableDatasetShard):
+            elif hasattr(train_dataloader, "dataset") and isinstance(
+                train_dataloader.dataset, IterableDatasetShard
+            ):
                 train_dataloader.dataset.set_epoch(epoch)
 
             if is_torch_tpu_available():
-                parallel_loader = pl.ParallelLoader(train_dataloader, [args.device]).per_device_loader(args.device)
+                parallel_loader = pl.ParallelLoader(
+                    train_dataloader, [args.device]
+                ).per_device_loader(args.device)
                 epoch_iterator = parallel_loader
             else:
                 epoch_iterator = train_dataloader
@@ -915,11 +1105,19 @@ class DiffusionTrainer(Trainer):
                 self._past = None
 
             steps_in_epoch = (
-                len(epoch_iterator) if len_dataloader is not None else args.max_steps * args.gradient_accumulation_steps
+                len(epoch_iterator)
+                if len_dataloader is not None
+                else args.max_steps * args.gradient_accumulation_steps
             )
-            self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
+            self.control = self.callback_handler.on_epoch_begin(
+                args, self.state, self.control
+            )
 
-            if epoch == epochs_trained and resume_from_checkpoint is not None and steps_trained_in_current_epoch == 0:
+            if (
+                epoch == epochs_trained
+                and resume_from_checkpoint is not None
+                and steps_trained_in_current_epoch == 0
+            ):
                 self._load_rng_state(resume_from_checkpoint)
 
             step = -1
@@ -938,7 +1136,9 @@ class DiffusionTrainer(Trainer):
                     steps_trained_progress_bar = None
 
                 if step % args.gradient_accumulation_steps == 0:
-                    self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
+                    self.control = self.callback_handler.on_step_begin(
+                        args, self.state, self.control
+                    )
 
                 if (
                     ((step + 1) % args.gradient_accumulation_steps != 0)
@@ -957,7 +1157,9 @@ class DiffusionTrainer(Trainer):
                     and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
                 ):
                     # if loss is nan or inf simply add the average of previous logged losses
-                    tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    tr_loss += tr_loss / (
+                        1 + self.state.global_step - self._globalstep_last_logged
+                    )
                 else:
                     tr_loss += tr_loss_step
 
@@ -973,14 +1175,20 @@ class DiffusionTrainer(Trainer):
                     and (step + 1) == steps_in_epoch
                 ):
                     # Gradient clipping
-                    if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
+                    if (
+                        args.max_grad_norm is not None
+                        and args.max_grad_norm > 0
+                        and not self.deepspeed
+                    ):
                         # deepspeed does its own clipping
 
                         if self.do_grad_scaling:
                             # Reduce gradients first for XLA
                             if is_torch_tpu_available():
                                 gradients = xm._fetch_gradients(self.optimizer)
-                                xm.all_reduce("sum", gradients, scale=1.0 / xm.xrt_world_size())
+                                xm.all_reduce(
+                                    "sum", gradients, scale=1.0 / xm.xrt_world_size()
+                                )
                             # AMP: gradients need unscaling
                             self.scaler.unscale_(self.optimizer)
 
@@ -995,7 +1203,9 @@ class DiffusionTrainer(Trainer):
                         else:
                             # Revert to normal clipping otherwise, handling Apex or full precision
                             nn.utils.clip_grad_norm_(
-                                amp.master_params(self.optimizer) if self.use_apex else model.parameters(),
+                                amp.master_params(self.optimizer)
+                                if self.use_apex
+                                else model.parameters(),
                                 args.max_grad_norm,
                             )
 
@@ -1024,11 +1234,17 @@ class DiffusionTrainer(Trainer):
                     model.zero_grad()
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                    self.control = self.callback_handler.on_step_end(args, self.state, self.control)
+                    self.control = self.callback_handler.on_step_end(
+                        args, self.state, self.control
+                    )
 
-                    self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
+                    self._maybe_log_save_evaluate(
+                        tr_loss, model, trial, epoch, ignore_keys_for_eval
+                    )
                 else:
-                    self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
+                    self.control = self.callback_handler.on_substep_end(
+                        args, self.state, self.control
+                    )
 
                 if self.control.should_epoch_stop or self.control.should_training_stop:
                     break
@@ -1040,8 +1256,12 @@ class DiffusionTrainer(Trainer):
                 )
                 self.control.should_training_stop = True
 
-            self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
+            self.control = self.callback_handler.on_epoch_end(
+                args, self.state, self.control
+            )
+            self._maybe_log_save_evaluate(
+                tr_loss, model, trial, epoch, ignore_keys_for_eval
+            )
 
             if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
                 if is_torch_tpu_available():
@@ -1059,7 +1279,9 @@ class DiffusionTrainer(Trainer):
             # Clean the state at the end of training
             delattr(self, "_past")
 
-        logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
+        logger.info(
+            "\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n"
+        )
         if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             # Wait for everyone to get here so we are sur the model has been saved by process 0.
             if is_torch_tpu_available():
@@ -1075,7 +1297,12 @@ class DiffusionTrainer(Trainer):
         self._total_loss_scalar += tr_loss.item()
         train_loss = self._total_loss_scalar / self.state.global_step
 
-        metrics = speed_metrics("train", start_time, num_samples=num_train_samples, num_steps=self.state.max_steps)
+        metrics = speed_metrics(
+            "train",
+            start_time,
+            num_samples=num_train_samples,
+            num_steps=self.state.max_steps,
+        )
         self.store_flos()
         metrics["total_flos"] = self.state.total_flos
         metrics["train_loss"] = train_loss
@@ -1087,20 +1314,29 @@ class DiffusionTrainer(Trainer):
         self.log(metrics)
 
         run_dir = self._get_output_dir(trial)
-        checkpoints_sorted = self._sorted_checkpoints(use_mtime=False, output_dir=run_dir)
+        checkpoints_sorted = self._sorted_checkpoints(
+            use_mtime=False, output_dir=run_dir
+        )
 
         # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint.
-        if self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
+        if (
+            self.state.best_model_checkpoint is not None
+            and self.args.save_total_limit == 1
+        ):
             if self.is_world_process_zero():
                 for checkpoint in checkpoints_sorted:
                     if checkpoint != self.state.best_model_checkpoint:
-                        logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+                        logger.info(
+                            f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
+                        )
                         if self.args.save_checkpoints_on_s3:
                             # TODO: we need to remove this from the codes.
                             command = f"AWS_ACCESS_KEY_ID=AKIA5BJLZJPW5VNOE6SI AWS_SECRET_ACCESS_KEY=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 aws s3 sync {checkpoint} s3://ai2-s2-research/rabeehk/{checkpoint}"
                             os.system(command)
                         shutil.rmtree(checkpoint)
 
-        self.control = self.callback_handler.on_train_end(args, self.state, self.control)
+        self.control = self.callback_handler.on_train_end(
+            args, self.state, self.control
+        )
 
         return TrainOutput(self.state.global_step, train_loss, metrics)

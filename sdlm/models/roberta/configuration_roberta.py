@@ -1,7 +1,8 @@
 """Adapted Roberta configuration for diffusion models."""
 
-from transformers.models.roberta.configuration_roberta import RobertaConfig
 from typing import Optional
+
+from transformers.models.roberta.configuration_roberta import RobertaConfig
 
 
 class RobertaDiffusionConfig(RobertaConfig):
@@ -26,5 +27,7 @@ class RobertaDiffusionConfig(RobertaConfig):
         self.classifier_free_uncond_input = classifier_free_uncond_input
         self.self_condition_mlp_projection = self_condition_mlp_projection
         self.self_condition_mix_before_weights = self_condition_mix_before_weights
-        self.self_condition_mix_logits_before_weights = self_condition_mix_logits_before_weights
-        self.empty_token_be_mask=empty_token_be_mask
+        self.self_condition_mix_logits_before_weights = (
+            self_condition_mix_logits_before_weights
+        )
+        self.empty_token_be_mask = empty_token_be_mask

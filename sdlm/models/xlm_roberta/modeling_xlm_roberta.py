@@ -1,19 +1,27 @@
+from typing import Optional, Tuple, Union
+
 import torch
-from typing import Optional, Union, Tuple
-from transformers.utils import logging
-from transformers.models.xlm_roberta.modeling_xlm_roberta import XLMRobertaPreTrainedModel, XLMRobertaModel, XLMRobertaLMHead
-from transformers.modeling_outputs import MaskedLMOutput
-from torch.nn import CrossEntropyLoss
 import torch.nn as nn
 import torch.nn.functional as F
-import pdb
+from torch.nn import CrossEntropyLoss
+from transformers.modeling_outputs import MaskedLMOutput
+from transformers.models.xlm_roberta.modeling_xlm_roberta import (
+    XLMRobertaLMHead,
+    XLMRobertaModel,
+    XLMRobertaPreTrainedModel,
+)
+from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
 
 class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
     _keys_to_ignore_on_save = [r"lm_head.decoder.weight", r"lm_head.decoder.bias"]
-    _keys_to_ignore_on_load_missing = [r"position_ids", r"lm_head.decoder.weight", r"lm_head.decoder.bias"]
+    _keys_to_ignore_on_load_missing = [
+        r"position_ids",
+        r"lm_head.decoder.weight",
+        r"lm_head.decoder.bias",
+    ]
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):
@@ -31,7 +39,9 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
         # The LM head weights require special treatment only when they are tied with the word embeddings
         self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
 
-        self.vocab_to_hidden_dim_embed = nn.Linear(config.vocab_size, config.hidden_size, bias=False)
+        self.vocab_to_hidden_dim_embed = nn.Linear(
+            config.vocab_size, config.hidden_size, bias=False
+        )
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
@@ -39,19 +49,29 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
             # See Figure 3 in https://arxiv.org/pdf/2211.15089.pdf.
             # Here we concat masked word embeddings, noisy embeddings, mask, and self-conditioning inputs
             # and project them to the hidden_size.
-            self.project_to_hidden_size = nn.Linear(config.hidden_size * 4, config.hidden_size, bias=False)
-        elif self.config.self_condition is not None and not self.config.self_condition in [
-            "logits_addition",
-            "logits_with_projection_addition",
-        ]:
-            self.project_to_hidden_size = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
+            self.project_to_hidden_size = nn.Linear(
+                config.hidden_size * 4, config.hidden_size, bias=False
+            )
+        elif (
+            self.config.self_condition is not None
+            and not self.config.self_condition  # noqa: E713
+            in [
+                "logits_addition",
+                "logits_with_projection_addition",
+            ]
+        ):
+            self.project_to_hidden_size = nn.Linear(
+                config.hidden_size * 2, config.hidden_size, bias=False
+            )
 
         # Initialize weights and apply final processing
         self.post_init()
 
     def post_init(self):
         super().post_init()
-        self.vocab_to_hidden_dim_embed.weight.data = self.get_input_embeddings().weight.data.T
+        self.vocab_to_hidden_dim_embed.weight.data = (
+            self.get_input_embeddings().weight.data.T
+        )
 
     def get_output_embeddings(self):
         return self.lm_head.decoder
@@ -88,7 +108,9 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
         kwargs (`Dict[str, any]`, optional, defaults to *{}*):
             Used to hide legacy arguments that have been deprecated.
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
         inputs_probs = F.softmax(simplex, dim=-1)
         seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
@@ -106,10 +128,15 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
                 previous_pred_probs = F.softmax(previous_pred, dim=-1)
             previous_pred = self.vocab_to_hidden_dim_embed(previous_pred_probs)
             if not self.config.deepmind_conditional:
-                if self.config.self_condition in ["logits_with_projection_addition", "logits_addition"]:
+                if self.config.self_condition in [
+                    "logits_with_projection_addition",
+                    "logits_addition",
+                ]:
                     inputs_embeds = inputs_embeds + previous_pred
                 elif self.config.self_condition in ["logits", "logits_with_projection"]:
-                    inputs_embeds = self.project_to_hidden_size(torch.cat([inputs_embeds, previous_pred], axis=-1))
+                    inputs_embeds = self.project_to_hidden_size(
+                        torch.cat([inputs_embeds, previous_pred], axis=-1)
+                    )
                 else:
                     raise NotImplementedError
 
@@ -118,25 +145,38 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
             inputs_word_embeds = self.get_input_embeddings()(input_ids)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
-            inputs_embeds = torch.where(span_mask.unsqueeze(-1), inputs_embeds, torch.zeros_like(previous_pred))
-            previous_pred = torch.where(span_mask.unsqueeze(-1), previous_pred, torch.zeros_like(previous_pred))
+            inputs_embeds = torch.where(
+                span_mask.unsqueeze(-1), inputs_embeds, torch.zeros_like(previous_pred)
+            )
+            previous_pred = torch.where(
+                span_mask.unsqueeze(-1), previous_pred, torch.zeros_like(previous_pred)
+            )
             inputs_word_embeds = torch.where(
-                span_mask.unsqueeze(-1), torch.zeros_like(inputs_word_embeds), inputs_word_embeds
+                span_mask.unsqueeze(-1),
+                torch.zeros_like(inputs_word_embeds),
+                inputs_word_embeds,
             )
             tiled_mask = span_mask.unsqueeze(-1).repeat(1, 1, self.config.hidden_size)
             inputs_embeds = self.project_to_hidden_size(
-                torch.cat([inputs_embeds, inputs_word_embeds, previous_pred, tiled_mask], axis=-1)
+                torch.cat(
+                    [inputs_embeds, inputs_word_embeds, previous_pred, tiled_mask],
+                    axis=-1,
+                )
             )
 
         # TODO: remove conversion.
         timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float())
-        inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(1, seq_length, 1)
+        inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(
+            1, seq_length, 1
+        )
 
         if span_mask is not None and not self.config.deepmind_conditional:
             # For the unmasked tokens, we only compute their original word embeddings.
             # Note that this also sets the self-conditioned inputs wich we are conditioning on
             # to their original word embeddings values.
-            inputs_embeds = torch.where(span_mask.unsqueeze(-1), inputs_embeds, inputs_word_embeds)
+            inputs_embeds = torch.where(
+                span_mask.unsqueeze(-1), inputs_embeds, inputs_word_embeds
+            )
             # TODO: we need to fix classifier-free guidance for the case of deepmind_conditional.
             if classifier_free_guidance:
                 inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
@@ -162,12 +202,20 @@ class XLMRobertaForDiffusionLM(XLMRobertaPreTrainedModel):
         # we do not compute the loss.
         if input_ids is not None and not classifier_free_guidance:
             loss_fct = CrossEntropyLoss()
-            labels = torch.where(span_mask, input_ids, -100) if span_mask is not None else input_ids
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+            labels = (
+                torch.where(span_mask, input_ids, -100)
+                if span_mask is not None
+                else input_ids
+            )
+            masked_lm_loss = loss_fct(
+                prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
+            )
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
-            return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+            return (
+                ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+            )
 
         return MaskedLMOutput(
             loss=masked_lm_loss,

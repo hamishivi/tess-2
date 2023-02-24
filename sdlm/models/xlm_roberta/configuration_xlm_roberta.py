@@ -1,7 +1,8 @@
 """Adapted XLM Roberta configuration for diffusion models."""
 
-from transformers.models.xlm_roberta.configuration_xlm_roberta import XLMRobertaConfig
 from typing import Optional
+
+from transformers.models.xlm_roberta.configuration_xlm_roberta import XLMRobertaConfig
 
 
 class XLMRobertaDiffusionConfig(XLMRobertaConfig):
