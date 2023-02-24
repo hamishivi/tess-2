@@ -1,12 +1,13 @@
-from datasets import DatasetDict, Dataset, load_dataset
-import datasets
-from transformers import AutoTokenizer
 import numpy as np
+from datasets import DatasetDict, load_dataset
+from transformers import AutoTokenizer
 
-dataset_folder = "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/datasets/qqp/"
+dataset_folder = "/home/lily/jt856/documents/simplex-diffusion/datasets/qqp/"
 raw_datasets = DatasetDict()
 for split in ["train", "valid", "test"]:
-    dataset = load_dataset("json", data_files=f"{dataset_folder}/{split}.jsonl")["train"]
+    dataset = load_dataset("json", data_files=f"{dataset_folder}/{split}.jsonl")[
+        "train"
+    ]
     data_split = split if split != "valid" else "dev"
     raw_datasets[data_split] = dataset
 
@@ -21,7 +22,14 @@ for split in ["train", "dev", "test"]:
         token_ids = tokenizer(d["trg"], padding=False, truncation=False)["input_ids"]
         simplification_lengths.append(len(token_ids))
 
-    print("src ", np.mean(original_lengths), " ", np.std(original_lengths), " ", np.max(original_lengths))
+    print(
+        "src ",
+        np.mean(original_lengths),
+        " ",
+        np.std(original_lengths),
+        " ",
+        np.max(original_lengths),
+    )
     print(
         "trg ",
         np.mean(simplification_lengths),

@@ -7,7 +7,7 @@
 	"learning_rate": 3e-5,
 	"weight_decay": 0.01,
 	"num_warmup_steps": 2000,
-	"tokenized_data_path": "/net/nfs.cirrascale/s2-research/rabeehk/simplex-diffusion/processed_data/openwebtext_100",
+	"tokenized_data_path": "/home/lily/jt856/documents/simplex-diffusion/processed_data/openwebtext_100",
 	"output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/simplex/openwebtext_100_conditional_5k_train_2.5k_inference_self_logits_addition_zeros_conditioned",
 	"checkpointing_steps": 1000,
 	"max_seq_length": 100,
