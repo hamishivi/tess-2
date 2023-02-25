@@ -21,4 +21,4 @@ repos:
     hooks:
     - id: flake8
       args: ["--ignore=E501 W503 E203"]
-      exclude: diffusion/models/h3/(ssm|ops)
+      exclude: sdlm/models/h3/(ssm|ops)
