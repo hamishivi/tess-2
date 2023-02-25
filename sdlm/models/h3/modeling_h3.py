@@ -226,11 +226,11 @@ class SSMModel(nn.Module):
 
 
 class H3ForDiffusionLM(GPT2PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [
-        r"attn.masked_bias",
-        r"attn.bias",
-        r"lm_head.weight",
-    ]
+    # _keys_to_ignore_on_load_missing = [
+    #     r"attn.masked_bias",
+    #     r"attn.bias",
+    #     r"lm_head.weight",
+    # ]
 
     def __init__(self, config):
         super().__init__(config)
@@ -428,7 +428,7 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
+            output_chidden_states=output_hidden_states,
             return_dict=return_dict,
         )
         sequence_output = outputs[0]

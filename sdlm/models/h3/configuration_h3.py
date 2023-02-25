@@ -1,3 +1,5 @@
+from typing import Optional
+
 from transformers.models.gpt2 import GPT2Config
 
 
@@ -7,7 +9,6 @@ class H3Config(GPT2Config):
         # n_layer: int,
         # vocab_size: int,
         # max_position_embeddings=0,
-        # dropout_cls=nn.Dropout,
         d_model: int = 1,
         d_inner: int = 1,
         n_head: int = 1,
@@ -24,11 +25,6 @@ class H3Config(GPT2Config):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        # alias GPT2Config and BERTConfig
-        self.layer_norm_eps = self.layer_norm_epsilon
-        self.hidden_dropout_prob = self.resid_pdrop
-        self.hidden_act = self.activation_function
-        self.layer_norm_eps = self.layer_norm_epsilon
         # h3
         self.d_model = d_model
         self.d_inner = d_inner
@@ -50,44 +46,26 @@ class H3Config(GPT2Config):
 class H3DiffusionConfig(H3Config):
     def __init__(
         self,
-        in_channels: int = 16,
-        out_channels: int = 16,
-        model_channels: int = 16,
-        time_embedding_type: str = "positional",
-        freq_shift: int = 0,
-        flip_sin_to_cos: bool = True,
-        use_pretrained_embeds: bool = False,
-        use_pretrained_lm_head: bool = False,
-        self_condition: bool = False,
-        scale_word_embed: bool = False,
-        embed_initial_std: float = None,
-        tokenizer_type: str = "byte-bpe",
-        add_lm_head_transform: bool = False,
-        pre_layer_norm: bool = False,
-        embed_layer_norm: bool = True,
-        time_embed_expansion=4,
-        scale_lm_head=False,
-        linear_in_out_embed_projections=False,
+        self_condition: Optional[str] = None,
+        self_condition_zeros_after_softmax: bool = False,
+        deepmind_conditional: bool = False,
+        classifier_free_simplex_inputs: bool = False,
+        classifier_free_uncond_input: str = "empty_token",
+        self_condition_mlp_projection=False,
+        self_condition_mix_before_weights=False,
+        self_condition_mix_logits_before_weights=False,
+        empty_token_be_mask=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        # Diffusion arguments.
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.model_channels = model_channels
-        self.time_embedding_type = time_embedding_type
-        self.freq_shift = freq_shift
-        self.flip_sin_to_cos = flip_sin_to_cos
-        self.use_pretrained_embeds = use_pretrained_embeds
-        self.use_pretrained_lm_head = use_pretrained_lm_head
         self.self_condition = self_condition
-        self.scale_word_embed = scale_word_embed
-        self.embed_initial_std = embed_initial_std
-        self.time_embed_expansion = time_embed_expansion
-        # Extra model parameters.
-        self.add_lm_head_transform = add_lm_head_transform
-        self.pre_layer_norm = pre_layer_norm
-        self.embed_layer_norm = embed_layer_norm
-        self.tokenizer_type = tokenizer_type
-        self.scale_lm_head = scale_lm_head
-        self.linear_in_out_embed_projections = linear_in_out_embed_projections
+        self.self_condition_zeros_after_softmax = self_condition_zeros_after_softmax
+        self.deepmind_conditional = deepmind_conditional
+        self.classifier_free_simplex_inputs = classifier_free_simplex_inputs
+        self.classifier_free_uncond_input = classifier_free_uncond_input
+        self.self_condition_mlp_projection = self_condition_mlp_projection
+        self.self_condition_mix_before_weights = self_condition_mix_before_weights
+        self.self_condition_mix_logits_before_weights = (
+            self_condition_mix_logits_before_weights
+        )
+        self.empty_token_be_mask = empty_token_be_mask

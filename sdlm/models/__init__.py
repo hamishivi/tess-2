@@ -1,5 +1,3 @@
-from .longformer.configuration_longformer import LongformerDiffusionConfig
-from .longformer.modeling_longformer import LongformerForDiffusionLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 from .utils import model_config_helper
@@ -11,7 +9,5 @@ __all__ = (
     "RobertaForDiffusionLM",
     "XLMRobertaDiffusionConfig",
     "XLMRobertaForDiffusionLM",
-    "LongformerDiffusionConfig",
-    "LongformerForDiffusionLM",
     "model_config_helper",
 )
