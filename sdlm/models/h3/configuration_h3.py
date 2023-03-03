@@ -9,11 +9,11 @@ class H3Config(GPT2Config):
         # n_layer: int,
         # vocab_size: int,
         # max_position_embeddings=0,
-        d_model: int = 768,
-        d_inner: int = 3072,
-        n_head: int = 12,
+        # d_inner: int = 3072,
+        d_model: int = 1,
+        n_head: int = 1,
         rotary_emb_dim: int = 0,
-        attn_layer_idx=(6,),
+        attn_layer_idx=None,
         resid_dropout: float = 0.0,
         embed_dropout: float = 0.1,
         layer_norm_epsilon: float = 1e-5,
@@ -27,7 +27,7 @@ class H3Config(GPT2Config):
         super().__init__(**kwargs)
         # h3
         self.d_model = d_model
-        self.d_inner = d_inner
+        self.d_inner = d_model * 4
         self.ssm_cfg = {"mode": "diag", "measure": "diag-lin"}
         self.attn_layer_idx = attn_layer_idx
         self.attn_cfg = {"num_heads": n_head}

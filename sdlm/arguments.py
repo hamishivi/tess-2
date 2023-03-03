@@ -1,6 +1,6 @@
 """Arguments used in training/inference/data processing."""
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Tuple
 
 from transformers import MODEL_MAPPING, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
@@ -92,6 +92,16 @@ class ModelArguments:
         metadata={
             "help": "If set, resizes the position embedding alternatively, and copies from the original for the uncovered part."
         },
+    )
+    # h3
+    d_model: Optional[int] = field(default=0, metadata={"help": "`d_model` for H3."})
+    n_head: Optional[int] = field(default=0, metadata={"help": "`n_head` for H3."})
+    attn_layer_idx: Optional[Tuple] = field(
+        default=tuple(), metadata={"help": "Attention layer indices for H3."}
+    )
+    # longformer
+    attention_window: int = field(
+        default=1, metadata={"help": "Attention window for Longformer."}
     )
 
     def __post_init__(self):

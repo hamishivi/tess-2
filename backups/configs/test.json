@@ -1,0 +1,11 @@
+{
+	"model_name_or_path": "roberta-base",
+   	"output_dir": "/tmp/test-mlm",
+       	"tokenized_data_path": "processed_data/openwebtext_100/",
+       	"validation_split_ratio": 0.01,
+        "checkpointing_steps": 10,
+	"preprocessing_num_workers": 1,
+	"max_seq_length": 50,
+	"num_diffusion_steps": 20,
+	"max_train_steps": 30
+}
