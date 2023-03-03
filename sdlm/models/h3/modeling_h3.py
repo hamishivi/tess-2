@@ -10,9 +10,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flash_attn.modules.block import Block
+from flash_attn.modules.embedding import GPT2Embeddings
 from flash_attn.modules.mha import MHA
 from flash_attn.modules.mlp import FusedMLP, Mlp
 from torch.nn import CrossEntropyLoss
+from transformers import PreTrainedModel
+from transformers.activations import ACT2FN
 from transformers.modeling_outputs import MaskedLMOutput
 from transformers.models.gpt2.modeling_gpt2 import GPT2PreTrainedModel
 from transformers.utils import logging
@@ -145,10 +148,34 @@ def _init_weights(
                     )
 
 
+class H4Embeddings(GPT2Embeddings):
+    def forward(self, input_ids, position_ids=None, inputs_embeds=None):
+        if input_ids is not None:
+            input_shape = input_ids.size()
+        else:
+            input_shape = inputs_embeds.size()[:-1]
+        seq_len = input_shape[1]
+        if inputs_embeds is None:
+            device = input_ids.device
+            inputs_embeds = self.word_embeddings(input_ids)
+        else:
+            device = inputs_embeds.device
+        if self.project_in is not None:
+            inputs_embeds = self.project_in(inputs_embeds)
+        if self.max_position_embeddings > 0:
+            if position_ids is None:
+                position_ids = torch.arange(seq_len, dtype=torch.long, device=device)
+            position_embeddings = self.position_embeddings(position_ids)
+            embeddings = inputs_embeds + position_embeddings
+        return embeddings
+
+
 class SSMModel(nn.Module):
     def __init__(self, config) -> None:
         super().__init__()
-        # self.embeddings = GPT2Embeddings(d_model, vocab_size, max_position_embeddings)
+        self.embeddings = H4Embeddings(
+            config.d_model, config.vocab_size, config.max_position_embeddings
+        )
         self.residual_in_fp32 = config.residual_in_fp32
 
         # We change the order of dropout, residual and layer norm:
@@ -196,8 +223,17 @@ class SSMModel(nn.Module):
             )
         )
 
-    def forward(self, hidden_states, inference_params=None):
-        # hidden_states = self.embeddings(input_ids, position_ids=position_ids)
+    def forward(
+        self,
+        input_ids,
+        position_ids=None,
+        inference_params=None,
+        inputs_embeds=None,
+        **kwargs,
+    ):
+        hidden_states = self.embeddings(
+            input_ids, position_ids=position_ids, inputs_embeds=inputs_embeds
+        )
         residual = None
         mixer_kwargs = None
         if inference_params is not None:
@@ -225,23 +261,72 @@ class SSMModel(nn.Module):
         return hidden_states
 
 
-class H3ForDiffusionLM(GPT2PreTrainedModel):
-    # _keys_to_ignore_on_load_missing = [
-    #     r"attn.masked_bias",
-    #     r"attn.bias",
-    #     r"lm_head.weight",
-    # ]
-
+class H3ForDiffusionLM(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.h3 = SSMModel(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
+        self.vocab_to_hidden_dim_embed = nn.Linear(
+            config.vocab_size, config.hidden_size, bias=False
+        )
+        self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
+
+        if self.config.self_condition is not None and self.config.deepmind_conditional:
+            # In this case, this is self-conditioning with conditional generation as done in DeepMind paper.
+            # See Figure 3 in https://arxiv.org/pdf/2211.15089.pdf.
+            # Here we concat masked word embeddings, noisy embeddings, mask, and self-conditioning inputs
+            # and project them to the hidden_size.
+            self.project_to_hidden_size = nn.Linear(
+                config.hidden_size * 4, config.hidden_size, bias=False
+            )
+        elif (
+            self.config.self_condition is not None
+            and not self.config.self_condition  # noqa: E713
+            in [
+                "logits_addition",
+                "logits_with_projection_addition",
+                "logits_max",
+                "logits_mean",
+            ]
+        ):
+            if config.self_condition_mlp_projection:
+                self.project_to_hidden_size = nn.Sequential(
+                    nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False),
+                    ACT2FN[config.hidden_act],
+                    nn.Linear(config.hidden_size, config.hidden_size, bias=False),
+                )
+            else:
+                self.project_to_hidden_size = nn.Linear(
+                    config.hidden_size * 2, config.hidden_size, bias=False
+                )
+
         # Initialize weights and apply final processing
-        self.post_init()
+        self.apply(
+            partial(
+                _init_weights,
+                n_layer=config.n_layer,
+                **(
+                    config.initializer_cfg if config.initializer_cfg is not None else {}
+                ),
+            )
+        )
+        self.tie_weights()
+
+    def _init_weights(self, module):
+        return GPT2PreTrainedModel._init_weights(self, module)
+
+    def tie_weights(self):
+        self.lm_head.weight = self.h3.embeddings.word_embeddings.weight
+
+    def get_input_embeddings(self):
+        return self.h3.embeddings.word_embeddings
 
     def get_output_embeddings(self):
         return self.lm_head
+
+    def set_input_embeddings(self, new_embeddings):
+        self.h3.embeddings.word_embeddings = new_embeddings
 
     def set_output_embeddings(self, new_embeddings):
         self.lm_head = new_embeddings
@@ -418,7 +503,7 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
             # TODO: we need to fix classifier-free guidance for the case of deepmind_conditional.
             if classifier_free_guidance:
                 inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
-        outputs = self.roberta(
+        outputs = self.h3(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=None,  # attention_mask,
             token_type_ids=token_type_ids,
@@ -431,7 +516,7 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
             output_chidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        sequence_output = outputs[0]
+        sequence_output = outputs
         prediction_scores = self.lm_head(sequence_output)
 
         masked_lm_loss = None
@@ -464,8 +549,8 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
         return MaskedLMOutput(
             loss=masked_lm_loss,
             logits=prediction_scores,
-            hidden_states=outputs.last_hidden_state,
-            attentions=outputs.attentions,
+            hidden_states=outputs,
+            attentions=None,
         )
 
     def resize_position_embeddings(
@@ -494,41 +579,41 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
         )
         self.config.max_position_embeddings = new_num_position_embeddings
         old_position_embeddings_weight = (
-            self.roberta.embeddings.position_embeddings.weight.clone()
+            self.h3.embeddings.position_embeddings.weight.clone()
         )
 
         padding_idx = self.config.pad_token_id
-        self.roberta.embeddings.position_embeddings = nn.Embedding(
+        self.h3.embeddings.position_embeddings = nn.Embedding(
             self.config.max_position_embeddings,
             self.config.hidden_size,
             padding_idx=padding_idx,
         )
         with torch.no_grad():
             if num_position_embeds_diff > 0:
-                self.roberta.embeddings.position_embeddings.weight[
+                self.h3.embeddings.position_embeddings.weight[
                     :-num_position_embeds_diff
                 ] = nn.Parameter(old_position_embeddings_weight)
                 if with_alternatation:
-                    self.roberta.embeddings.position_embeddings.weight[
+                    self.h3.embeddings.position_embeddings.weight[
                         -num_position_embeds_diff:
                     ] = nn.Parameter(
                         old_position_embeddings_weight[:num_position_embeds_diff]
                     )
             else:
-                self.roberta.embeddings.position_embeddings.weight = nn.Parameter(
+                self.h3.embeddings.position_embeddings.weight = nn.Parameter(
                     old_position_embeddings_weight[:num_position_embeds_diff]
                 )
         # move position_embeddings to correct device
-        self.roberta.embeddings.position_embeddings.to(self.device)
+        self.h3.embeddings.position_embeddings.to(self.device)
         # Update other needed parameters.
-        self.roberta.embeddings.position_ids = (
+        self.h3.embeddings.position_ids = (
             torch.arange(self.config.max_position_embeddings)
             .expand((1, -1))
-            .type_as(self.roberta.embeddings.position_ids)
+            .type_as(self.h3.embeddings.position_ids)
         )
-        self.roberta.embeddings.token_type_ids = torch.zeros(
-            self.roberta.embeddings.position_ids.size(), dtype=torch.long
-        ).type_as(self.roberta.embeddings.token_type_ids)
+        self.h3.embeddings.token_type_ids = torch.zeros(
+            self.h3.embeddings.position_ids.size(), dtype=torch.long
+        ).type_as(self.h3.embeddings.token_type_ids)
 
         # resize the distance embeddings.
         for i in range(self.config.num_hidden_layers):
@@ -536,7 +621,7 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
                 self.config.position_embedding_type == "relative_key"
                 or self.config.position_embedding_type == "relative_key_query"
             ):
-                self.roberta.encoder.layer[
+                self.h3.encoder.layer[
                     i
                 ].attention.self.distance_embedding = nn.Embedding(
                     2 * self.config.max_position_embeddings - 1,
@@ -547,7 +632,7 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
                 ].attention.self.distance_embedding.weight.clone()
                 with torch.no_grad():
                     if num_position_embeds_diff > 0:
-                        self.roberta.encoder.layer[
+                        self.h3.encoder.layer[
                             i
                         ].attention.self.distance_embedding.weight[
                             : -2 * num_position_embeds_diff
@@ -555,7 +640,7 @@ class H3ForDiffusionLM(GPT2PreTrainedModel):
                             old_distance_embedding_weight
                         )
                     else:
-                        self.roberta.encoder.layer[
+                        self.h3.encoder.layer[
                             i
                         ].attention.self.distance_embedding.weight = nn.Parameter(
                             old_distance_embedding_weight[

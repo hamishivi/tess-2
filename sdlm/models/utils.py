@@ -9,10 +9,12 @@ from .xlm_roberta.modeling_xlm_roberta import XLMRobertaForDiffusionLM
 
 
 def model_config_helper(model_name_or_path):
+    if "roberta" in model_name_or_path:
+        return RobertaDiffusionConfig, RobertaForDiffusionLM
     if "longformer" in model_name_or_path:
         return LongformerDiffusionConfig, LongformerForDiffusionLM
-    elif "h3" in model_name_or_path:
+    if "gpt2" in model_name_or_path:
         return H3DiffusionConfig, H3ForDiffusionLM
-    elif "xlm" in model_name_or_path:
+    if "xlm" in model_name_or_path:
         return XLMRobertaDiffusionConfig, XLMRobertaForDiffusionLM
-    return RobertaDiffusionConfig, RobertaForDiffusionLM
+    raise ValueError

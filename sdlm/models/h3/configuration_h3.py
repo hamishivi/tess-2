@@ -9,11 +9,11 @@ class H3Config(GPT2Config):
         # n_layer: int,
         # vocab_size: int,
         # max_position_embeddings=0,
-        d_model: int = 1,
-        d_inner: int = 1,
-        n_head: int = 1,
+        d_model: int = 768,
+        d_inner: int = 3072,
+        n_head: int = 12,
         rotary_emb_dim: int = 0,
-        attn_layer_idx=None,
+        attn_layer_idx=(6,),
         resid_dropout: float = 0.0,
         embed_dropout: float = 0.1,
         layer_norm_epsilon: float = 1e-5,
@@ -69,3 +69,5 @@ class H3DiffusionConfig(H3Config):
             self_condition_mix_logits_before_weights
         )
         self.empty_token_be_mask = empty_token_be_mask
+        # PAD
+        self.vocab_size += 1
