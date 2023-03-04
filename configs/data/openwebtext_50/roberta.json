@@ -3,7 +3,7 @@
     "max_seq_length": 50,
     "seed": 2022,
     "preprocessing_num_workers": 32,
-    "output_dir": "raw/openwebtext/50/longformer",
-    "model_name_or_path": "allenai/longformer-base-4096",
+    "output_dir": "raw/openwebtext_50/roberta",
+    "model_name_or_path": "roberta-base",
     "verification_mode": "no_checks"
 }

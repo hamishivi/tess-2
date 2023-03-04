@@ -270,7 +270,7 @@ class DataTrainingArguments:
         metadata={"help": "Overwrite the cached training and evaluation sets"},
     )
     validation_split_ratio: Optional[float] = field(
-        default=0.01,
+        default=0.001,
         metadata={
             "help": "The ratio(< 1.0) of the train set used as validation set in case there's no validation split."
         },

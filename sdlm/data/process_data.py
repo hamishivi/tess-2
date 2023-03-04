@@ -5,7 +5,7 @@ import sys
 
 import datasets
 from accelerate import Accelerator
-from datasets import load_dataset
+from datasets import DatasetDict, load_dataset
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.utils.versions import require_version
 
@@ -82,6 +82,15 @@ def main():
         )
 
     tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
+
+    train_testvalid = tokenized_datasets["train"].train_test_split(
+        test_size=data_args.validation_split_ratio,
+        shuffle=True,
+        seed=training_args.seed,
+    )
+    tokenized_datasets = DatasetDict(
+        {"train": train_testvalid["train"], "validation": train_testvalid["test"]}
+    )
 
     with training_args.main_process_first():
         tokenized_datasets.save_to_disk(training_args.output_dir)
