@@ -333,17 +333,15 @@ class H3ForDiffusionLM(PreTrainedModel):
 
     def get_h3_empty_tokens(self, shape, device):
         if self.config.empty_token_be_mask:
-            empty_token_ids = (
-                torch.ones(shape, dtype=torch.int64, device=device) * 50264
-            )
+            raise ValueError("Not supported in H3.")
         else:
             # modified
             empty_token_ids = (
                 torch.ones(shape, dtype=torch.int64, device=device)
                 * self.config.pad_token_id
             )
-        empty_token_ids[:, 0] = 0
-        empty_token_ids[:, -1] = 2
+        empty_token_ids[:, 0] = self.config.bos_token_id
+        empty_token_ids[:, -1] = self.config.eos_token_id
         return empty_token_ids
 
     def forward(
