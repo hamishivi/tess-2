@@ -4,6 +4,6 @@
     "max_seq_length": 100,
     "seed": 2022,
     "preprocessing_num_workers": 32,
-    "output_dir": "raw/roberta_c4_100",
+    "output_dir": "raw/c4_100/roberta",
     "model_name_or_path": "roberta-base"
 }

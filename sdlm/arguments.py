@@ -439,6 +439,13 @@ class DataTrainingArguments:
             "help": "In case of GLUE, it adds tags to the sentences like `sentence1:` ... ."
         },
     )
+    # dataset verification
+    verification_mode: str = field(
+        default="basic_checks",
+        metadata={
+            "help": "Verification mode determining the checks to run on the downloaded/processed dataset information (checksums/size/splits/...)."
+        },
+    )
 
     def __post_init__(self):
         if (
