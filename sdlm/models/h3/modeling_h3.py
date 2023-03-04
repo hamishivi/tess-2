@@ -337,9 +337,11 @@ class H3ForDiffusionLM(PreTrainedModel):
                 torch.ones(shape, dtype=torch.int64, device=device) * 50264
             )
         else:
-            # TODO: check if this is true
-            # Padding token in gpt2 is 1
-            empty_token_ids = torch.ones(shape, dtype=torch.int64, device=device)
+            # modified
+            empty_token_ids = (
+                torch.ones(shape, dtype=torch.int64, device=device)
+                * self.config.pad_token_id
+            )
         empty_token_ids[:, 0] = 0
         empty_token_ids[:, -1] = 2
         return empty_token_ids
