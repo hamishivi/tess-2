@@ -24,8 +24,8 @@
     "warmup_steps": 2000,
     "logging_steps": 50,
     "save_steps": 1000,
-    "train_file": "/home/lily/jt856/documents/diffusion/small_data/simple-train.txt",
-    "validation_file": "/home/lily/jt856/documents/diffusion/small_data/simple-test.txt",
+    "train_file": "/home/lily/jt856/documents/diffusion/small_data/c4-train.txt",
+    "validation_file": "/home/lily/jt856/documents/diffusion/small_data/c4-test.txt",
     "output_dir": "/home/lily/jt856/documents/simplex-diffusion/outputs/simple_c4/roberta",
     "line_by_line": true,
     "save_total_limit": 1
