@@ -510,7 +510,7 @@ class H3ForDiffusionLM(PreTrainedModel):
                 inputs_embeds=torch.flip(inputs_embeds, dims=(-1,))
             ),
         )
-        outputs = outputs1 + outputs2
+        outputs = outputs1 + torch.flip(outputs2, dims=(-1,))
         sequence_output = outputs
         prediction_scores = self.lm_head(sequence_output)
 
