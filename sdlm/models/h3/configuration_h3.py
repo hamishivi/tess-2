@@ -30,7 +30,7 @@ class H3Config(GPT2Config):
         self.d_inner = d_model * 4
         self.ssm_cfg = {"mode": "diag", "measure": "diag-lin"}
         self.attn_layer_idx = attn_layer_idx
-        self.attn_cfg = {"num_heads": n_head}
+        self.attn_cfg = {"num_heads": n_head, "causal": False}
         if rotary_emb_dim:
             self.attn_cfg["rotary_emb_dim"] = rotary_emb_dim
         self.resid_dropout = resid_dropout
