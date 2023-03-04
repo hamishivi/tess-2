@@ -148,8 +148,8 @@ def _init_weights(
                     )
 
 
-class H4Embeddings(GPT2Embeddings):
-    def forward(self, input_ids, position_ids=None, inputs_embeds=None):
+class H3Embeddings(GPT2Embeddings):
+    def forward(self, input_ids=None, position_ids=None, inputs_embeds=None):
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
@@ -173,9 +173,6 @@ class H4Embeddings(GPT2Embeddings):
 class SSMModel(nn.Module):
     def __init__(self, config) -> None:
         super().__init__()
-        self.embeddings = H4Embeddings(
-            config.d_model, config.vocab_size, config.max_position_embeddings
-        )
         self.residual_in_fp32 = config.residual_in_fp32
 
         # We change the order of dropout, residual and layer norm:
@@ -225,15 +222,10 @@ class SSMModel(nn.Module):
 
     def forward(
         self,
-        input_ids,
-        position_ids=None,
+        hidden_states,
         inference_params=None,
-        inputs_embeds=None,
         **kwargs,
     ):
-        hidden_states = self.embeddings(
-            input_ids, position_ids=position_ids, inputs_embeds=inputs_embeds
-        )
         residual = None
         mixer_kwargs = None
         if inference_params is not None:
@@ -264,7 +256,11 @@ class SSMModel(nn.Module):
 class H3ForDiffusionLM(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
-        self.h3 = SSMModel(config)
+        self.embeddings = H3Embeddings(
+            config.d_model, config.vocab_size, config.max_position_embeddings
+        )
+        self.h31 = SSMModel(config)
+        self.h32 = SSMModel(config)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         self.vocab_to_hidden_dim_embed = nn.Linear(
@@ -317,16 +313,16 @@ class H3ForDiffusionLM(PreTrainedModel):
         return GPT2PreTrainedModel._init_weights(self, module)
 
     def tie_weights(self):
-        self.lm_head.weight = self.h3.embeddings.word_embeddings.weight
+        self.lm_head.weight = self.embeddings.word_embeddings.weight
 
     def get_input_embeddings(self):
-        return self.h3.embeddings.word_embeddings
+        return self.embeddings.word_embeddings
 
     def get_output_embeddings(self):
         return self.lm_head
 
     def set_input_embeddings(self, new_embeddings):
-        self.h3.embeddings.word_embeddings = new_embeddings
+        self.embeddings.word_embeddings = new_embeddings
 
     def set_output_embeddings(self, new_embeddings):
         self.lm_head = new_embeddings
@@ -503,19 +499,18 @@ class H3ForDiffusionLM(PreTrainedModel):
             # TODO: we need to fix classifier-free guidance for the case of deepmind_conditional.
             if classifier_free_guidance:
                 inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
-        outputs = self.h3(
-            input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
-            attention_mask=None,  # attention_mask,
-            token_type_ids=token_type_ids,
+
+        outputs1 = self.h31(
             position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            output_attentions=output_attentions,
-            output_chidden_states=output_hidden_states,
-            return_dict=return_dict,
+            hidden_states=self.embeddings(inputs_embeds=inputs_embeds),
         )
+        outputs2 = self.h32(
+            position_ids=position_ids,
+            hidden_states=self.embeddings(
+                inputs_embeds=torch.flip(inputs_embeds, dims=(-1,))
+            ),
+        )
+        outputs = outputs1 + outputs2
         sequence_output = outputs
         prediction_scores = self.lm_head(sequence_output)
 
@@ -579,41 +574,41 @@ class H3ForDiffusionLM(PreTrainedModel):
         )
         self.config.max_position_embeddings = new_num_position_embeddings
         old_position_embeddings_weight = (
-            self.h3.embeddings.position_embeddings.weight.clone()
+            self.embeddings.position_embeddings.weight.clone()
         )
 
         padding_idx = self.config.pad_token_id
-        self.h3.embeddings.position_embeddings = nn.Embedding(
+        self.embeddings.position_embeddings = nn.Embedding(
             self.config.max_position_embeddings,
             self.config.hidden_size,
             padding_idx=padding_idx,
         )
         with torch.no_grad():
             if num_position_embeds_diff > 0:
-                self.h3.embeddings.position_embeddings.weight[
+                self.embeddings.position_embeddings.weight[
                     :-num_position_embeds_diff
                 ] = nn.Parameter(old_position_embeddings_weight)
                 if with_alternatation:
-                    self.h3.embeddings.position_embeddings.weight[
+                    self.embeddings.position_embeddings.weight[
                         -num_position_embeds_diff:
                     ] = nn.Parameter(
                         old_position_embeddings_weight[:num_position_embeds_diff]
                     )
             else:
-                self.h3.embeddings.position_embeddings.weight = nn.Parameter(
+                self.embeddings.position_embeddings.weight = nn.Parameter(
                     old_position_embeddings_weight[:num_position_embeds_diff]
                 )
         # move position_embeddings to correct device
-        self.h3.embeddings.position_embeddings.to(self.device)
+        self.embeddings.position_embeddings.to(self.device)
         # Update other needed parameters.
-        self.h3.embeddings.position_ids = (
+        self.embeddings.position_ids = (
             torch.arange(self.config.max_position_embeddings)
             .expand((1, -1))
-            .type_as(self.h3.embeddings.position_ids)
+            .type_as(self.embeddings.position_ids)
         )
-        self.h3.embeddings.token_type_ids = torch.zeros(
-            self.h3.embeddings.position_ids.size(), dtype=torch.long
-        ).type_as(self.h3.embeddings.token_type_ids)
+        self.embeddings.token_type_ids = torch.zeros(
+            self.embeddings.position_ids.size(), dtype=torch.long
+        ).type_as(self.embeddings.token_type_ids)
 
         # resize the distance embeddings.
         for i in range(self.config.num_hidden_layers):
