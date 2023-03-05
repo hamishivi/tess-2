@@ -20,7 +20,7 @@
     "weight_decay": 0.0,
     "top_p": 0.99,
     "max_steps": 100000,
-    "gradient_accumulation_steps": 8,
+    "gradient_accumulation_steps": 1,
     "warmup_steps": 2000,
     "logging_steps": 50,
     "save_steps": 1000,
