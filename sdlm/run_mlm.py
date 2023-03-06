@@ -14,7 +14,7 @@ from transformers import (
 )
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, send_example_telemetry
+from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 from sdlm.arguments import (
@@ -90,10 +90,6 @@ def main():
             training_args,
             diffusion_args,
         ) = parser.parse_args_into_dataclasses()
-
-    # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
-    # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_mlm", model_args, data_args)
 
     # Setup logging
     logging.basicConfig(
@@ -226,18 +222,6 @@ def main():
         tokenized_datasets = tokenize_data_new(
             data_args, tokenizer, raw_datasets, training_args
         )
-
-    # TODO: is this getting the same on each process?
-    '''
-    if "validation" not in tokenized_datasets.keys():
-        tokenized_datasets = split_data_to_train_validation(data_args, tokenized_datasets, training_args.seed)
-        """
-        train_testvalid = tokenized_datasets["train"].train_test_split(
-            test_size=data_args.validation_split_ratio, shuffle=True, seed=training_args.seed
-        )
-        tokenized_datasets = DatasetDict({"train": train_testvalid["train"], "validation": train_testvalid["test"]})
-        """
-    '''
 
     if training_args.do_train:
         if "train" not in tokenized_datasets:

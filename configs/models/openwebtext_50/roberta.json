@@ -1,5 +1,6 @@
 {
-    "model_name_or_path": "allenai/longformer-base-4096",
+    "output_dir": "/home/lily/jt856/documents/simplex-diffusion/outputs/openwebtext_50/roberta",
+    "model_name_or_path": "roberta-base",
     "per_device_train_batch_size": 128,
     "per_device_eval_batch_size": 128,
     "do_train": true,
@@ -25,9 +26,6 @@
     "logging_steps": 50,
     "save_steps": 1000,
     "conditional_generation": "ul2",
-    "tokenized_data_path": "/home/lily/jt856/documents/simplex-diffusion/raw/openwebtext_50/longformer",
-    "output_dir": "/home/lily/jt856/documents/simplex-diffusion/outputs/openwebtext_50/longformer_ul2",
-    "line_by_line": true,
     "save_total_limit": 1,
-    "attention_window": 8
+    "tokenized_data_path": "/home/lily/jt856/documents/simplex-diffusion/raw/openwebtext_50/roberta"
 }

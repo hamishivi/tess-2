@@ -1,5 +1,6 @@
 {
-    "model_name_or_path": "roberta-base",
+    "output_dir": "/home/lily/jt856/documents/simplex-diffusion/outputs/openwebtext_50/h3",
+    "model_name_or_path": "gpt2",
     "per_device_train_batch_size": 128,
     "per_device_eval_batch_size": 128,
     "do_train": true,
@@ -25,9 +26,9 @@
     "logging_steps": 50,
     "save_steps": 1000,
     "conditional_generation": "ul2",
-    "train_file": "/home/lily/jt856/documents/diffusion/small_data/c4-train.txt",
-    "validation_file": "/home/lily/jt856/documents/diffusion/small_data/c4-test.txt",
-    "output_dir": "/home/lily/jt856/documents/simplex-diffusion/outputs/simple_c4/roberta_ul2",
-    "line_by_line": true,
-    "save_total_limit": 1
+    "save_total_limit": 1,
+    "tokenized_data_path": "/home/lily/jt856/documents/simplex-diffusion/raw/openwebtext_50",
+    "d_model": 768,
+    "n_head": 12,
+    "attn_layer_idx": [6]
 }
