@@ -1,0 +1,12 @@
+{
+        "model_name_or_path": "gpt2-medium",
+        "per_device_eval_batch_size": 24,
+        "tokenized_data_path": "/home/lily/jt856/documents/simplex-diffusion/processed_data/openwebtext_256_split_gpt_eval/",
+        "output_dir": "/net/nfs.cirrascale/s2-research/rabeehk/outputs/paper_experiments/gpt2_evals_256/gpt2_medium_top_p_0.9",
+        "max_seq_length": 256,
+        "line_by_line": true,
+        "pad_to_max_length": false,
+        "top_p": 0.9,
+        "conditional_generation": "prefix_lm",
+        "eval_context_size": 32
+}

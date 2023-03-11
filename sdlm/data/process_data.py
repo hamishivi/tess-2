@@ -4,11 +4,12 @@ import os
 import sys
 
 import datasets
-from datasets import load_dataset
-from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
+from accelerate import Accelerator
+from datasets import DatasetDict, load_dataset
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.utils.versions import require_version
-from accelerate import Accelerator
+
+from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
 from sdlm.data.data_utils import tokenize_data
 
 require_version("datasets>=1.8.0")
@@ -16,11 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = HfArgumentParser(
+        (ModelArguments, DataTrainingArguments, TrainingArguments)
+    )
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, data_args, training_args = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1])
+        )
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
@@ -57,6 +62,7 @@ def main():
         cache_dir=model_args.cache_dir,
         use_auth_token=True if model_args.use_auth_token else None,
         split="train",
+        verification_mode=data_args.verification_mode,
     )
 
     tokenizer_kwargs = {
@@ -66,7 +72,9 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path, **tokenizer_kwargs
+        )
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -74,6 +82,15 @@ def main():
         )
 
     tokenized_datasets = tokenize_data(data_args, tokenizer, raw_datasets, accelerator)
+
+    train_testvalid = tokenized_datasets["train"].train_test_split(
+        test_size=data_args.validation_split_ratio,
+        shuffle=True,
+        seed=training_args.seed,
+    )
+    tokenized_datasets = DatasetDict(
+        {"train": train_testvalid["train"], "validation": train_testvalid["test"]}
+    )
 
     with training_args.main_process_first():
         tokenized_datasets.save_to_disk(training_args.output_dir)

@@ -1,16 +1,23 @@
-# Simplex Diffusion Language Model (SDLM).
+# Simplex Diffusion Language Model (SDLM)
 
-# How to setup the environment
-```
-conda env create -f environment.yaml --prefix  /net/nfs.cirrascale/s2-research/rabeehk/conda/envs/sdlm
-python setup develop
-```
-to update environment after installation:
-```
-conda env update --file environment.yaml --prune
+## Installation
+
+```sh
+pip install -r requirements.txt
+pip install -e .
+# optional for devs
+pip install pre-commit
+pre-commit install
 ```
 
-# Process the data.
+## Data
+
 ```
-bash scripts/run_process_data.sh  configs/openwebtext.json
+python sdlm/data/process_data.py configs/data/CONFIG.json
+```
+
+## Training
+
+```sh
+CUDA_VISIBLE_DEVICES=XYZ python sdlm/run_mlm.py configs/models/CONFIG.json
 ```

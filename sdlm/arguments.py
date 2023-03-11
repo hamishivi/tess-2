@@ -1,6 +1,6 @@
 """Arguments used in training/inference/data processing."""
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Tuple
 
 from transformers import MODEL_MAPPING, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
@@ -18,12 +18,17 @@ class ModelArguments:
     model_name_or_path: Optional[str] = field(
         default=None,
         metadata={
-            "help": ("The model checkpoint for weights initialization. Don't set if you want to train a model from scratch.")
+            "help": (
+                "The model checkpoint for weights initialization. Don't set if you want to train a model from scratch."
+            )
         },
     )
     model_type: Optional[str] = field(
         default=None,
-        metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
+        metadata={
+            "help": "If training from scratch, pass a model type from the list: "
+            + ", ".join(MODEL_TYPES)
+        },
     )
     config_overrides: Optional[str] = field(
         default=None,
@@ -35,19 +40,28 @@ class ModelArguments:
         },
     )
     tokenizer_name: Optional[str] = field(
-        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
+        default=None,
+        metadata={
+            "help": "Pretrained tokenizer name or path if not the same as model_name"
+        },
     )
     cache_dir: Optional[str] = field(
         default=None,
-        metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
+        metadata={
+            "help": "Where do you want to store the pretrained models downloaded from huggingface.co"
+        },
     )
     use_fast_tokenizer: bool = field(
         default=True,
-        metadata={"help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."},
+        metadata={
+            "help": "Whether to use one of the fast tokenizer (backed by the tokenizers library) or not."
+        },
     )
     model_revision: str = field(
         default="main",
-        metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
+        metadata={
+            "help": "The specific model version to use (can be a branch name, tag name or commit id)."
+        },
     )
     use_auth_token: bool = field(
         default=False,
@@ -60,7 +74,9 @@ class ModelArguments:
     )
     autoregressive_eval_model: str = field(
         default="EleutherAI/gpt-neo-1.3B",
-        metadata={"help": "The autoregressive model used to measure the evaluation perplexity."},
+        metadata={
+            "help": "The autoregressive model used to measure the evaluation perplexity."
+        },
     )
     resize_position_embeddings: Optional[bool] = field(
         default=None,
@@ -77,10 +93,22 @@ class ModelArguments:
             "help": "If set, resizes the position embedding alternatively, and copies from the original for the uncovered part."
         },
     )
+    # h3
+    d_model: Optional[int] = field(default=0, metadata={"help": "`d_model` for H3."})
+    n_head: Optional[int] = field(default=0, metadata={"help": "`n_head` for H3."})
+    attn_layer_idx: Optional[Tuple] = field(
+        default=tuple(), metadata={"help": "Attention layer indices for H3."}
+    )
+    # longformer
+    attention_window: int = field(
+        default=1, metadata={"help": "Attention window for Longformer."}
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
-            raise ValueError("--config_overrides can't be used in combination with --model_name_or_path")
+            raise ValueError(
+                "--config_overrides can't be used in combination with --model_name_or_path"
+            )
 
 
 @dataclass
@@ -94,19 +122,30 @@ class TrainingArguments(HFTrainingArguments):
             )
         },
     )
-    output_dir: Optional[str] = field(default=None, metadata={"help": "Where to store the final model."})
-    checkpointing_steps: int = field(default=1000, metadata={"help": "Specifies the checkpoint step."})
-    resume_from_checkpoint: Optional[str] = field(
-        default=None, metadata={"help": "If the training should continue from a checkpoint folder."}
+    output_dir: Optional[str] = field(
+        default=None, metadata={"help": "Where to store the final model."}
     )
-    log_generated_texts: bool = field(default=True, metadata={"help": "If set, logs generated texts."})
+    checkpointing_steps: int = field(
+        default=1000, metadata={"help": "Specifies the checkpoint step."}
+    )
+    resume_from_checkpoint: Optional[str] = field(
+        default=None,
+        metadata={"help": "If the training should continue from a checkpoint folder."},
+    )
+    log_generated_texts: bool = field(
+        default=True, metadata={"help": "If set, logs generated texts."}
+    )
     checkpoint_best_model: bool = field(
         default=False,
         metadata={
-            "help": "If set, for `run_glue.py` it sets the metrics name" "to save the best model in each checkpoint step."
+            "help": "If set, for `run_glue.py` it sets the metrics name"
+            "to save the best model in each checkpoint step."
         },
     )
-    eval_for_all_metrics: bool = field(default=False, metadata={"help": "If set, evaluates on all metrics in run_mlm.py"})
+    eval_for_all_metrics: bool = field(
+        default=False,
+        metadata={"help": "If set, evaluates on all metrics in run_mlm.py"},
+    )
     load_states_in_eval_from_model_path: bool = field(
         default=True,
         metadata={
@@ -124,15 +163,22 @@ class TrainingArguments(HFTrainingArguments):
         },
     )
     compute_eval_loss_with_simplex: bool = field(
-        default=False, metadata={"help": "If set, computes the evaluation loss from the simplex values."}
+        default=False,
+        metadata={
+            "help": "If set, computes the evaluation loss from the simplex values."
+        },
     )
-    ssdlm_optimizer: bool = field(default=False, metadata={"help": "If set, uses ssdlm optimizer."})
+    ssdlm_optimizer: bool = field(
+        default=False, metadata={"help": "If set, uses ssdlm optimizer."}
+    )
     save_checkpoints_on_s3: bool = field(
         default=False,
         metadata={
             "help": "If set, instead of deleting the checkpoints when passing the limit of save checkpoints, it saves them on S3."
         },
     )
+    # NOTE: change default to suppress deprecation warning
+    optim: str = field(default="adamw_torch")
 
 
 @dataclass
@@ -152,7 +198,9 @@ class Seq2SeqTrainingArguments(TrainingArguments):
             `num_beams` value of the model configuration.
     """
 
-    sortish_sampler: bool = field(default=False, metadata={"help": "Whether to use SortishSampler or not."})
+    sortish_sampler: bool = field(
+        default=False, metadata={"help": "Whether to use SortishSampler or not."}
+    )
     generation_max_length: Optional[int] = field(
         default=None,
         metadata={
@@ -178,27 +226,54 @@ class DataTrainingArguments:
     """
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
-    split_glue: bool = field(default=True, metadata={"help": "If set to true split the glue dev/train to make the test set"
-        "otherwises uses the original splits."})
-    glue_split_seed: int = field(default=42, metadata={"help": "Seed to split the glue data."})
-    tokenized_data_path: Optional[str] = field(default=None, metadata={"help": "If set, reads a tokenized train data."})
+
+    split_glue: bool = field(
+        default=True,
+        metadata={
+            "help": "If set to true split the glue dev/train to make the test set"
+            "otherwises uses the original splits."
+        },
+    )
+    glue_split_seed: int = field(
+        default=42, metadata={"help": "Seed to split the glue data."}
+    )
+    tokenized_data_path: Optional[str] = field(
+        default=None, metadata={"help": "If set, reads a tokenized train data."}
+    )
     dataset_name: Optional[str] = field(
-        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+        default=None,
+        metadata={"help": "The name of the dataset to use (via the datasets library)."},
     )
     dataset_config_name: Optional[str] = field(
-        default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
+        default=None,
+        metadata={
+            "help": "The configuration name of the dataset to use (via the datasets library)."
+        },
     )
-    dataset_folder: str = field(default=None, metadata={"help": "The dataset folder containing the dataset."})
-    train_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
+    dataset_folder: str = field(
+        default=None, metadata={"help": "The dataset folder containing the dataset."}
+    )
+    train_file: Optional[str] = field(
+        default=None, metadata={"help": "The input training data file (a text file)."}
+    )
     validation_file: Optional[str] = field(
         default=None,
-        metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
+        metadata={
+            "help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."
+        },
     )
-    test_file: Optional[str] = field(default=None, metadata={"help": "A text file containing the test data."})
-    overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
+    test_file: Optional[str] = field(
+        default=None, metadata={"help": "A text file containing the test data."}
+    )
+    overwrite_cache: bool = field(
+        default=False,
+        metadata={"help": "Overwrite the cached training and evaluation sets"},
+    )
     validation_split_ratio: Optional[float] = field(
-        default=0.01,
-        metadata={"help": "The ratio(< 1.0) of the train set used as validation set in case there's no validation split."},
+        default=0.001,
+        metadata={
+            "help": "The ratio(< 1.0) of the train set used as validation set in case there's no validation split."
+        },
     )
     max_seq_length: Optional[int] = field(
         default=None,
@@ -215,7 +290,9 @@ class DataTrainingArguments:
     )
     line_by_line: bool = field(
         default=False,
-        metadata={"help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."},
+        metadata={
+            "help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."
+        },
     )
     pad_to_max_length: bool = field(
         default=False,
@@ -244,8 +321,15 @@ class DataTrainingArguments:
             )
         },
     )
-    mask_ratio: float = field(default=0.15, metadata={"help": "Defines the ratio of mask tokens. A number between 0 and 1."})
-    mean_mask_span_length: int = field(default=3, metadata={"help": "Defines the average mask length."})
+    mask_ratio: float = field(
+        default=0.15,
+        metadata={
+            "help": "Defines the ratio of mask tokens. A number between 0 and 1."
+        },
+    )
+    mean_mask_span_length: int = field(
+        default=3, metadata={"help": "Defines the average mask length."}
+    )
     extra_padding_ratio: float = field(
         default=0.0,
         metadata={
@@ -343,10 +427,24 @@ class DataTrainingArguments:
         },
     )
     # Translation arguments.
-    source_lang: str = field(default=None, metadata={"help": "Source language id for translation."})
-    target_lang: str = field(default=None, metadata={"help": "Target language id for translation."})
+    source_lang: str = field(
+        default=None, metadata={"help": "Source language id for translation."}
+    )
+    target_lang: str = field(
+        default=None, metadata={"help": "Target language id for translation."}
+    )
     add_t5_tags: bool = field(
-        default=False, metadata={"help": "In case of GLUE, it adds tags to the sentences like `sentence1:` ... ."}
+        default=False,
+        metadata={
+            "help": "In case of GLUE, it adds tags to the sentences like `sentence1:` ... ."
+        },
+    )
+    # dataset verification
+    verification_mode: str = field(
+        default="basic_checks",
+        metadata={
+            "help": "Verification mode determining the checks to run on the downloaded/processed dataset information (checksums/size/splits/...)."
+        },
     )
 
     def __post_init__(self):
@@ -362,11 +460,15 @@ class DataTrainingArguments:
             if self.train_file is not None:
                 extension = self.train_file.split(".")[-1]
                 if extension not in ["csv", "json", "txt"]:
-                    raise ValueError("`train_file` should be a csv, a json or a txt file.")
+                    raise ValueError(
+                        "`train_file` should be a csv, a json or a txt file."
+                    )
             if self.validation_file is not None:
                 extension = self.validation_file.split(".")[-1]
                 if extension not in ["csv", "json", "txt"]:
-                    raise ValueError("`validation_file` should be a csv, a json or a txt file.")
+                    raise ValueError(
+                        "`validation_file` should be a csv, a json or a txt file."
+                    )
 
         if self.val_max_target_length is None:
             self.val_max_target_length = self.max_target_length
@@ -395,8 +497,12 @@ class DiffusionArguments:
             )
         },
     )
-    num_diffusion_steps: int = field(default=2500, metadata={"help": "Defines the number of diffusion steps."})
-    num_inference_diffusion_steps: int = field(default=2500, metadata={"help": "Number of inference diffusion steps."})
+    num_diffusion_steps: int = field(
+        default=2500, metadata={"help": "Defines the number of diffusion steps."}
+    )
+    num_inference_diffusion_steps: int = field(
+        default=2500, metadata={"help": "Number of inference diffusion steps."}
+    )
     beta_schedule: str = field(
         default="squaredcos_improved_ddpm",
         metadata={
@@ -408,8 +514,13 @@ class DiffusionArguments:
             )
         },
     )
-    sampling_type: str = field(default="top_p", metadata={"help": "Sampling type used during the logit projection."})
-    top_p: Optional[float] = field(default=None, metadata={"help": "top_p value for nucleus (top_p) sampling."})
+    sampling_type: str = field(
+        default="top_p",
+        metadata={"help": "Sampling type used during the logit projection."},
+    )
+    top_p: Optional[float] = field(
+        default=None, metadata={"help": "top_p value for nucleus (top_p) sampling."}
+    )
     clip_sample: bool = field(
         default=False,
         metadata={
@@ -431,12 +542,18 @@ class DiffusionArguments:
         },
     )
     self_condition_mix_before_weights: bool = field(
-        default=False, metadata={"help": "If set, mixes the softmax of simplexes and then apply the weights."}
+        default=False,
+        metadata={
+            "help": "If set, mixes the softmax of simplexes and then apply the weights."
+        },
     )
     self_condition_mix_logits_before_weights: bool = field(
-        default=False, metadata={"help": "If set, mixes simplexes and then apply the weights."}
+        default=False,
+        metadata={"help": "If set, mixes simplexes and then apply the weights."},
     )
-    self_condition_mlp_projection: bool = field(default=False, metadata={"help": "If not set, uses a linear layer."})
+    self_condition_mlp_projection: bool = field(
+        default=False, metadata={"help": "If not set, uses a linear layer."}
+    )
     self_condition_zeros_after_softmax: bool = field(
         default=False,
         metadata={
@@ -453,15 +570,32 @@ class DiffusionArguments:
         },
     )
     guidance_scale: float = field(
-        default=1.0, metadata={"help": "classifier-free guidance is applied if guidance_scale > 1.0."}
+        default=1.0,
+        metadata={
+            "help": "classifier-free guidance is applied if guidance_scale > 1.0."
+        },
     )
     classifier_free_uncond_input: str = field(
-        default="empty_token", metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."}
+        default="empty_token",
+        metadata={"help": "This can be one of `empty_token` or `noisy_simplex`."},
     )
-    empty_token_be_mask: bool = field(default=False, metadata={"help": "If set, makes the empty token a mask."})
+    empty_token_be_mask: bool = field(
+        default=False, metadata={"help": "If set, makes the empty token a mask."}
+    )
     classifier_free_simplex_inputs: bool = field(
-        default=False, metadata={"help": "If set to true, uses simplex representation for the unconditional input."}
+        default=False,
+        metadata={
+            "help": "If set to true, uses simplex representation for the unconditional input."
+        },
     )
-    temperature: float = field(default=1.0, metadata={"help": "Defines the softmax temperature before doing the sampling."})
-    guidance_softmax_combination: bool = field(default=True, metadata={"help": "If set, first applies softmax, then combines logits."})
-    generate_with_seed: bool = field(default=False, metadata={"help": "If set, generates with seed."})
+    temperature: float = field(
+        default=1.0,
+        metadata={"help": "Defines the softmax temperature before doing the sampling."},
+    )
+    guidance_softmax_combination: bool = field(
+        default=True,
+        metadata={"help": "If set, first applies softmax, then combines logits."},
+    )
+    generate_with_seed: bool = field(
+        default=False, metadata={"help": "If set, generates with seed."}
+    )
