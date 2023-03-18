@@ -9,7 +9,6 @@ from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoModelForCausalLM,
     AutoTokenizer,
-    HfArgumentParser,
     set_seed,
 )
 from transformers.trainer_callback import TrainerState
@@ -17,12 +16,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
-from sdlm.arguments import (
-    DataTrainingArguments,
-    DiffusionArguments,
-    ModelArguments,
-    TrainingArguments,
-)
+from sdlm.arguments import get_args
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.data.data_utils import load_data, tokenize_data_new
 from sdlm.inference.inference_utils import evaluate_generation
@@ -74,22 +68,8 @@ def get_compute_metrics(data_args, training_args, model_args):
 
 
 def main():
-    parser = HfArgumentParser(
-        (ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments)
-    )
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
-        model_args, data_args, training_args, diffusion_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1])
-        )
-    else:
-        (
-            model_args,
-            data_args,
-            training_args,
-            diffusion_args,
-        ) = parser.parse_args_into_dataclasses()
+    # parse args
+    model_args, data_args, training_args, diffusion_args = get_args()
 
     # Setup logging
     logging.basicConfig(

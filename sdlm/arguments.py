@@ -1,12 +1,34 @@
 """Arguments used in training/inference/data processing."""
+import os
+import sys
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
-from transformers import MODEL_MAPPING, SchedulerType
+from transformers import MODEL_MAPPING, HfArgumentParser, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
 
 MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
+
+def get_args():
+    parser = HfArgumentParser(
+        (ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments)
+    )
+    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        # If we pass only one argument to the script and it's the path to a json file,
+        # let's parse it to get our arguments.
+        model_args, data_args, training_args, diffusion_args = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1])
+        )
+    else:
+        (
+            model_args,
+            data_args,
+            training_args,
+            diffusion_args,
+        ) = parser.parse_args_into_dataclasses()
+    return model_args, data_args, training_args, diffusion_args
 
 
 @dataclass
