@@ -5,12 +5,7 @@ import sys
 import datasets
 import transformers
 from datasets import load_from_disk
-from transformers import (
-    MODEL_FOR_MASKED_LM_MAPPING,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    set_seed,
-)
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
@@ -20,7 +15,7 @@ from sdlm.arguments import get_args
 from sdlm.data.data_collator import SpanInfillingDataCollator
 from sdlm.data.data_utils import load_data, tokenize_data_new
 from sdlm.inference.inference_utils import evaluate_generation
-from sdlm.models import model_config_helper
+from sdlm.models import load_model
 from sdlm.schedulers import SimplexDDPMScheduler
 from sdlm.trainer import DiffusionTrainer
 
@@ -33,8 +28,6 @@ require_version(
 )
 
 logger = logging.getLogger(__name__)
-MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
-MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 
 def get_compute_metrics(data_args, training_args, model_args):
@@ -116,69 +109,9 @@ def main():
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
-    config_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
-    }
-    cfg_cls, model_cls = model_config_helper(model_args.model_name_or_path)
-    config = cfg_cls.from_pretrained(
-        model_args.model_name_or_path,
-        self_condition=diffusion_args.self_condition,
-        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
-        deepmind_conditional=diffusion_args.deepmind_conditional,
-        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
-        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
-        self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
-        self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
-        self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
-        empty_token_be_mask=diffusion_args.empty_token_be_mask,
-        d_model=model_args.d_model,
-        n_head=model_args.n_head,
-        attn_layer_idx=model_args.attn_layer_idx,
-        attention_window=model_args.attention_window,
-        **config_kwargs,
-    )
-    tokenizer_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "use_fast": model_args.use_fast_tokenizer,
-        "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
-    }
-    if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, **tokenizer_kwargs
-        )
-    elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, **tokenizer_kwargs
-        )
-    else:
-        raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script."
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
-        )
-    if not tokenizer.pad_token_id:
-        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
-    if model_args.model_name_or_path:
-        model = model_cls.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-    else:
-        logger.info("Training new model from scratch")
-        model = model_cls.from_config(config)
-
-    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    vocab_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > vocab_size:
-        model.resize_token_embeddings(len(tokenizer))
+    # load model
+    tokenizer, model = load_model(model_args, diffusion_args, logger)
 
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
