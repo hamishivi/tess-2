@@ -1,14 +1,20 @@
+import random
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any, Union
+from enum import Enum
+from random import choices
+from typing import Any, Dict, List, Optional, Union
+
+import numpy as np
+import torch
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
-from sdlm.data.preprocessors import t5_random_spans_mask_batch, insert_extra_paddings, gpt_span_mask_batch
-import numpy as np
-import pdb
-from random import choices
-import torch
-from enum import Enum
-import random
+
+from sdlm.data.preprocessors import (
+    gpt_span_mask_batch,
+    insert_extra_paddings,
+    t5_random_spans_mask_batch,
+)
+
 
 class Objective(Enum):
     # Prefix language modeling like GPT style pretraining.
@@ -85,13 +91,19 @@ class SpanInfillingDataCollator:
         self.mode = mode
         if self.conditional_generation == "ul2_with_unconditional" and mode == "train":
             self.mask_generator = {}
-            self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
+            self.mask_generator[
+                Objective.t5
+            ] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
             )
-            self.mask_generator[Objective.aggressive_t5] = lambda batch, setting: t5_random_spans_mask_batch(
+            self.mask_generator[
+                Objective.aggressive_t5
+            ] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
             )
-            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(
+                batch
+            )
             self.mask_generator[Objective.unconditional] = lambda batch: None
         elif self.conditional_generation == "span_infilling":
             self.mask_generator = lambda batch: t5_random_spans_mask_batch(
@@ -99,40 +111,65 @@ class SpanInfillingDataCollator:
             )
         elif self.conditional_generation == "prefix_lm":
             self.mask_generator = lambda batch: gpt_span_mask_batch(
-                batch, use_half_length_as_prefix_size=(mode == "eval"), eval_context_size=eval_context_size
+                batch,
+                use_half_length_as_prefix_size=(mode == "eval"),
+                eval_context_size=eval_context_size,
             )
         elif self.conditional_generation == "ul2" and mode == "train":
             self.mask_generator = {}
-            self.mask_generator[Objective.t5] = lambda batch, setting: t5_random_spans_mask_batch(
+            self.mask_generator[
+                Objective.t5
+            ] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
             )
-            self.mask_generator[Objective.aggressive_t5] = lambda batch, setting: t5_random_spans_mask_batch(
+            self.mask_generator[
+                Objective.aggressive_t5
+            ] = lambda batch, setting: t5_random_spans_mask_batch(
                 batch, **setting, rng=self.rng
             )
-            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(
+                batch
+            )
         elif self.conditional_generation == "ul2_variable" and mode == "train":
             self.mask_generator = {}
-            self.mask_generator[Objective.t5] = lambda batch, mask_ratio, mean_mask_span_length: t5_random_spans_mask_batch(
-                batch, mask_ratio=mask_ratio, mean_mask_span_length=mean_mask_span_length, rng=self.rng
+            self.mask_generator[
+                Objective.t5
+            ] = lambda batch, mask_ratio, mean_mask_span_length: t5_random_spans_mask_batch(
+                batch,
+                mask_ratio=mask_ratio,
+                mean_mask_span_length=mean_mask_span_length,
+                rng=self.rng,
             )
-            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(batch)
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(
+                batch
+            )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
-        [f.pop("attention_mask") for f in features]
 
         if self.extra_padding_ratio:
             # Inserting random tokens uniformly, we do not modify start and end of
             # sequence tokens.
             for i in range(len(features)):
                 features[i]["input_ids"] = insert_extra_paddings(
-                    self.rng, features[i]["input_ids"], self.tokenizer.pad_token_id, self.extra_padding_ratio
+                    self.rng,
+                    features[i]["input_ids"],
+                    self.tokenizer.pad_token_id,
+                    self.extra_padding_ratio,
                 )
 
         masks = {}
         if self.conditional_generation in ["span_infilling", "prefix_lm"]:
             masks = {"span_mask": self.mask_generator(features)}
-        elif self.conditional_generation == "ul2_with_unconditional" and self.mode == "train":
-            objectives = [Objective.unconditional, Objective.t5, Objective.prefix, Objective.aggressive_t5]
+        elif (
+            self.conditional_generation == "ul2_with_unconditional"
+            and self.mode == "train"
+        ):
+            objectives = [
+                Objective.unconditional,
+                Objective.t5,
+                Objective.prefix,
+                Objective.aggressive_t5,
+            ]
             weights = [0.25, 0.25, 0.25, 0.25]
             objective = choices(objectives, weights)[0]
             if objective in [Objective.t5, Objective.aggressive_t5]:
@@ -153,19 +190,29 @@ class SpanInfillingDataCollator:
             objectives = [Objective.t5, Objective.prefix]
             weights = [0.5, 0.5]
             objective = choices(objectives, weights)[0]
-            if objective  == objective.t5:
+            if objective == objective.t5:
                 # Here we assume the length is the same for all data in a batch.
-                length=len(features[0]["input_ids"])
-                min_ratio = 1.0/length            
+                length = len(features[0]["input_ids"])
+                min_ratio = 1.0 / length
                 mask_ratio = random.uniform(min_ratio, 0.5)
-                mean_mask_span_length=int(random.uniform(1, mask_ratio*length))
-                masks = {"span_mask": self.mask_generator[objective](features, mask_ratio, mean_mask_span_length)}
+                mean_mask_span_length = int(random.uniform(1, mask_ratio * length))
+                masks = {
+                    "span_mask": self.mask_generator[objective](
+                        features, mask_ratio, mean_mask_span_length
+                    )
+                }
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
-        elif self.mode == "eval" and self.conditional_generation in ["ul2", "ul2_with_unconditional", "ul2_variable"]:
+        elif self.mode == "eval" and self.conditional_generation in [
+            "ul2",
+            "ul2_with_unconditional",
+            "ul2_variable",
+        ]:
             masks = {
                 "span_mask": gpt_span_mask_batch(
-                    features, use_half_length_as_prefix_size=True, eval_context_size=self.eval_context_size
+                    features,
+                    use_half_length_as_prefix_size=True,
+                    eval_context_size=self.eval_context_size,
                 )
             }
         batch = self.tokenizer.pad(
@@ -221,6 +268,9 @@ class DataCollatorForSeq2Seq:
             return_tensors="pt",
         )
         batch_length = features["input_ids"].shape[1]
-        masks = [len(input) * [False] + (batch_length - len(input)) * [True] for input in input_ids]
+        masks = [
+            len(input) * [False] + (batch_length - len(input)) * [True]
+            for input in input_ids
+        ]
         features["span_mask"] = torch.tensor(masks)
         return features
