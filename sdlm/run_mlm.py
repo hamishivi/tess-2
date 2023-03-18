@@ -41,12 +41,12 @@ def get_compute_metrics(data_args, training_args, model_args):
     )
 
     is_conditional_generation = data_args.conditional_generation is not None
-    prefix_lm_eval = (
-        True
-        if data_args.conditional_generation
-        in ["prefix_lm", "ul2", "ul2_with_unconditional", "ul2_variable"]
-        else False
-    )
+    prefix_lm_eval = data_args.conditional_generation in [
+        "prefix_lm",
+        "ul2",
+        "ul2_with_unconditional",
+        "ul2_variable",
+    ]
     compute_metrics = lambda results: evaluate_generation(  # noqa: E731
         results,
         data_args,
@@ -113,6 +113,7 @@ def main():
     # load model
     tokenizer, model = load_model(model_args, diffusion_args, logger)
 
+    # init schedulers
     noise_scheduler = SimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
