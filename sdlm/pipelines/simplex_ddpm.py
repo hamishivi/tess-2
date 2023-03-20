@@ -59,7 +59,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.temperature = temperature
         self.guidance_softmax_combination = guidance_softmax_combination
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def __call__(
         self,
         batch_size: int = 1,

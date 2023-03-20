@@ -1,6 +1,7 @@
 {
-    "output_dir": "/home/lily/jt856/documents/simplex-diffusion/outputs/simple_c4/exp2/roberta",
+    "output_dir": "/home/lily/jt856/documents/simplex-diffusion/outputs/test",
     "model_name_or_path": "roberta-base",
+    "torch_compile": true,
     "per_device_train_batch_size": 128,
     "per_device_eval_batch_size": 128,
     "do_train": true,

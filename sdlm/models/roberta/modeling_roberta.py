@@ -110,7 +110,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         input_ids: torch.LongTensor,
         simplex: torch.FloatTensor,
         span_mask: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
