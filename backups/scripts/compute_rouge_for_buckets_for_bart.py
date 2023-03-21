@@ -7,7 +7,7 @@ import evaluate
 import numpy as np
 from transformers import AutoTokenizer
 
-from sdlm.data.postprocessors import postprocess_text_for_metric
+from data.postprocessors import postprocess_text_for_metric
 
 
 def extract_results(indices, lengths, data, x):

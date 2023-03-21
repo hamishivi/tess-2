@@ -2,8 +2,7 @@ from itertools import chain
 from datasets import load_dataset
 import logging
 import torch
-import pdb
-from datasets import DatasetDict
+from datasets import DatasetDict, IterableDataset
 
 SMALL_GLUE_DATA = ["cola", "wnli", "rte", "mrpc", "stsb"]
 LARGE_GLUE_DATA = ["qnli", "qqp", "sst2"]
@@ -19,6 +18,7 @@ def load_data(data_args, model_args):
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
+            streaming=data_args.streaming
         )
     else:
         data_files = {}
@@ -34,6 +34,7 @@ def load_data(data_args, model_args):
             data_files=data_files,
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
+            streaming=data_args.streaming
         )
     return raw_datasets
 
@@ -45,7 +46,13 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
         column_names = raw_datasets["train"].column_names
     else:
         column_names = raw_datasets["validation"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    if column_names is None:
+        text_column_name = "text"
+    else:
+        text_column_name = "text" if "text" in column_names else column_names[0]
+
+    # just want the text!
+    raw_datasets = raw_datasets.select_columns([text_column_name])
 
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
@@ -99,14 +106,21 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
             return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
 
         with training_args.main_process_first(desc="dataset map tokenization"):
-            tokenized_datasets = raw_datasets.map(
-                tokenize_function,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on every text in dataset",
-            )
+            if not data_args.streaming:
+                tokenized_datasets = raw_datasets.map(
+                    tokenize_function,
+                    batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
+                    remove_columns=column_names,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    desc="Running tokenizer on every text in dataset",
+                )
+            else:
+                tokenized_datasets = raw_datasets.map(
+                    tokenize_function,
+                    batched=True,
+                    remove_columns=[text_column_name],
+                )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
         # max_seq_length.
@@ -133,13 +147,19 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
         # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
 
         with training_args.main_process_first(desc="grouping texts together"):
-            tokenized_datasets = tokenized_datasets.map(
-                group_texts,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc=f"Grouping texts in chunks of {max_seq_length}",
-            )
+            if not data_args.streaming:
+                tokenized_datasets = tokenized_datasets.map(
+                    group_texts,
+                    batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    desc=f"Grouping texts in chunks of {max_seq_length}",
+                )
+            else:
+                tokenized_datasets = tokenized_datasets.map(
+                    group_texts,
+                    batched=True,
+                )
     return tokenized_datasets
 
 

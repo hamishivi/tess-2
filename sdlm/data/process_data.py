@@ -9,8 +9,8 @@ from datasets import DatasetDict, load_dataset
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.utils.versions import require_version
 
-from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
-from sdlm.data.data_utils import tokenize_data
+from arguments import DataTrainingArguments, ModelArguments, TrainingArguments
+from data.data_utils import tokenize_data
 
 require_version("datasets>=1.8.0")
 logger = logging.getLogger(__name__)

@@ -10,7 +10,7 @@ from transformers.modeling_outputs import MaskedLMOutput
 from transformers.models.gpt2.modeling_gpt2 import GPT2Model, GPT2PreTrainedModel
 from transformers.utils import logging
 
-from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
+from utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
 
