@@ -9,13 +9,13 @@ import sys
 import numpy as np
 from transformers import AutoTokenizer, HfArgumentParser
 
-from sdlm.arguments import (
+from arguments import (
     DataTrainingArguments,
     DiffusionArguments,
     ModelArguments,
     Seq2SeqTrainingArguments,
 )
-from sdlm.data.data_utils import load_data
+from data.data_utils import load_data
 
 logger = logging.getLogger(__name__)
 

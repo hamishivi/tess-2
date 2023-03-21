@@ -9,7 +9,7 @@ import torch
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 
-from sdlm.data.preprocessors import (
+from data.preprocessors import (
     gpt_span_mask_batch,
     insert_extra_paddings,
     t5_random_spans_mask_batch,

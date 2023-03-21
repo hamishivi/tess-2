@@ -13,7 +13,7 @@ from sdlm.arguments import (
     ModelArguments,
     TrainingArguments,
 )
-from sdlm.trainer import GENERATION_RESULTS
+from trainer import GENERATION_RESULTS
 
 
 def save_metrics(metrics, split, training_args):

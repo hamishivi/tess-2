@@ -27,10 +27,10 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
-from sdlm.arguments import DataTrainingArguments as BaseDataTrainingArguments
-from sdlm.arguments import ModelArguments as BaseModelArguments
-from sdlm.arguments import TrainingArguments
-from sdlm.data.data_utils import split_glue
+from arguments import DataTrainingArguments as BaseDataTrainingArguments
+from arguments import ModelArguments as BaseModelArguments
+from arguments import TrainingArguments
+from data.data_utils import split_glue
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")

@@ -55,7 +55,7 @@ from transformers.utils import (
 )
 from transformers.utils.versions import require_version
 
-from sdlm.data.postprocessors import postprocess_text_for_metric
+from data.postprocessors import postprocess_text_for_metric
 
 GENERATION_RESULTS = "generations"
 

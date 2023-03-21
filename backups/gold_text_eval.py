@@ -12,10 +12,10 @@ from datasets import load_from_disk
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser, set_seed
 
-from sdlm.arguments import DataTrainingArguments, ModelArguments, TrainingArguments
-from sdlm.data.data_collator import SpanInfillingDataCollator
-from sdlm.data.data_utils import load_data, tokenize_data_new
-from sdlm.inference.inference_utils import evaluate_generation
+from arguments import DataTrainingArguments, ModelArguments, TrainingArguments
+from data.data_collator import SpanInfillingDataCollator
+from data.data_utils import load_data, tokenize_data_new
+from inference.inference_utils import evaluate_generation
 
 logger = logging.getLogger(__name__)
 

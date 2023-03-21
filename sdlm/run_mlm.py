@@ -4,26 +4,26 @@ import sys
 
 import datasets
 import transformers
-from datasets import load_from_disk
+from datasets import load_from_disk, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
-from sdlm.arguments import get_args
-from sdlm.data.data_collator import SpanInfillingDataCollator
-from sdlm.data.data_utils import load_data, tokenize_data_new
-from sdlm.inference.inference_utils import evaluate_generation
-from sdlm.models import load_model
-from sdlm.schedulers import SimplexDDPMScheduler
-from sdlm.trainer import DiffusionTrainer
+from arguments import get_args
+from data.data_collator import SpanInfillingDataCollator
+from data.data_utils import load_data, tokenize_data_new
+from inference.inference_utils import evaluate_generation
+from models import load_model
+from schedulers import SimplexDDPMScheduler
+from trainer import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
 
 require_version(
-    "datasets>=1.8.0",
+    "datasets>=2.0.0",
     "To fix: pip install -r examples/pytorch/language-modeling/requirements.txt",
 )
 
@@ -149,6 +149,12 @@ def main():
         if "validation" not in tokenized_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = tokenized_datasets["validation"]
+        # convert eval dataset to regular dataset
+        if isinstance(eval_dataset, datasets.IterableDataset):
+            def iterable_generator():
+                for x in eval_dataset:
+                    yield x
+            eval_dataset = Dataset.from_generator(iterable_generator)
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
@@ -175,6 +181,9 @@ def main():
 
     if training_args.do_eval:
         compute_metrics = get_compute_metrics(data_args, training_args, model_args)
+
+    if data_args.shuffle:
+        train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
@@ -206,13 +215,6 @@ def main():
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
         metrics = train_result.metrics
-
-        max_train_samples = (
-            data_args.max_train_samples
-            if data_args.max_train_samples is not None
-            else len(train_dataset)
-        )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)

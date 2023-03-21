@@ -7,8 +7,8 @@ import torch.nn.functional as F
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.utils import BaseOutput
 
-from sdlm.inference.inference_utils import logits_projection
-from sdlm.utils import scale, self_condition_preds
+from inference.inference_utils import logits_projection
+from utils import scale, self_condition_preds
 
 
 @dataclass

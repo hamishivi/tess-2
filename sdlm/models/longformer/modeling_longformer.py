@@ -14,7 +14,7 @@ from transformers.models.longformer.modeling_longformer import (
 )
 from transformers.utils import logging
 
-from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
+from utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
 

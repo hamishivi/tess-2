@@ -17,24 +17,24 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
-from sdlm.arguments import (
+from arguments import (
     DataTrainingArguments,
     DiffusionArguments,
     ModelArguments,
     Seq2SeqTrainingArguments,
 )
-from sdlm.data.data_collator import DataCollatorForSeq2Seq
-from sdlm.data.data_utils import load_data
-from sdlm.data.postprocessors import postprocess_text_for_metric
-from sdlm.inference.inference_utils import process_text
-from sdlm.models import (
+from data.data_collator import DataCollatorForSeq2Seq
+from data.data_utils import load_data
+from data.postprocessors import postprocess_text_for_metric
+from inference.inference_utils import process_text
+from models import (
     RobertaDiffusionConfig,
     RobertaForDiffusionLM,
     XLMRobertaDiffusionConfig,
     XLMRobertaForDiffusionLM,
 )
-from sdlm.schedulers import SimplexDDPMScheduler
-from sdlm.trainer import DiffusionTrainer
+from schedulers import SimplexDDPMScheduler
+from trainer import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")

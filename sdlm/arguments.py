@@ -468,6 +468,18 @@ class DataTrainingArguments:
             "help": "Verification mode determining the checks to run on the downloaded/processed dataset information (checksums/size/splits/...)."
         },
     )
+    streaming: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, we will stream the data from the disk or over the internet. This is useful for large datasets."
+        },
+    )
+    shuffle: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, we will shuffle the data before training."
+        },
+    )
 
     def __post_init__(self):
         if (
