@@ -110,6 +110,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         logits_projection_fct = lambda x: logits_projection(  # noqa: E731
             x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
         )
+        losses = []
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # TODO(rabeeh): also check without the scale.
@@ -138,6 +139,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 if self.model.config.self_condition
                 else None,
                 classifier_free_guidance=classifier_free_guidance,
+                reduce_loss="none",
                 # unconditional_simplex=uncond_input if classifier_free_guidance else None,
             )
             model_output_logits = model_output.logits
@@ -180,6 +182,12 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 projected_logits, t, noise, generator=generator
             ).prev_sample
 
+            # keep loss for logging
+            losses.append(model_output.loss.detach().cpu())
+
+        # we take the mean loss over all timesteps
+        loss = torch.stack(losses, dim=0)
+
         return SimplexDiffusionPipelineOutput(
-            simplex=simplex, logits=model_output_logits, loss=model_output.loss
+            simplex=simplex, logits=model_output_logits, loss=loss
         )

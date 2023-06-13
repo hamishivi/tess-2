@@ -122,6 +122,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         previous_pred: Optional[torch.FloatTensor] = None,
         classifier_free_guidance: bool = False,
         classifier_free_guidance_in_train: bool = False,
+        reduce_loss: str = "mean",  # passed to 'reduction' in F.cross_entropy
         # unconditional_simplex: torch.FloatTensor = None,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         r"""
@@ -288,7 +289,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 if classifier_free_guidance
                 else prediction_scores
             )
-            loss_fct = CrossEntropyLoss()
+            loss_fct = CrossEntropyLoss(reduction=reduce_loss)
             labels = (
                 torch.where(span_mask, input_ids, -100)
                 if span_mask is not None
@@ -298,6 +299,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),
             )
+            if reduce_loss is 'none':
+                # take the average loss over tokens, not counting the masked tokens.
+                masked_lm_loss = masked_lm_loss.view(input_ids.shape[0], -1)
+                masked_lm_loss = masked_lm_loss.sum(dim=-1) / span_mask.sum(dim=-1)
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]

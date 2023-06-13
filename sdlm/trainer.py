@@ -238,7 +238,16 @@ class DiffusionTrainer(Trainer):
                     else None,
                 )
                 if is_conditional_generation:
-                    loss = outputs.loss.mean().detach()
+                    loss = outputs.loss 
+                    # for the loss, pick a random loss based on the same timestep sampling as training
+                    timestep_choices = torch.randint(
+                        0,
+                        len(self.inference_noise_scheduler),
+                        (loss.size(1),),
+                        device='cpu',
+                        dtype=torch.int64,
+                    )
+                    loss = loss[timestep_choices, torch.arange(loss.shape[1])]
                 else:
                     loss = None
         logits = nested_detach(outputs.logits)
