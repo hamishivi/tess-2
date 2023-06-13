@@ -5,21 +5,19 @@ import sys
 import time
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
+from packaging import version
 import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from torch import nn
-from torch.nn import CrossEntropyLoss
-from torch.optim import AdamW
-from torch.utils.data import DataLoader, Dataset, RandomSampler
-from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from transformers import Trainer
+from transformers.training_args import ParallelMode
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-from transformers.deepspeed import deepspeed_init
+from transformers.deepspeed import deepspeed_init, deepspeed_load_checkpoint
 from transformers.integrations import TensorBoardCallback, hp_params
-from transformers.pytorch_utils import is_torch_less_than_1_11
 from transformers.trainer import TRAINER_STATE_NAME
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_pt_utils import (
@@ -28,7 +26,6 @@ from transformers.trainer_pt_utils import (
     nested_concat,
     nested_detach,
     nested_numpify,
-    nested_truncate,
 )
 from transformers.trainer_utils import (
     HPSearchBackend,
@@ -45,6 +42,7 @@ from transformers.utils import (
     is_sagemaker_mp_enabled,
     is_torch_tpu_available,
     logging,
+    is_accelerate_available,
 )
 
 from inference.inference_utils import (
@@ -67,6 +65,16 @@ if is_torch_tpu_available(check_device=False):
 
 if is_sagemaker_mp_enabled():
     import smdistributed.modelparallel.torch as smp
+
+skip_first_batches = None
+if is_accelerate_available():
+    from accelerate import __version__ as accelerate_version
+
+    if version.parse(accelerate_version) >= version.parse("0.16"):
+        from accelerate import skip_first_batches
+
+    from accelerate import Accelerator
+    from accelerate.utils import DistributedDataParallelKwargs
 
 IS_SAGEMAKER_MP_POST_1_10 = False
 GENERATION_RESULTS = "generated"
@@ -192,28 +200,21 @@ class DiffusionTrainer(Trainer):
         inputs.update(
             {"classifier_free_guidance_in_train": self.classifier_free_guidance}
         )
-        with self.autocast_smart_context_manager():
+        with self.compute_loss_context_manager():
             loss = self.compute_loss(model, inputs)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
-
-        if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
-            # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
-            loss = loss / self.args.gradient_accumulation_steps
 
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
         elif self.use_apex:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
-        elif self.deepspeed:
-            # loss gets scaled under gradient_accumulation_steps in deepspeed
-            loss = self.deepspeed.backward(loss)
         else:
-            loss.backward()
+            self.accelerator.backward(loss)
 
-        return loss.detach()
+        return loss.detach() / self.args.gradient_accumulation_steps
 
     def prediction_step(
         self, inputs: Dict[str, Union[torch.Tensor, Any]], pipeline
@@ -253,14 +254,6 @@ class DiffusionTrainer(Trainer):
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
 
-        # Computes the evaluation loss from the simplex values.
-        if self.args.compute_eval_loss_with_simplex and is_conditional_generation:
-            loss_fct = CrossEntropyLoss()
-            labels = torch.where(inputs["span_mask"], inputs["input_ids"], -100)
-            loss = loss_fct(
-                simplex.view(-1, self.model.config.vocab_size), labels.view(-1)
-            ).detach()
-
         return (simplex, logits, loss)
 
     def evaluation_loop(
@@ -277,26 +270,36 @@ class DiffusionTrainer(Trainer):
         """
         args = self.args
         is_conditional_generation = self.data_args.conditional_generation is not None
-        save_prefixes = is_conditional_generation  # and self.data_args.conditional_generation != "seq2seq"
+        save_prefixes = is_conditional_generation
 
         prediction_loss_only = (
             prediction_loss_only
             if prediction_loss_only is not None
             else args.prediction_loss_only
         )
-        # if eval is called w/o train init deepspeed here
-        if args.deepspeed and not self.deepspeed:
-
-            # XXX: eval doesn't have `resume_from_checkpoint` arg but we should be able to do eval
-            # from the checkpoint eventually
-            deepspeed_engine, _, _ = deepspeed_init(
-                self, num_training_steps=0, resume_from_checkpoint=None, inference=True
-            )
-            self.model = deepspeed_engine.module
-            self.model_wrapped = deepspeed_engine
-            self.deepspeed = deepspeed_engine
+        # if eval is called w/o train handle model prep here
+        if self.is_deepspeed_enabled and self.model_wrapped is self.model:
+            _, _ = deepspeed_init(self, num_training_steps=0, inference=True)
 
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
+
+        if len(self.accelerator._models) == 0 and model is self.model:
+            model = (
+                self.accelerator.prepare(model)
+                if self.is_deepspeed_enabled
+                else self.accelerator.prepare_model(model, evaluation_mode=True)
+            )
+
+            if self.is_fsdp_enabled:
+                self.model = model
+
+            # for the rest of this function `model` is the outside model, whether it was wrapped or not
+            if model is not self.model:
+                self.model_wrapped = model
+
+            # backward compatibility
+            if self.is_deepspeed_enabled:
+                self.deepspeed = self.model_wrapped
 
         # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
         # while ``train`` is running, cast it to the right dtype first and then put on device
@@ -475,75 +478,95 @@ class DiffusionTrainer(Trainer):
                 args, self.state, self.control
             )
 
+        # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+        if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+            if losses_host is not None:
+                losses = nested_numpify(losses_host)
+                all_losses = (
+                    losses
+                    if all_losses is None
+                    else np.concatenate((all_losses, losses), axis=0)
+                )
+            if logits_host is not None:
+                logits = nested_numpify(logits_host)
+                all_logits = (
+                    logits
+                    if all_logits is None
+                    else nested_concat(all_logits, logits, padding_index=self.eos_token_id)
+                )
+            if simplex_host is not None:
+                simplex = nested_numpify(simplex_host)
+                all_simplex = (
+                    simplex
+                    if all_simplex is None
+                    else nested_concat(
+                        all_simplex, simplex, padding_index=self.eos_token_id
+                    )
+                )
+            if inputs_host is not None:
+                inputs_decode = nested_numpify(inputs_host)
+                all_inputs = (
+                    inputs_decode
+                    if all_inputs is None
+                    else nested_concat(
+                        all_inputs, inputs_decode, padding_index=self.eos_token_id
+                    )
+                )
+            if masks_host is not None:
+                masks = nested_numpify(masks_host)
+                all_masks = (
+                    masks
+                    if all_masks is None
+                    else nested_concat(all_masks, masks, padding_index=0)
+                )
+            if prefixes_host is not None:
+                prefixes = nested_numpify(prefixes_host)
+                all_prefixes = (
+                    prefixes
+                    if all_prefixes is None
+                    else nested_concat(
+                        all_prefixes, prefixes, padding_index=self.eos_token_id
+                    )
+                )
+
+            # Set back to None to begin a new accumulation
+            losses_host, logits_host, simplex_host, inputs_host, masks_host, prefixes_host = None, None, None, None, None, None
+
+        
         # Gather all remaining tensors and put them back on the CPU
         if losses_host is not None:
-            losses = nested_numpify(losses_host)
-            all_losses = (
-                losses
-                if all_losses is None
-                else np.concatenate((all_losses, losses), axis=0)
-            )
+            all_losses = nested_numpify(losses_host)
         if logits_host is not None:
-            logits = nested_numpify(logits_host)
-            all_logits = (
-                logits
-                if all_logits is None
-                else nested_concat(all_logits, logits, padding_index=self.eos_token_id)
-            )
+            all_preds = nested_numpify(logits_host)
         if simplex_host is not None:
-            simplex = nested_numpify(simplex_host)
-            all_simplex = (
-                simplex
-                if all_simplex is None
-                else nested_concat(
-                    all_simplex, simplex, padding_index=self.eos_token_id
-                )
-            )
+            all_simplex = nested_numpify(simplex_host)
         if inputs_host is not None:
-            inputs_decode = nested_numpify(inputs_host)
-            all_inputs = (
-                inputs_decode
-                if all_inputs is None
-                else nested_concat(
-                    all_inputs, inputs_decode, padding_index=self.eos_token_id
-                )
-            )
+            all_inputs = nested_numpify(inputs_host)
         if masks_host is not None:
-            masks = nested_numpify(masks_host)
-            all_masks = (
-                masks
-                if all_masks is None
-                else nested_concat(all_masks, masks, padding_index=0)
-            )
+            all_masks = nested_numpify(masks_host)
         if prefixes_host is not None:
-            prefixes = nested_numpify(prefixes_host)
-            all_prefixes = (
-                prefixes
-                if all_prefixes is None
-                else nested_concat(
-                    all_prefixes, prefixes, padding_index=self.eos_token_id
-                )
-            )
+            all_prefixes = nested_numpify(prefixes_host)
+
+
+        if args.past_index and hasattr(self, "_past"):
+            # Clean the state at the end of the evaluation loop
+            delattr(self, "_past")
+
 
         # Number of samples
-        num_samples = len(eval_dataset)
+        if has_length(eval_dataset):
+            num_samples = len(eval_dataset)
+        # The instance check is weird and does not actually check for the type, but whether the dataset has the right
+        # methods. Therefore we need to make sure it also has the attribute.
+        elif isinstance(eval_dataset, IterableDatasetShard) and getattr(eval_dataset, "num_examples", 0) > 0:
+            num_samples = eval_dataset.num_examples
+        else:
+            if has_length(dataloader):
+                num_samples = self.num_examples(dataloader)
+            else:  # both len(dataloader.dataset) and len(dataloader) fail
+                num_samples = observed_num_examples
         if num_samples == 0 and observed_num_examples > 0:
             num_samples = observed_num_examples
-
-        # Number of losses has been rounded to a multiple of batch_size and in a distributed training, the number of
-        # samplers has been rounded to a multiple of batch_size, so we truncate.
-        if all_losses is not None:
-            all_losses = all_losses[:num_samples]
-        if all_masks is not None:
-            all_masks = nested_truncate(all_masks, num_samples)
-        if all_simplex is not None:
-            all_simplex = nested_truncate(all_simplex, num_samples)
-        if all_logits is not None:
-            all_logits = nested_truncate(all_logits, num_samples)
-        if all_inputs is not None:
-            all_inputs = nested_truncate(all_inputs, num_samples)
-        if all_prefixes is not None:
-            all_prefixes = nested_truncate(all_prefixes, num_samples)
 
         # Generates the texts.
         results = {}
@@ -628,6 +651,7 @@ class DiffusionTrainer(Trainer):
         for key in list(metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
+
         return EvalLoopOutput(
             logits=all_logits,
             simplex=all_simplex,
@@ -739,16 +763,20 @@ class DiffusionTrainer(Trainer):
 
         train_sampler = self._get_train_sampler()
 
-        return DataLoader(
-            train_dataset,
-            batch_size=self._train_batch_size,
-            sampler=train_sampler,
-            collate_fn=data_collator,
-            drop_last=self.args.dataloader_drop_last,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-            worker_init_fn=seed_worker,
-        )
+        dataloader_params = {
+            "batch_size": self._train_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+            dataloader_params["sampler"] = self._get_train_sampler()
+            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+            dataloader_params["worker_init_fn"] = seed_worker
+
+
+        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
 
     def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
         """
@@ -773,94 +801,18 @@ class DiffusionTrainer(Trainer):
                 data_collator, description="evaluation"
             )
 
-        eval_sampler = self._get_eval_sampler(eval_dataset)
+        dataloader_params = {
+            "batch_size": self.args.eval_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
 
-        return DataLoader(
-            eval_dataset,
-            sampler=eval_sampler,
-            batch_size=self.args.eval_batch_size,
-            collate_fn=data_collator,
-            drop_last=self.args.dataloader_drop_last,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-        )
+        if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
+            dataloader_params["sampler"] = self._get_eval_sampler(eval_dataset)
+            dataloader_params["drop_last"] = self.args.dataloader_drop_last
 
-    def create_optimizer(self):
-        """
-        Setup the optimizer.
-        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
-        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
-        """
-        if not self.args.ssdlm_optimizer:
-            return super().create_optimizer()
-
-        # SDDLM optimizer.
-        opt_model = self.model
-
-        if self.optimizer is None:
-            no_decay = [
-                "bias",
-                "LayerNorm.weight",
-                "timestep_embed.weight",
-                "timestep_embed.bias",
-            ]
-            optimizer_grouped_parameters = [
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if not any(nd in n for nd in no_decay)
-                    ],
-                    "weight_decay": self.args.weight_decay,
-                },
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if any(nd in n for nd in no_decay)
-                    ],
-                    "weight_decay": 0.0,
-                },
-            ]
-            self.optimizer = AdamW(
-                optimizer_grouped_parameters, lr=self.args.learning_rate
-            )
-        return self.optimizer
-
-    def _rotate_checkpoints(self, use_mtime=False, output_dir=None) -> None:
-        if self.args.save_total_limit is None or self.args.save_total_limit <= 0:
-            return
-
-        # Check if we should delete older checkpoint(s)
-        checkpoints_sorted = self._sorted_checkpoints(
-            use_mtime=use_mtime, output_dir=output_dir
-        )
-        if len(checkpoints_sorted) <= self.args.save_total_limit:
-            return
-
-        # If save_total_limit=1 with load_best_model_at_end=True, we could end up deleting the last checkpoint, which
-        # we don't do to allow resuming.
-        save_total_limit = self.args.save_total_limit
-        if (
-            self.state.best_model_checkpoint is not None
-            and self.args.save_total_limit == 1
-            and checkpoints_sorted[-1] != self.state.best_model_checkpoint
-        ):
-            save_total_limit = 2
-
-        number_of_checkpoints_to_delete = max(
-            0, len(checkpoints_sorted) - save_total_limit
-        )
-        checkpoints_to_be_deleted = checkpoints_sorted[:number_of_checkpoints_to_delete]
-        for checkpoint in checkpoints_to_be_deleted:
-            logger.info(
-                f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
-            )
-            if self.args.save_checkpoints_on_s3:
-                # TODO: we need to remove this from the codes.
-                command = f"AWS_ACCESS_KEY_ID=AKIA5BJLZJPW5VNOE6SI AWS_SECRET_ACCESS_KEY=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 aws s3 sync {checkpoint} s3://ai2-s2-research/rabeehk/{checkpoint}"
-                os.system(command)
-            shutil.rmtree(checkpoint)
+        return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
 
     def _inner_training_loop(
         self,
@@ -870,6 +822,7 @@ class DiffusionTrainer(Trainer):
         trial=None,
         ignore_keys_for_eval=None,
     ):
+        self.accelerator.free_memory()
         self._train_batch_size = batch_size
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
@@ -885,9 +838,7 @@ class DiffusionTrainer(Trainer):
         len_dataloader = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
-            num_update_steps_per_epoch = (
-                len_dataloader // args.gradient_accumulation_steps
-            )
+            num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
             num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
             num_examples = self.num_examples(train_dataloader)
             if args.max_steps > 0:
@@ -899,16 +850,10 @@ class DiffusionTrainer(Trainer):
                 # the best we can do.
                 num_train_samples = args.max_steps * total_train_batch_size
             else:
-                max_steps = math.ceil(
-                    args.num_train_epochs * num_update_steps_per_epoch
-                )
+                max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
                 num_train_epochs = math.ceil(args.num_train_epochs)
-                num_train_samples = (
-                    self.num_examples(train_dataloader) * args.num_train_epochs
-                )
-        elif (
-            args.max_steps > 0
-        ):  # Rely on max_steps when dataloader does not have a working size
+                num_train_samples = self.num_examples(train_dataloader) * args.num_train_epochs
+        elif args.max_steps > 0:  # Rely on max_steps when dataloader does not have a working size
             max_steps = args.max_steps
             # Setting a very large number of epochs so we go as many times as necessary over the iterator.
             num_train_epochs = sys.maxsize
@@ -920,6 +865,15 @@ class DiffusionTrainer(Trainer):
                 "args.max_steps must be set to a positive value if dataloader does not have a length, was"
                 f" {args.max_steps}"
             )
+        
+        # Compute absolute values for logging, eval, and save if given as ratio
+        if args.logging_steps and args.logging_steps < 1:
+            args.logging_steps = math.ceil(max_steps * args.logging_steps)
+        if args.eval_steps and args.eval_steps < 1:
+            args.eval_steps = math.ceil(max_steps * args.eval_steps)
+        if args.save_steps and args.save_steps < 1:
+            args.save_steps = math.ceil(max_steps * args.save_steps)
+
 
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
             if self.args.n_gpu > 1:
@@ -938,18 +892,11 @@ class DiffusionTrainer(Trainer):
             or is_sagemaker_mp_enabled()
             or self.fsdp is not None
         )
-        if args.deepspeed:
-            deepspeed_engine, optimizer, lr_scheduler = deepspeed_init(
-                self,
-                num_training_steps=max_steps,
-                resume_from_checkpoint=resume_from_checkpoint,
-            )
-            self.model = deepspeed_engine.module
-            self.model_wrapped = deepspeed_engine
-            self.deepspeed = deepspeed_engine
-            self.optimizer = optimizer
-            self.lr_scheduler = lr_scheduler
-        elif not delay_optimizer_creation:
+
+        if self.is_deepspeed_enabled:
+            self.optimizer, self.lr_scheduler = deepspeed_init(self, num_training_steps=max_steps)
+
+        if not delay_optimizer_creation:
             self.create_optimizer_and_scheduler(num_training_steps=max_steps)
 
         self.state = TrainerState()
@@ -964,12 +911,41 @@ class DiffusionTrainer(Trainer):
         if is_sagemaker_mp_enabled() and resume_from_checkpoint is not None:
             self._load_from_checkpoint(resume_from_checkpoint, model)
 
+        # as the model is wrapped, don't use `accelerator.prepare`
+        # this is for unhandled cases such as
+        # Fairscale Sharded DDP, FSDP-XLA, SageMaker MP/DP, DataParallel, IPEX
+        use_accelerator_prepare = True if model is self.model else False
+
+        if delay_optimizer_creation:
+            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+
+        # prepare using `accelerator` prepare
+        if use_accelerator_prepare:
+            if hasattr(self.lr_scheduler, "step"):
+                if self.use_apex:
+                    model = self.accelerator.prepare(self.model)
+                else:
+                    model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
+            else:
+                # to handle cases wherein we pass "DummyScheduler" such as when it is specified in DeepSpeed config.
+                model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
+                    self.model, self.optimizer, self.lr_scheduler
+                )
+
+        if self.is_fsdp_enabled:
+            self.model = model
+
         # for the rest of this function `model` is the outside model, whether it was wrapped or not
         if model is not self.model:
             self.model_wrapped = model
 
-        if delay_optimizer_creation:
-            self.create_optimizer_and_scheduler(num_training_steps=max_steps)
+        # backward compatibility
+        if self.is_deepspeed_enabled:
+            self.deepspeed = self.model_wrapped
+
+        # deepspeed ckpt loading
+        if resume_from_checkpoint is not None and self.is_deepspeed_enabled:
+            deepspeed_load_checkpoint(self.model_wrapped, resume_from_checkpoint)
 
         # Check if saved optimizer or scheduler states exist
         self._load_optimizer_and_scheduler(resume_from_checkpoint)
@@ -1078,36 +1054,12 @@ class DiffusionTrainer(Trainer):
         # Skip the first epochs_trained epochs to get the random state of the dataloader at the right point.
         if not args.ignore_data_skip:
             for epoch in range(epochs_trained):
-                is_random_sampler = hasattr(train_dataloader, "sampler") and isinstance(
-                    train_dataloader.sampler, RandomSampler
-                )
-                if is_torch_less_than_1_11 or not is_random_sampler:
-                    # We just need to begin an iteration to create the randomization of the sampler.
-                    # That was before PyTorch 1.11 however...
-                    for _ in train_dataloader:
-                        break
-                else:
-                    # Otherwise we need to call the whooooole sampler cause there is some random operation added
-                    # AT THE VERY END!
-                    _ = list(train_dataloader.sampler)
+                for _ in train_dataloader:
+                    break
 
+        total_batched_samples = 0
         for epoch in range(epochs_trained, num_train_epochs):
-            if isinstance(train_dataloader, DataLoader) and isinstance(
-                train_dataloader.sampler, DistributedSampler
-            ):
-                train_dataloader.sampler.set_epoch(epoch)
-            elif hasattr(train_dataloader, "dataset") and isinstance(
-                train_dataloader.dataset, IterableDatasetShard
-            ):
-                train_dataloader.dataset.set_epoch(epoch)
-
-            if is_torch_tpu_available():
-                parallel_loader = pl.ParallelLoader(
-                    train_dataloader, [args.device]
-                ).per_device_loader(args.device)
-                epoch_iterator = parallel_loader
-            else:
-                epoch_iterator = train_dataloader
+            epoch_iterator = train_dataloader
 
             # Reset the past mems state at the beginning of each epoch if necessary.
             if args.past_index >= 0:
@@ -1118,9 +1070,7 @@ class DiffusionTrainer(Trainer):
                 if len_dataloader is not None
                 else args.max_steps * args.gradient_accumulation_steps
             )
-            self.control = self.callback_handler.on_epoch_begin(
-                args, self.state, self.control
-            )
+            self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
 
             if (
                 epoch == epochs_trained
@@ -1129,8 +1079,21 @@ class DiffusionTrainer(Trainer):
             ):
                 self._load_rng_state(resume_from_checkpoint)
 
+            rng_to_sync = False
+            steps_skipped = 0
+            if skip_first_batches is not None and steps_trained_in_current_epoch > 0:
+                epoch_iterator = skip_first_batches(epoch_iterator, steps_trained_in_current_epoch)
+                steps_skipped = steps_trained_in_current_epoch
+                steps_trained_in_current_epoch = 0
+                rng_to_sync = True
+
+
             step = -1
             for step, inputs in enumerate(epoch_iterator):
+                total_batched_samples += 1
+                if rng_to_sync:
+                    self._load_rng_state(resume_from_checkpoint)
+                    rng_to_sync = False
 
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
@@ -1149,15 +1112,7 @@ class DiffusionTrainer(Trainer):
                         args, self.state, self.control
                     )
 
-                if (
-                    ((step + 1) % args.gradient_accumulation_steps != 0)
-                    and args.local_rank != -1
-                    and args._no_sync_in_gradient_accumulation
-                ):
-                    # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
-                    with model.no_sync():
-                        tr_loss_step = self.training_step(model, inputs)
-                else:
+                with self.accelerator.accumulate(model):
                     tr_loss_step = self.training_step(model, inputs)
 
                 if (
@@ -1174,10 +1129,9 @@ class DiffusionTrainer(Trainer):
 
                 self.current_flos += float(self.floating_point_ops(inputs))
 
-                # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
-                if self.deepspeed:
-                    self.deepspeed.step()
-
+                # should this be under the accumulate context manager?
+                # the `or` condition of `steps_in_epoch <= args.gradient_accumulation_steps` is not covered
+                # in accelerate
                 if (step + 1) % args.gradient_accumulation_steps == 0 or (
                     # last step in epoch but step is always smaller than gradient_accumulation_steps
                     steps_in_epoch <= args.gradient_accumulation_steps
@@ -1187,10 +1141,8 @@ class DiffusionTrainer(Trainer):
                     if (
                         args.max_grad_norm is not None
                         and args.max_grad_norm > 0
-                        and not self.deepspeed
                     ):
                         # deepspeed does its own clipping
-
                         if self.do_grad_scaling:
                             # Reduce gradients first for XLA
                             if is_torch_tpu_available():
@@ -1209,20 +1161,21 @@ class DiffusionTrainer(Trainer):
                         elif hasattr(model, "clip_grad_norm_"):
                             # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
                             model.clip_grad_norm_(args.max_grad_norm)
-                        else:
+                        elif self.use_apex:
                             # Revert to normal clipping otherwise, handling Apex or full precision
                             nn.utils.clip_grad_norm_(
-                                amp.master_params(self.optimizer)
-                                if self.use_apex
-                                else model.parameters(),
+                                amp.master_params(self.optimizer),
+                                args.max_grad_norm,
+                            )
+                        else:
+                            self.accelerator.clip_grad_norm_(
+                                model.parameters(),
                                 args.max_grad_norm,
                             )
 
                     # Optimizer step
                     optimizer_was_run = True
-                    if self.deepspeed:
-                        pass  # called outside the loop
-                    elif is_torch_tpu_available():
+                    if is_torch_tpu_available():
                         if self.do_grad_scaling:
                             self.scaler.step(self.optimizer)
                             self.scaler.update()
@@ -1236,9 +1189,12 @@ class DiffusionTrainer(Trainer):
                         optimizer_was_run = scale_before <= scale_after
                     else:
                         self.optimizer.step()
+                        optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
 
-                    if optimizer_was_run and not self.deepspeed:
-                        self.lr_scheduler.step()
+                    if optimizer_was_run:
+                        # Delay optimizer scheduling until metrics are generated
+                        if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                            self.lr_scheduler.step()
 
                     model.zero_grad()
                     self.state.global_step += 1
@@ -1295,7 +1251,7 @@ class DiffusionTrainer(Trainer):
             # Wait for everyone to get here so we are sur the model has been saved by process 0.
             if is_torch_tpu_available():
                 xm.rendezvous("load_best_model_at_end")
-            elif args.local_rank != -1:
+            elif args.parallel_mode == ParallelMode.DISTRIBUTED:
                 dist.barrier()
             elif is_sagemaker_mp_enabled():
                 smp.barrier()
@@ -1327,22 +1283,12 @@ class DiffusionTrainer(Trainer):
             use_mtime=False, output_dir=run_dir
         )
 
-        # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint.
-        if (
-            self.state.best_model_checkpoint is not None
-            and self.args.save_total_limit == 1
-        ):
-            if self.is_world_process_zero():
-                for checkpoint in checkpoints_sorted:
-                    if checkpoint != self.state.best_model_checkpoint:
-                        logger.info(
-                            f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
-                        )
-                        if self.args.save_checkpoints_on_s3:
-                            # TODO: we need to remove this from the codes.
-                            command = f"AWS_ACCESS_KEY_ID=AKIA5BJLZJPW5VNOE6SI AWS_SECRET_ACCESS_KEY=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 aws s3 sync {checkpoint} s3://ai2-s2-research/rabeehk/{checkpoint}"
-                            os.system(command)
-                        shutil.rmtree(checkpoint)
+        # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint and process allowed to save.
+        if self.args.should_save and self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
+            for checkpoint in checkpoints_sorted:
+                if checkpoint != self.state.best_model_checkpoint:
+                    logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+                    shutil.rmtree(checkpoint)
 
         self.control = self.callback_handler.on_train_end(
             args, self.state, self.control

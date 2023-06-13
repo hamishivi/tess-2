@@ -180,9 +180,6 @@ class TrainingArguments(HFTrainingArguments):
             "help": "If set, computes the evaluation loss from the simplex values."
         },
     )
-    ssdlm_optimizer: bool = field(
-        default=False, metadata={"help": "If set, uses ssdlm optimizer."}
-    )
     save_checkpoints_on_s3: bool = field(
         default=False,
         metadata={
