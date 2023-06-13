@@ -8,7 +8,6 @@ import operator
 import math
 import scipy
 import sklearn
-import pdb
 
 MAX_TEXT_LENGTH = 256
 

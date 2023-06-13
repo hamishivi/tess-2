@@ -1,19 +1,14 @@
-# Simplex Diffusion Language Model (SDLM)
+# TESS v2
 
 ## Installation
 
 ```sh
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pip install -r requirements.txt
 pip install -e .
 # optional for devs
 pip install pre-commit
 pre-commit install
-```
-
-## Data
-
-```
-python sdlm/data/process_data.py configs/data/CONFIG.json
 ```
 
 ## Training
