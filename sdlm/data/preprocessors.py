@@ -31,6 +31,12 @@ def gpt_span_mask_batch(batch, use_half_length_as_prefix_size=False, eval_contex
     return torch.tensor(masks)
 
 
+def uncond_span_mask_batch(batch):
+    lengths = [len(feature["input_ids"]) for feature in batch]
+    max_length = max(lengths)
+    return torch.ones((len(batch), max_length), dtype=torch.bool)
+
+
 def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None, pad_length=None):
     """Noise mask consisting of random spans of mask tokens.
 

@@ -45,6 +45,7 @@ def get_compute_metrics(data_args, training_args, model_args):
         "prefix_lm",
         "ul2",
         "ul2_with_unconditional",
+        "prefix_with_unconditional",
         "ul2_variable",
     ]
     compute_metrics = lambda results: evaluate_generation(  # noqa: E731
