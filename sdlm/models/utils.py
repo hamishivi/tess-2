@@ -27,10 +27,6 @@ def load_model(model_args, diffusion_args, logger):
         self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
         self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
         empty_token_be_mask=diffusion_args.empty_token_be_mask,
-        d_model=model_args.d_model,
-        n_head=model_args.n_head,
-        attn_layer_idx=model_args.attn_layer_idx,
-        attention_window=model_args.attention_window,
         **config_kwargs,
     )
     tokenizer_kwargs = {
