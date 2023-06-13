@@ -188,6 +188,8 @@ class TrainingArguments(HFTrainingArguments):
     )
     # NOTE: change default to suppress deprecation warning
     optim: str = field(default="adamw_torch")
+    # just for beaker training, to allow auto-resume easier.
+    beaker: bool = field(default=False)
 
 
 @dataclass
