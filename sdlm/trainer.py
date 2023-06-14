@@ -537,7 +537,7 @@ class DiffusionTrainer(Trainer):
         if losses_host is not None:
             all_losses = nested_numpify(losses_host)
         if logits_host is not None:
-            all_preds = nested_numpify(logits_host)
+            all_logits = nested_numpify(logits_host)
         if simplex_host is not None:
             all_simplex = nested_numpify(simplex_host)
         if inputs_host is not None:

@@ -66,16 +66,16 @@ def split_into_masked_and_unmasked(token_ids, span_mask, return_masked=None):
     If return_masked is set, only returns the masked parts, if this is set to False,
     only returns the unmasked parts, and If set to None, returns both parts.
     """
+    masked = []
+    unmasked = []
+    prev_mask = span_mask[0]
+    span = []
 
     def update_spans(span, masked, unmasked, mask):
         # TODO: this needs to be here for previous version of the codes.
         # span = torch.stack(span)
         masked.append(span) if mask else unmasked.append(span)
-
-    masked = []
-    unmasked = []
-    prev_mask = span_mask[0]
-    span = []
+    
     for _, (token_id, mask) in enumerate(zip(token_ids, span_mask)):
         if mask == prev_mask:
             span.append(token_id)
