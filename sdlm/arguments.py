@@ -115,6 +115,12 @@ class ModelArguments:
             "help": "If set, resizes the position embedding alternatively, and copies from the original for the uncovered part."
         },
     )
+    from_scratch: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to train the model from scratch or not. Default to false."
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):

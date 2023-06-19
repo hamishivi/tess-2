@@ -242,7 +242,6 @@ class SpanInfillingDataCollator:
         )
         if "attention_mask" in batch:
             del batch["attention_mask"]
-        #import pdb; pdb.set_trace()
         return {**batch, **masks}
 
 

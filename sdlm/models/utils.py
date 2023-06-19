@@ -51,7 +51,7 @@ def load_model(model_args, diffusion_args, logger):
     if not tokenizer.pad_token_id:
         tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
-    if model_args.model_name_or_path:
+    if model_args.model_name_or_path and not model_args.from_scratch:
         model = model_cls.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -61,8 +61,9 @@ def load_model(model_args, diffusion_args, logger):
             use_auth_token=True if model_args.use_auth_token else None,
         )
     else:
-        logger.info("Training new model from scratch")
-        model = model_cls.from_config(config)
+        logger.warning("Training new model from scratch")
+        model = model_cls._from_config(config)
+        model.init_weights()
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.

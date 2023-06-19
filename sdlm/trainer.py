@@ -276,7 +276,6 @@ class DiffusionTrainer(Trainer):
             )
             with self.compute_loss_context_manager():
                 loss = self.compute_loss(model, inputs)
-                import pdb; pdb.set_trace()
 
             if self.args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
