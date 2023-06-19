@@ -1,4 +1,4 @@
-EXP_NAME="prefix_uncond_100k_c4_roberta_base"
+EXP_NAME="prefix_uncond_100k_c4_roberta_base_self_cond"
 
 gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --workspace ai2/tess2 \
@@ -22,10 +22,10 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --eval_steps 1000 \
         --report_to tensorboard \
         --max_seq_length 256  \
-        --max_eval_samples 96 \
+        --max_eval_samples 512 \
         --simplex_value 5 \
         --num_diffusion_steps 5000  \
-        --num_inference_diffusion_steps 1 10 100 1000 \
+        --num_inference_diffusion_steps 1 10 100 500 \
         --lr_scheduler_type cosine \
         --learning_rate 1e-4 \
         --pad_to_max_length \
@@ -39,11 +39,12 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --save_steps 1000 \
         --self_condition "logits_mean" \
         --self_condition_mix_before_weights \
+        --beaker \
         --conditional_generation prefix_with_unconditional \
         --dataset_name c4 --streaming --dataset_config_name en
 
 
-EXP_NAME="ul2_orig_100k_c4_roberta_base"
+EXP_NAME="ul2_orig_100k_c4_roberta_base_self_cond"
 
 gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --workspace ai2/tess2 \
@@ -67,10 +68,10 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --eval_steps 1000 \
         --report_to tensorboard \
         --max_seq_length 256  \
-        --max_eval_samples 96 \
+        --max_eval_samples 512 \
         --simplex_value 5 \
         --num_diffusion_steps 5000  \
-        --num_inference_diffusion_steps 1 10 100 1000 \
+        --num_inference_diffusion_steps 1 10 100 500 \
         --lr_scheduler_type cosine \
         --learning_rate 1e-4 \
         --pad_to_max_length \
