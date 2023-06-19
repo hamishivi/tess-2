@@ -5,7 +5,7 @@ import sys
 import datasets
 import transformers
 from datasets import load_from_disk, Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed, TrainerCallback
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
@@ -59,6 +59,13 @@ def get_compute_metrics(data_args, training_args, model_args):
         eval_for_all_metrics=training_args.eval_for_all_metrics,
     )
     return compute_metrics
+
+
+# so we evaluate on the first step, useful for checking training is working.
+class EvaluateFirstStepCallback(TrainerCallback):
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step == 1:
+            control.should_evaluate = True
 
 
 def main():
@@ -205,6 +212,7 @@ def main():
         data_args=data_args,
         inference_noise_schedulers=inference_noise_schedulers,
     )
+    trainer.add_callback(EvaluateFirstStepCallback())
 
     # Training
     if training_args.do_train:

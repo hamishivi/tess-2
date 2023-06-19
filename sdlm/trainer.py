@@ -215,7 +215,6 @@ class DiffusionTrainer(Trainer):
                 scaled_loss.backward()
         else:
             self.accelerator.backward(loss)
-
         return loss.detach() / self.args.gradient_accumulation_steps
 
     def light_prediction_step(
@@ -277,11 +276,12 @@ class DiffusionTrainer(Trainer):
             )
             with self.compute_loss_context_manager():
                 loss = self.compute_loss(model, inputs)
+                import pdb; pdb.set_trace()
 
             if self.args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
 
-            return loss.detach() / self.args.gradient_accumulation_steps
+            return loss.detach() # no division by gradient accumulation steps for eval. we want per-sample avg loss.
 
     # TODO: argument for doing one step.
     def prediction_step(
@@ -290,8 +290,6 @@ class DiffusionTrainer(Trainer):
 
         inputs = self._prepare_inputs(inputs)
         is_conditional_generation = True if "span_mask" in inputs else False
-        # predict loss mimicking training.
-        loss = self.light_prediction_step(model, inputs)
         # full inference.
         with torch.no_grad():
             with self.compute_loss_context_manager():
@@ -312,7 +310,7 @@ class DiffusionTrainer(Trainer):
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
 
-        return (simplex, logits, loss)
+        return (simplex, logits)
 
     def evaluation_loop(
         self,
@@ -322,6 +320,8 @@ class DiffusionTrainer(Trainer):
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
         noise_scheduler = None,
+        light_eval_dataloader = None,
+        do_light_eval = False,
     ) -> EvalLoopOutput:
         """
         Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
@@ -414,6 +414,41 @@ class DiffusionTrainer(Trainer):
         all_prefixes = None
         observed_num_examples = 0
 
+        # light evaluation loop.
+        if light_eval_dataloader is not None and do_light_eval:
+            for step, inputs in enumerate(light_eval_dataloader):
+                # Truncate the length if needed.
+                if self.data_args.truncation_length > 0:
+                    inputs["input_ids"] = inputs["input_ids"][
+                        :, : -self.data_args.truncation_length
+                    ]
+                    inputs["span_mask"] = inputs["span_mask"][
+                        :, : -self.data_args.truncation_length
+                    ]
+                    max_seq_length = (
+                        self.data_args.max_seq_length - self.data_args.truncation_length
+                    )
+                    assert self.data_args.eval_context_size < max_seq_length
+                # predict loss mimicking training.
+                loss = self.light_prediction_step(model, inputs)
+
+                if loss is not None:
+                    losses = self._nested_gather(loss.repeat(batch_size))
+                    losses_host = (
+                        losses
+                        if losses_host is None
+                        else torch.cat((losses_host, losses), dim=0)
+                    )
+                if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+                    if losses_host is not None:
+                        losses = nested_numpify(losses_host)
+                        all_losses = (
+                            losses
+                            if all_losses is None
+                            else np.concatenate((all_losses, losses), axis=0)
+                        )
+                    losses_host = None
+
         # Main evaluation loop
         for step, inputs in enumerate(dataloader):
             has_mask = True if "span_mask" in inputs else False
@@ -440,7 +475,7 @@ class DiffusionTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # Prediction step
-            simplex, logits, loss = self.prediction_step(inputs, model, pipeline=pipeline)
+            simplex, logits = self.prediction_step(inputs, model, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
             if save_prefixes:
@@ -479,13 +514,6 @@ class DiffusionTrainer(Trainer):
                     else nested_concat(
                         inputs_host, inputs_decode, padding_index=self.eos_token_id
                     )
-                )
-            if loss is not None:
-                losses = self._nested_gather(loss.repeat(batch_size))
-                losses_host = (
-                    losses
-                    if losses_host is None
-                    else torch.cat((losses_host, losses), dim=0)
                 )
             # Note that this block should be before masks block, since we need masks here.
             if simplex is not None:
@@ -539,13 +567,6 @@ class DiffusionTrainer(Trainer):
 
         # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
         if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
-            if losses_host is not None:
-                losses = nested_numpify(losses_host)
-                all_losses = (
-                    losses
-                    if all_losses is None
-                    else np.concatenate((all_losses, losses), axis=0)
-                )
             if logits_host is not None:
                 logits = nested_numpify(logits_host)
                 all_logits = (
@@ -589,7 +610,7 @@ class DiffusionTrainer(Trainer):
                 )
 
             # Set back to None to begin a new accumulation
-            losses_host, logits_host, simplex_host, inputs_host, masks_host, prefixes_host = None, None, None, None, None, None
+            logits_host, simplex_host, inputs_host, masks_host, prefixes_host = None, None, None, None, None
 
         
         # Gather all remaining tensors and put them back on the CPU
@@ -749,7 +770,7 @@ class DiffusionTrainer(Trainer):
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
-
+        light_eval_dataloader = self.get_light_eval_dataloader(eval_dataset)
         start_time = time.time()
 
         outputs = []
@@ -764,6 +785,8 @@ class DiffusionTrainer(Trainer):
                 ignore_keys=ignore_keys,
                 metric_key_prefix=metric_key_prefix,
                 noise_scheduler=noise_scheduler,
+                light_eval_dataloader=light_eval_dataloader,
+                do_light_eval=timestep == timesteps[0], # we only need the loss once, since it is the same for all timesteps
             )
             outputs.append(output)
             key_prefix = f"inference_{timestep}_"
@@ -870,6 +893,42 @@ class DiffusionTrainer(Trainer):
             raise ValueError("Trainer: evaluation requires an eval_dataset.")
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
         data_collator = self.data_collator("eval")
+
+        if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
+            eval_dataset = self._remove_unused_columns(
+                eval_dataset, description="evaluation"
+            )
+        else:
+            data_collator = self._get_collator_with_removed_columns(
+                data_collator, description="evaluation"
+            )
+
+        dataloader_params = {
+            "batch_size": self.args.eval_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+        if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
+            dataloader_params["sampler"] = self._get_eval_sampler(eval_dataset)
+            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+
+        return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
+    
+    def get_light_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+        """
+        Returns the evaluation [`~torch.utils.data.DataLoader`].
+        Used for the light evaluation, which matches masking with training.
+        Args:
+            eval_dataset (`torch.utils.data.Dataset`, *optional*):
+                If provided, will override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns not accepted
+                by the `model.forward()` method are automatically removed. It must implement `__len__`.
+        """
+        if eval_dataset is None and self.eval_dataset is None:
+            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
+        data_collator = self.data_collator("train")
 
         if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
             eval_dataset = self._remove_unused_columns(
