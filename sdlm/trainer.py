@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+from torch.optim import AdamW
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
@@ -96,7 +97,7 @@ class DiffusionTrainer(Trainer):
     def __init__(
         self,
         noise_scheduler,
-        inference_noise_scheduler,
+        inference_noise_schedulers,
         diffusion_args,
         data_args,
         *args,
@@ -107,7 +108,8 @@ class DiffusionTrainer(Trainer):
         self.diffusion_args = diffusion_args
         self.data_args = data_args
         self.vocab_size = self.model.config.vocab_size
-        self.inference_noise_scheduler = inference_noise_scheduler
+        self.inference_noise_schedulers = inference_noise_schedulers
+        self.inference_timesteps = diffusion_args.num_inference_diffusion_steps
         self.tb_writer = self.get_tb_writer()
         self.eos_token_id = self.tokenizer.eos_token_id
         self.classifier_free_guidance = (
@@ -216,12 +218,81 @@ class DiffusionTrainer(Trainer):
 
         return loss.detach() / self.args.gradient_accumulation_steps
 
+    def light_prediction_step(
+            self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        with torch.no_grad():
+            inputs = self._prepare_inputs(inputs)
+            is_conditional_generation = True if "span_mask" in inputs else False
+            # Truncate the length if needed.
+            if self.data_args.truncation_length > 0:
+                inputs["input_ids"] = inputs["input_ids"][
+                    :, : -self.data_args.truncation_length
+                ]
+                inputs["span_mask"] = inputs["span_mask"][
+                    :, : -self.data_args.truncation_length
+                ]
+            # Creates the noisy simplex and timesteps.
+            simplex = convert_to_simplex(
+                inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size
+            )
+            noise = self.diffusion_args.simplex_value * torch.randn(
+                simplex.shape, device=simplex.device, dtype=simplex.dtype
+            )
+            bsz = simplex.shape[0]
+            # Sample a random timestep for each simplex token representation.
+            # we use the train timesteps to be consistent with the training process.
+            timesteps = torch.randint(
+                0,
+                len(self.noise_scheduler),
+                (bsz,),
+                device=simplex.device,
+                dtype=torch.int64,
+            )
+            # Adds noise to each simplex representation (Forward diffusion process).
+            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
+            timesteps = scale(timesteps, len(self.noise_scheduler))
+
+            inputs.update({"timesteps": timesteps, "simplex": noisy_simplex})
+            if self.diffusion_args.self_condition is not None:
+                previous_pred = None
+                if np.random.rand(1) > 0.5:
+                    outputs = model(**inputs, previous_pred=previous_pred)
+                    logits_projection_fct = lambda x: logits_projection(  # noqa: E731
+                        x,
+                        self.diffusion_args.sampling_type,
+                        self.diffusion_args.top_p,
+                        self.diffusion_args.simplex_value,
+                        self.diffusion_args.temperature,
+                    )
+                    previous_pred = self_condition_preds(
+                        self.diffusion_args.self_condition,
+                        outputs.logits,
+                        logits_projection_fct,
+                    )
+                inputs.update({"previous_pred": previous_pred})
+            # NOTE: we do this after computation of self-conditioning to not affect that one.
+            inputs.update(
+                {"classifier_free_guidance_in_train": self.classifier_free_guidance}
+            )
+            with self.compute_loss_context_manager():
+                loss = self.compute_loss(model, inputs)
+
+            if self.args.n_gpu > 1:
+                loss = loss.mean()  # mean() to average on multi-gpu parallel training
+
+            return loss.detach() / self.args.gradient_accumulation_steps
+
+    # TODO: argument for doing one step.
     def prediction_step(
-        self, inputs: Dict[str, Union[torch.Tensor, Any]], pipeline
+        self, inputs: Dict[str, Union[torch.Tensor, Any]], model: nn.Module, pipeline: List[SimplexDDPMPipeline]
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
 
         inputs = self._prepare_inputs(inputs)
         is_conditional_generation = True if "span_mask" in inputs else False
+        # predict loss mimicking training.
+        loss = self.light_prediction_step(model, inputs)
+        # full inference.
         with torch.no_grad():
             with self.compute_loss_context_manager():
                 outputs = pipeline(
@@ -238,19 +309,6 @@ class DiffusionTrainer(Trainer):
                     if self.diffusion_args.generate_with_seed
                     else None,
                 )
-                if is_conditional_generation:
-                    loss = outputs.loss 
-                    # for the loss, pick a random loss based on the same timestep sampling as training
-                    timestep_choices = torch.randint(
-                        0,
-                        len(self.inference_noise_scheduler),
-                        (loss.size(1),),
-                        device='cpu',
-                        dtype=torch.int64,
-                    )
-                    loss = loss[timestep_choices, torch.arange(loss.shape[1])]
-                else:
-                    loss = None
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
 
@@ -263,6 +321,7 @@ class DiffusionTrainer(Trainer):
         prediction_loss_only: Optional[bool] = None,
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
+        noise_scheduler = None,
     ) -> EvalLoopOutput:
         """
         Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
@@ -322,7 +381,7 @@ class DiffusionTrainer(Trainer):
 
         pipeline = SimplexDDPMPipeline(
             model=model,
-            scheduler=self.inference_noise_scheduler,
+            scheduler=noise_scheduler,
             simplex_value=self.diffusion_args.simplex_value,
             top_p=self.diffusion_args.top_p,
             sampling_type=self.diffusion_args.sampling_type,
@@ -381,7 +440,7 @@ class DiffusionTrainer(Trainer):
                     batch_size = observed_batch_size
 
             # Prediction step
-            simplex, logits, loss = self.prediction_step(inputs, pipeline=pipeline)
+            simplex, logits, loss = self.prediction_step(inputs, model, pipeline=pipeline)
             inputs_decode = self._prepare_input(inputs["input_ids"])
             masks = self._prepare_input(inputs["span_mask"]) if has_mask else None
             if save_prefixes:
@@ -693,48 +752,68 @@ class DiffusionTrainer(Trainer):
 
         start_time = time.time()
 
-        output = self.evaluation_loop(
-            eval_dataloader,
-            description="Evaluation",
-            # No point gathering the predictions if there are no metrics, otherwise we defer to
-            # self.args.prediction_loss_only
-            prediction_loss_only=True if self.compute_metrics is None else None,
-            ignore_keys=ignore_keys,
-            metric_key_prefix=metric_key_prefix,
-        )
-
-        # Adds the generated texts to tensorboard.
-        if self.args.log_generated_texts:
-            self.log_results_to_tensorboard(self.state, output)
-
-        total_batch_size = self.args.eval_batch_size * self.args.world_size
-        output.metrics.update(
-            speed_metrics(
-                metric_key_prefix,
-                start_time,
-                num_samples=output.num_samples,
-                num_steps=math.ceil(output.num_samples / total_batch_size),
+        outputs = []
+        timesteps = self.inference_timesteps
+        for timestep, noise_scheduler in zip(timesteps, self.inference_noise_schedulers):
+            output = self.evaluation_loop(
+                eval_dataloader,
+                description="Evaluation",
+                # No point gathering the predictions if there are no metrics, otherwise we defer to
+                # self.args.prediction_loss_only
+                prediction_loss_only=True if self.compute_metrics is None else None,
+                ignore_keys=ignore_keys,
+                metric_key_prefix=metric_key_prefix,
+                noise_scheduler=noise_scheduler,
             )
-        )
-        self.log(output.metrics)
-        self.control = self.callback_handler.on_evaluate(
-            self.args, self.state, self.control, output.metrics
-        )
-        self._memory_tracker.stop_and_update_metrics(output.metrics)
+            outputs.append(output)
+            key_prefix = f"inference_{timestep}_"
+            metrics = { key_prefix + k: v for k, v in output.metrics.items() }
+            results = { key_prefix + k: v for k, v in output.results.items() }
+            # reset output with new metrics / results
+            output = EvalLoopOutput(
+                logits=output.logits,
+                simplex=output.simplex,
+                input_ids=output.input_ids,
+                metrics=metrics,
+                num_samples=output.num_samples,
+                results=results,
+            )
+           
 
-        # Save the results
-        self.save_metrics(GENERATION_RESULTS + "_" + metric_key_prefix, output.results)
-        logger.info("Results are saved now")
+            total_batch_size = self.args.eval_batch_size * self.args.world_size
+            output.metrics.update(
+                speed_metrics(
+                    metric_key_prefix,
+                    start_time,
+                    num_samples=output.num_samples,
+                    num_steps=math.ceil(output.num_samples / total_batch_size),
+                )
+            )
+            self.log(output.metrics)
+            self.control = self.callback_handler.on_evaluate(
+                self.args, self.state, self.control, output.metrics
+            )
+            self._memory_tracker.stop_and_update_metrics(output.metrics)
+
+            # Save the results
+            self.save_metrics(GENERATION_RESULTS + "_" + key_prefix + metric_key_prefix, output.results)
+            logger.info("Results are saved now")
+        
+        # log outside so we can group generations together
+        if self.args.log_generated_texts:
+            length = len(outputs[0].logits)
+            results = { f"{k}_inference_{i}": v for o, i in zip(outputs, timesteps) for k, v in o.results.items()  }
+            self.log_results_to_tensorboard(self.state, length, results)
 
         return output.metrics
 
-    def log_results_to_tensorboard(self, state, output):
+    def log_results_to_tensorboard(self, state, length, results):
         # TODO: we need to fix this which happens during the only eval option.
         if self.tb_writer.tb_writer is None:
             return
-        for i in range(len(output.logits)):
+        for i in range(length):
             total_text = ""
-            for k, v in output.results.items():
+            for k, v in results.items():
                 total_text += f"*** {k} ***: {v[i]}" + "  \n"
             self.tb_writer.tb_writer.add_text(
                 f"sample_{i}", total_text, state.global_step

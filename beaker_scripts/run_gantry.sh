@@ -13,7 +13,7 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --pip requirements.txt \
     -- python sdlm/run_mlm.py \
         --model_name_or_path roberta-base \
-        --per_device_train_batch_size 96  \
+        --per_device_train_batch_size 48  \
         --per_device_eval_batch_size 48 \
         --do_train \
         --do_eval \
@@ -25,7 +25,7 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --max_eval_samples 96 \
         --simplex_value 5 \
         --num_diffusion_steps 5000  \
-        --num_inference_diffusion_steps 2500 \
+        --num_inference_diffusion_steps 1 10 100 1000 \
         --lr_scheduler_type cosine \
         --learning_rate 1e-4 \
         --pad_to_max_length \
@@ -37,8 +37,9 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --warmup_steps 2000 \
         --logging_steps 50 \
         --save_steps 1000 \
+        --self_condition "logits_mean" \
+        --self_condition_mix_before_weights \
         --conditional_generation prefix_with_unconditional \
-        --beaker \
         --dataset_name c4 --streaming --dataset_config_name en
 
 
@@ -57,7 +58,7 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --pip requirements.txt \
     -- python sdlm/run_mlm.py \
         --model_name_or_path roberta-base \
-        --per_device_train_batch_size 96  \
+        --per_device_train_batch_size 48  \
         --per_device_eval_batch_size 48 \
         --do_train \
         --do_eval \
@@ -69,7 +70,7 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --max_eval_samples 96 \
         --simplex_value 5 \
         --num_diffusion_steps 5000  \
-        --num_inference_diffusion_steps 2500 \
+        --num_inference_diffusion_steps 1 10 100 1000 \
         --lr_scheduler_type cosine \
         --learning_rate 1e-4 \
         --pad_to_max_length \
@@ -83,4 +84,6 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --save_steps 1000 \
         --conditional_generation ul2 \
         --beaker \
+        --self_condition "logits_mean" \
+        --self_condition_mix_before_weights \
         --dataset_name c4 --streaming --dataset_config_name en

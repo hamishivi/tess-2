@@ -122,13 +122,13 @@ def main():
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
     )
-    inference_noise_scheduler = SimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
+    inference_noise_schedulers = [SimplexDDPMScheduler(
+        num_train_timesteps=timesteps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
-    )
+    ) for timesteps in diffusion_args.num_inference_diffusion_steps]
 
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
@@ -203,7 +203,7 @@ def main():
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
-        inference_noise_scheduler=inference_noise_scheduler,
+        inference_noise_schedulers=inference_noise_schedulers,
     )
 
     # Training
