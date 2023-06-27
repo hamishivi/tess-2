@@ -46,12 +46,12 @@ from transformers.utils import (
     is_accelerate_available,
 )
 
-from inference.inference_utils import (
+from .inference.inference_utils import (
     logits_projection,
     predict_conditional_generated,
 )
-from pipelines.simplex_ddpm import SimplexDDPMPipeline
-from utils import convert_to_simplex, pad_data, scale, self_condition_preds
+from .pipelines.simplex_ddpm import SimplexDDPMPipeline
+from .utils import convert_to_simplex, pad_data, scale, self_condition_preds, tokenwise_timestep
 
 if is_apex_available():
     from apex import amp
@@ -116,6 +116,7 @@ class DiffusionTrainer(Trainer):
             diffusion_args.guidance_scale > 1.0
             and data_args.conditional_generation is not None
         )
+        self.token_warp = diffusion_args.token_warp
 
     def annotated_split(self, split):
         return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}_seed_{self.args.seed}_guidance_scale_{self.diffusion_args.guidance_scale}"
@@ -176,11 +177,29 @@ class DiffusionTrainer(Trainer):
             device=simplex.device,
             dtype=torch.int64,
         )
+        # my thing
+        # construct token grid - same as alibi, basically.
+        if self.token_warp:
+            sequence_length = inputs["input_ids"].shape[1]
+            context_position = torch.arange(sequence_length)[:, None]
+            memory_position = torch.arange(sequence_length)[None, :]
+            relative_position = memory_position - context_position
+            relative_position = torch.abs(relative_position).unsqueeze(0).expand(inputs["input_ids"].size(0), -1,-1).cuda()
+            # we now have size [bsz, seq_len, seq_len]. Zero out all unset positions.
+            relative_position = torch.where(inputs["span_mask"][:,None].repeat(1, sequence_length, 1), 0, relative_position)
+            # now, sum over the last dimension to calculate 'how far from context' each token is.
+            relative_position = relative_position.sum(-1)
+            # normalize - the max token should be noisiest, so divide by that.
+            norm_relative_position = relative_position / relative_position.max(dim=-1)[0][:,None]
+        else:
+            # if we're not doing token warping, just set all relative positions to 1.
+            norm_relative_position = torch.ones_like(inputs["input_ids"])
         # Adds noise to each simplex representation (Forward diffusion process).
-        noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
+        noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps, norm_relative_position)
         timesteps = scale(timesteps, len(self.noise_scheduler))
 
-        inputs.update({"timesteps": timesteps, "simplex": noisy_simplex})
+        inputs.update({"timesteps": timesteps, "simplex": noisy_simplex, "token_rel_positions": norm_relative_position})
+        inputs.update({"max_timestep": len(self.noise_scheduler)})
         if self.diffusion_args.self_condition is not None:
             previous_pred = None
             if np.random.rand(1) > 0.5:
@@ -248,11 +267,30 @@ class DiffusionTrainer(Trainer):
                 device=simplex.device,
                 dtype=torch.int64,
             )
+            # my thing
+            # construct token grid - same as alibi, basically.
+            if self.token_warp:
+                sequence_length = inputs["input_ids"].shape[1]
+                context_position = torch.arange(sequence_length)[:, None]
+                memory_position = torch.arange(sequence_length)[None, :]
+                relative_position = memory_position - context_position
+                relative_position = torch.abs(relative_position).unsqueeze(0).expand(inputs["input_ids"].size(0), -1,-1).cuda()
+                # we now have size [bsz, seq_len, seq_len]. Zero out all unset positions.
+                relative_position = torch.where(inputs["span_mask"][:,None].repeat(1, sequence_length, 1), 0, relative_position)
+                # now, sum over the last dimension to calculate 'how far from context' each token is.
+                relative_position = relative_position.sum(-1)
+                # normalize - the max token should be noisiest, so divide by that.
+                norm_relative_position = relative_position / relative_position.max(dim=-1)[0][:,None]
+            else:
+                # if we're not doing token warping, just set all relative positions to 1.
+                norm_relative_position = torch.ones_like(inputs["input_ids"])
             # Adds noise to each simplex representation (Forward diffusion process).
-            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
+            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps, norm_relative_position)
+
             timesteps = scale(timesteps, len(self.noise_scheduler))
 
-            inputs.update({"timesteps": timesteps, "simplex": noisy_simplex})
+            inputs.update({"timesteps": timesteps, "simplex": noisy_simplex, "token_rel_positions": norm_relative_position})
+            inputs.update({"max_timestep": len(self.noise_scheduler)})
             if self.diffusion_args.self_condition is not None:
                 previous_pred = None
                 if np.random.rand(1) > 0.5:
@@ -292,7 +330,7 @@ class DiffusionTrainer(Trainer):
         # full inference.
         with torch.no_grad():
             with self.compute_loss_context_manager():
-                outputs = pipeline(
+                for x in pipeline(
                     batch_size=inputs["input_ids"].shape[0]
                     if is_conditional_generation
                     else self.args.per_device_eval_batch_size,
@@ -305,7 +343,9 @@ class DiffusionTrainer(Trainer):
                     )
                     if self.diffusion_args.generate_with_seed
                     else None,
-                )
+                    is_generator=False,
+                ):
+                    outputs = x
         logits = nested_detach(outputs.logits)
         simplex = nested_detach(outputs.simplex)
 
@@ -389,6 +429,7 @@ class DiffusionTrainer(Trainer):
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
             temperature=self.diffusion_args.temperature,
             guidance_softmax_combination=self.diffusion_args.guidance_softmax_combination,
+            token_warp=self.diffusion_args.token_warp,
         )
 
         self.callback_handler.eval_dataloader = dataloader

@@ -8,8 +8,11 @@ import operator
 import math
 import scipy
 import sklearn
+from rouge_score import rouge_scorer
 
 MAX_TEXT_LENGTH = 256
+
+default_rouge_scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
 
 
 def mauve(predictions, references, featurize_model_name="gpt2-large", length=MAX_TEXT_LENGTH):
@@ -126,6 +129,13 @@ def matthews_corrcoef(predictions, targets) -> dict:
     return {"matthews_correlation": 100 * sklearn.metrics.matthews_corrcoef(targets, predictions)}
 
 
+def rouge(predictions, targets) -> dict:
+    """Computes the ROUGE score."""
+    scores = [default_rouge_scorer.score(prediction=p, target=t) for p, t in zip(predictions, targets)]
+    average_scores = {k: np.mean([score[k] for score in scores]) for k in scores[0]}
+    return average_scores
+
+
 def get_glue_metrics(task):
     GLUE_TASKS_TO_METRICS = {
         "mrpc": [f1_score_with_invalid, accuracy],
@@ -137,5 +147,6 @@ def get_glue_metrics(task):
         "qnli": [accuracy],
         "rte": [accuracy],
         "wnli": [accuracy],
+        "sni": [rouge]
     }
     return GLUE_TASKS_TO_METRICS[task]

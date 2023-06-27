@@ -11,13 +11,13 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
-from arguments import get_args
-from data.data_collator import SpanInfillingDataCollator
-from data.data_utils import load_data, tokenize_data_new
-from inference.inference_utils import evaluate_generation
-from models import load_model
-from schedulers import SimplexDDPMScheduler
-from trainer import DiffusionTrainer
+from .arguments import get_args
+from .data.data_collator import SpanInfillingDataCollator
+from .data.data_utils import load_data, tokenize_data_new
+from .inference.inference_utils import evaluate_generation
+from .models import load_model
+from .schedulers import SimplexDDPMScheduler, TokenWiseSimplexDDPMScheduler
+from .trainer import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -122,14 +122,14 @@ def main():
     tokenizer, model = load_model(model_args, diffusion_args, logger)
 
     # init schedulers
-    noise_scheduler = SimplexDDPMScheduler(
+    noise_scheduler = TokenWiseSimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
     )
-    inference_noise_schedulers = [SimplexDDPMScheduler(
+    inference_noise_schedulers = [TokenWiseSimplexDDPMScheduler(
         num_train_timesteps=timesteps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,

@@ -1,1 +1,1 @@
-from .scheduling_simplex_ddpm import SimplexDDPMScheduler
+from .scheduling_simplex_ddpm import SimplexDDPMScheduler, TokenWiseSimplexDDPMScheduler

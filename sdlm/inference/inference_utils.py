@@ -1,11 +1,10 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
-import pdb
-from utils import convert_to_simplex, join_texts
-from metrics.perplexity import perplexity, conditional_perplexity
-from metrics.metrics import distinct_n_grams, mauve, zipf
-from metrics.repetition import repetition
+from sdlm.utils import convert_to_simplex, join_texts
+from sdlm.metrics.perplexity import perplexity, conditional_perplexity
+from sdlm.metrics.metrics import distinct_n_grams, mauve, zipf
+from sdlm.metrics.repetition import repetition
 
 
 def sample_logits(sampling_type, logits, top_p, temperature):

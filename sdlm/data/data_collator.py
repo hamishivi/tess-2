@@ -1,4 +1,5 @@
 import random
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from random import choices
@@ -9,7 +10,7 @@ import torch
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 
-from data.preprocessors import (
+from sdlm.data.preprocessors import (
     gpt_span_mask_batch,
     insert_extra_paddings,
     t5_random_spans_mask_batch,
@@ -286,9 +287,12 @@ class DataCollatorForSeq2Seq:
             return_tensors="pt",
         )
         batch_length = features["input_ids"].shape[1]
+
         masks = [
             len(input) * [False] + (batch_length - len(input)) * [True]
             for input in input_ids
         ]
         features["span_mask"] = torch.tensor(masks)
+        if 'attention_mask' in features:
+            features.pop('attention_mask')
         return features

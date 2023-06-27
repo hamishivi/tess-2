@@ -2,6 +2,7 @@
 
 import numpy as np
 import torch
+import os
 from torch.nn import CrossEntropyLoss
 from evaluate import logging
 import pdb
@@ -80,7 +81,7 @@ def perplexity(
     loss_fct = CrossEntropyLoss(reduction="none")
     if only_return_loss:
         all_losses, all_lengths = [], []
-    for start_index in logging.tqdm(range(0, len(encoded_texts), batch_size)):
+    for start_index in logging.tqdm(range(0, len(encoded_texts), batch_size), disable=os.environ.get("DISABLE_TQDM", False)):
         end_index = min(start_index + batch_size, len(encoded_texts))
         encoded_batch = encoded_texts[start_index:end_index]
         attn_mask = attn_masks[start_index:end_index]

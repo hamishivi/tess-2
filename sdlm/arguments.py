@@ -245,7 +245,7 @@ class DataTrainingArguments:
     """
 
     split_glue: bool = field(
-        default=True,
+        default=False,
         metadata={
             "help": "If set to true split the glue dev/train to make the test set"
             "otherwises uses the original splits."
@@ -526,6 +526,14 @@ class DiffusionArguments:
                 "equal to the token id `-simplex_value` is selected, and `simplex_value` otherwise."
             )
         },
+    )
+    token_warp: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Turns on timestep warping for tokens. Very experimental."
+            )
+        }
     )
     num_diffusion_steps: int = field(
         default=2500, metadata={"help": "Defines the number of diffusion steps."}

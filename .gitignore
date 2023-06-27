@@ -161,3 +161,7 @@ generation_sweep
 opentext_ul2_objective_lr_1e-4_length_256_with_self_condition_logits_addition
 checkpoint-88000
 nvenv
+tmp
+test
+ul2_test
+sni_test

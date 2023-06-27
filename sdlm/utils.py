@@ -26,6 +26,14 @@ def scale(inputs, scale_value):
     return inputs / scale_value
 
 
+def tokenwise_timestep(position, timestep, max_length, max_timesteps):
+    n_e, t_e = 2* max_length, max_timesteps
+    n_s = min(max(max_length - timestep, 0), max_length)
+    t_s = min(max(timestep - max_length, 0), max_timesteps)
+    token_timestep = ((t_e - t_s) / (n_e - n_s)) * (position - n_s) + t_s
+    return round(min(max(0, token_timestep), max_timesteps))
+
+
 def get_last_checkpoint(folder, prefix_checkpoint_dir="step"):
     re_checkpoint = re.compile(r"^" + prefix_checkpoint_dir + r"\_(\d+)$")
     content = os.listdir(folder)

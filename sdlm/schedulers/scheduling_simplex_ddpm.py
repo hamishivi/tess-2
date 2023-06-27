@@ -161,11 +161,143 @@ class SimplexDDPMScheduler(DDPMScheduler):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        # self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
-        # timesteps = timesteps.to(original_samples.device)
+        # if same shape, we have per-token timesteps
+        if timesteps.shape == noise.shape[:2]:
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:,:,None]
+        else:
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps].view(-1, 1, 1)
+        
+        sqrt_alpha_prod = alphas_cumprod_timesteps**0.5
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod_timesteps) ** 0.5
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        return noisy_samples
 
-        alphas_cumprod_timesteps = self.alphas_cumprod[timesteps].view(-1, 1, 1)
+
+
+
+class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
+    @register_to_config
+    def __init__(
+        self,
+        device,
+        simplex_value: float,
+        num_train_timesteps: int = 1000,
+        num_inference_timesteps: int = 1000,
+        beta_start: float = 0.0001,
+        beta_end: float = 0.02,
+        beta_schedule: str = "linear",
+        trained_betas: Optional[np.ndarray] = None,
+        variance_type: str = "fixed_small",
+        clip_sample: bool = False,
+    ):
+        if trained_betas is not None:
+            self.betas = torch.from_numpy(trained_betas)
+        elif beta_schedule == "linear":
+            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32, device=device)
+        elif beta_schedule == "scaled_linear":
+            # this schedule is very specific to the latent diffusion model.
+            self.betas = (
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32, device=device)
+                ** 2
+            )
+        elif beta_schedule == "squaredcos_cap_v2":
+            # Glide cosine schedule
+            self.betas = betas_for_alpha_bar(num_train_timesteps, device=device)
+        elif beta_schedule == "squaredcos_improved_ddpm":
+            self.betas, self.alphas_cumprod = betas_for_alpha_bar(num_train_timesteps, device=device, improved_ddpm=True)
+        elif beta_schedule == "sigmoid":
+            # GeoDiff sigmoid schedule
+            betas = torch.linspace(-6, 6, num_train_timesteps, device=device)
+            self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
+        else:
+            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+
+        if beta_schedule == "squaredcos_improved_ddpm":
+            self.alphas = None
+        else:
+            self.alphas = 1.0 - self.betas
+            self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+
+        self.one = torch.tensor(1.0, device=device)
+
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
+        # setable values
+        self.num_inference_steps = None
+        # TODO(rabeeh): if memory issue, we can not add this to GPU and convert them iteratively.
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy()).to(device=device)
+
+        self.variance_type = variance_type
+
+    # TODO: is this an optimal timestep conversion?
+    # position percent 
+    def timestep_conversion(self, position_percent, timsteps):
+        # we clamp position_percent so that we dont literally reduce timesteps to zero.
+        position_percent = torch.clamp(position_percent, 0.1, 1)
+        return ((position_percent * (timsteps- 1)) + 1).round().long()
+
+    def step(
+        self,
+        projected_logits: torch.FloatTensor,
+        timestep: int,
+        position_percent: float,
+        noise: torch.FloatTensor,
+        generator=None,
+    ) -> Union[DDPMSchedulerOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
+        Args:
+            projected_logits (`torch.FloatTensor`): projected logits from the diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            noise (`torch.FloatTensor`): a random noise with simplex_value standard deviation.
+            generator: random number generator.
+        Returns:
+            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] resulted values.
+        """
+        t = timestep
+        position_timestep = self.timestep_conversion(position_percent, t)
+
+        # 1. compute alphas, betas
+        # index into alphas cumprod
+        alphas_cumprods = []
+        for pos_timestep in position_timestep:
+            alphas_cumprods.append(torch.where(pos_timestep > 0, self.alphas_cumprod[pos_timestep - 1], self.one))
+            
+        # alphas_cumprods has dim: [batch, positions, timesteps]
+        alpha_prod_t_prev = torch.stack(alphas_cumprods, dim=0)[:,:,None]
+        # current_timesteps = current_timesteps.unsqueeze(-1)
+        # now, we can use gather!
+        # alpha_prod_t_prev = torch.where(current_timesteps > 0, alphas_cumprods.gather(dim=-1, index=current_timesteps.long()), self.one)
+        #alpha_prod_t_prev = self.alphas_cumprod[position_timestep][t - 1] if t > 0 else self.one
+        # alpha_prod_t_prev = alpha_prod_t_prev
+
+        # 3. Clip "predicted x_0"
+        if self.config.clip_sample:
+            projected_logits = torch.clamp(projected_logits, -1, 1)
+
+        # See algorithm 2 in Figure 3 in https://arxiv.org/pdf/2210.17432.pdf.
+        predicted_logits_coeff = alpha_prod_t_prev ** (0.5)
+        noise_coeff = (1 - alpha_prod_t_prev) ** (0.5)
+        pred_prev_sample = predicted_logits_coeff * projected_logits + noise_coeff * noise
+
+        return SimplexDDPMSchedulerOutput(prev_sample=pred_prev_sample, projected_logits=projected_logits)
+
+    def add_noise(
+        self,
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
+        position_percent: torch.FloatTensor,
+    ) -> torch.FloatTensor:
+        timesteps = self.timestep_conversion(position_percent, timesteps[:,None])
+        # if same shape, we have per-token timesteps
+        if timesteps.shape == noise.shape[:2]:
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:,:,None]
+        else:
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps].view(-1, 1, 1)
+        
         sqrt_alpha_prod = alphas_cumprod_timesteps**0.5
         sqrt_one_minus_alpha_prod = (1 - alphas_cumprod_timesteps) ** 0.5
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise

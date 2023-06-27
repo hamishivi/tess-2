@@ -14,7 +14,7 @@ from transformers.models.roberta.modeling_roberta import (
 )
 from transformers.utils import logging
 
-from utils import convert_to_simplex, mix_values_based_on_self_condition
+from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
 
@@ -121,7 +121,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         return_dict: Optional[bool] = None,
         previous_pred: Optional[torch.FloatTensor] = None,
         classifier_free_guidance: bool = False,
+        token_rel_positions: Optional[torch.LongTensor] = None,
         classifier_free_guidance_in_train: bool = False,
+        max_timestep: int = 5000,
         reduce_loss: str = "mean",  # passed to 'reduction' in F.cross_entropy
         # unconditional_simplex: torch.FloatTensor = None,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
@@ -248,10 +250,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             )
 
         # TODO: remove conversion.
-        timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float())
-        inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(
-            1, seq_length, 1
-        )
+        # apply token rel pos to transformer timesteps
+        timesteps = token_rel_positions * timesteps[:,None]
+        # where we have conditional input we are effectively at the final timesteps
+        timesteps = torch.where(span_mask, timesteps, torch.zeros_like(timesteps) + max_timestep)
+        timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
+        inputs_embeds = inputs_embeds + timesteps_embed
 
         if span_mask is not None and not self.config.deepmind_conditional:
             # For the unmasked tokens, we only compute their original word embeddings.

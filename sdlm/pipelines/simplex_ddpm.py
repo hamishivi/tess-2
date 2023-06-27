@@ -7,8 +7,8 @@ import torch.nn.functional as F
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.utils import BaseOutput
 
-from inference.inference_utils import logits_projection
-from utils import scale, self_condition_preds
+from sdlm.inference.inference_utils import logits_projection
+from sdlm.utils import scale, self_condition_preds
 
 
 @dataclass
@@ -25,6 +25,8 @@ class SimplexDiffusionPipelineOutput(BaseOutput):
     logits: np.ndarray
     loss: np.ndarray
 
+def yield_func(x):
+    yield x
 
 class SimplexDDPMPipeline(DiffusionPipeline):
     r"""
@@ -47,6 +49,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         classifier_free_uncond_input,
         temperature,
         guidance_softmax_combination,
+        token_warp,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
@@ -58,6 +61,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.classifier_free_uncond_input = classifier_free_uncond_input
         self.temperature = temperature
         self.guidance_softmax_combination = guidance_softmax_combination
+        self.token_warp = token_warp
 
     @torch.no_grad()
     def __call__(
@@ -67,6 +71,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         batch: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 1.0,
+        is_generator: bool = False,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         r"""
         Args:
@@ -113,8 +118,23 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         losses = []
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            # TODO(rabeeh): also check without the scale.
-            t_scaled = scale(t, len(self.scheduler))
+            if self.token_warp:
+                # my token-wise timestep thing.
+                sequence_length = batch["input_ids"].shape[1]
+                context_position = torch.arange(sequence_length)[:, None]
+                memory_position = torch.arange(sequence_length)[None, :]
+                relative_position = memory_position - context_position
+                relative_position = torch.abs(relative_position).unsqueeze(0).expand(batch["input_ids"].size(0), -1,-1).cuda()
+                # we now have size [bsz, seq_len, seq_len]. Zero out all unset positions.
+                relative_position = torch.where(batch["span_mask"][:,None].repeat(1, sequence_length, 1), 0, relative_position)
+                # now, sum over the last dimension to calculate 'how far from context' each token is.
+                relative_position = relative_position.sum(-1)
+                # normalize - the max token should be noisiest, so divide by that.
+                norm_relative_position = relative_position / relative_position.max(dim=-1)[0][:,None]
+            else:
+                norm_relative_position = torch.ones_like(batch["input_ids"])
+            
+            t_scaled = scale(t, len(self.scheduler)).view(1)
             """
             if classifier_free_guidance:
                 if self.classifier_free_uncond_input == "empty_token":
@@ -135,12 +155,13 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 else None,
                 simplex=simplex,
                 timesteps=t_scaled,
+                token_rel_positions=norm_relative_position,
                 previous_pred=previous_pred
                 if self.model.config.self_condition
                 else None,
                 classifier_free_guidance=classifier_free_guidance,
                 reduce_loss="none",
-                # unconditional_simplex=uncond_input if classifier_free_guidance else None,
+                max_timestep=len(self.scheduler),
             )
             model_output_logits = model_output.logits
 
@@ -174,20 +195,26 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # Projection.
             projected_logits = logits_projection_fct(model_output_logits)
 
+            old_simplex = simplex
+
             # 2. compute previous logits: x_t -> x_t-1
             noise = self.simplex_value * torch.randn(
                 simplex_shape, generator=generator, device=self.device
             )
             simplex = self.scheduler.step(
-                projected_logits, t, noise, generator=generator
+                projected_logits, t, norm_relative_position, noise, generator=generator
             ).prev_sample
 
             # keep loss for logging
             losses.append(model_output.loss.detach().cpu())
 
+            # yield over it. (prolly not optimal, but whatever)
+            yield SimplexDiffusionPipelineOutput(
+                simplex=old_simplex, logits=model_output_logits, loss=losses[-1]
+            )
+
         # we take the mean loss over all timesteps
         loss = torch.stack(losses, dim=0)
-
         return SimplexDiffusionPipelineOutput(
             simplex=simplex, logits=model_output_logits, loss=loss
         )
