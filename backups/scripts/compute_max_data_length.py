@@ -7,8 +7,6 @@ import pdb
 import sys
 
 import numpy as np
-from transformers import AutoTokenizer, HfArgumentParser
-
 from arguments import (
     DataTrainingArguments,
     DiffusionArguments,
@@ -16,6 +14,7 @@ from arguments import (
     Seq2SeqTrainingArguments,
 )
 from data.data_utils import load_data
+from transformers import AutoTokenizer, HfArgumentParser
 
 logger = logging.getLogger(__name__)
 

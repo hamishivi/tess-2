@@ -4,8 +4,8 @@ import sys
 
 import datasets
 import transformers
-from datasets import load_from_disk, Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed, TrainerCallback
+from datasets import Dataset, load_from_disk
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
@@ -16,7 +16,7 @@ from .data.data_collator import SpanInfillingDataCollator
 from .data.data_utils import load_data, tokenize_data_new
 from .inference.inference_utils import evaluate_generation
 from .models import load_model
-from .schedulers import SimplexDDPMScheduler, TokenWiseSimplexDDPMScheduler
+from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainer import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -102,7 +102,11 @@ def main():
         and not training_args.overwrite_output_dir
     ):
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0 and not training_args.beaker:
+        if (
+            last_checkpoint is None
+            and len(os.listdir(training_args.output_dir)) > 0
+            and not training_args.beaker
+        ):
             raise ValueError(
                 f"Output directory ({training_args.output_dir}) already exists and is not empty. "
                 "Use --overwrite_output_dir to overcome."
@@ -129,13 +133,16 @@ def main():
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
     )
-    inference_noise_schedulers = [TokenWiseSimplexDDPMScheduler(
-        num_train_timesteps=timesteps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-    ) for timesteps in diffusion_args.num_inference_diffusion_steps]
+    inference_noise_schedulers = [
+        TokenWiseSimplexDDPMScheduler(
+            num_train_timesteps=timesteps,
+            beta_schedule=diffusion_args.beta_schedule,
+            simplex_value=diffusion_args.simplex_value,
+            clip_sample=diffusion_args.clip_sample,
+            device=training_args.device,
+        )
+        for timesteps in diffusion_args.num_inference_diffusion_steps
+    ]
 
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
@@ -159,9 +166,11 @@ def main():
         eval_dataset = tokenized_datasets["validation"]
         # convert eval dataset to regular dataset
         if isinstance(eval_dataset, datasets.IterableDataset):
+
             def iterable_generator():
                 for x in eval_dataset:
                     yield x
+
             eval_dataset = Dataset.from_generator(iterable_generator)
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)

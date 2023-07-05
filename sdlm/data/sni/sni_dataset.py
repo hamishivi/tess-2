@@ -43,7 +43,9 @@ through an iterative peer review process to ensure their quality.
 
 _URL = "https://instructions.apps.allenai.org/"
 _VERSION = "2.6"
-_RELEASE_URL = f"https://api.github.com/repos/allenai/natural-instructions/zipball/v{_VERSION}"
+_RELEASE_URL = (
+    f"https://api.github.com/repos/allenai/natural-instructions/zipball/v{_VERSION}"
+)
 
 
 class NIConfig(datasets.BuilderConfig):
@@ -73,7 +75,9 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version(_VERSION + ".0")
     BUILDER_CONFIG_CLASS = NIConfig
     BUILDER_CONFIGS = [
-        NIConfig(name="default", description="Default config for NaturalInstructions V2")
+        NIConfig(
+            name="default", description="Default config for NaturalInstructions V2"
+        )
     ]
     DEFAULT_CONFIG_NAME = "default"
 
@@ -183,7 +187,10 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
                         instances = all_instances[:100]
                     else:
                         instances = all_instances
-                    if max_num_instances_per_task is not None and max_num_instances_per_task >= 0:
+                    if (
+                        max_num_instances_per_task is not None
+                        and max_num_instances_per_task >= 0
+                    ):
                         random.Random(self.config.seed).shuffle(instances)
                         instances = instances[:max_num_instances_per_task]
                     for idx, instance in enumerate(instances):

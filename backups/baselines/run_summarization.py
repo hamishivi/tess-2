@@ -31,6 +31,7 @@ import nltk  # Here to have a nice missing dependency error message early on
 import numpy as np
 import transformers
 from arguments import BaselineSeq2SeqTrainingArguments
+from data.postprocessors import postprocess_text_for_metric
 from datasets import load_dataset
 from filelock import FileLock
 from trainer_seq2seq import BaselineSeq2SeqTrainer
@@ -54,8 +55,6 @@ from transformers.utils import (
     send_example_telemetry,
 )
 from transformers.utils.versions import require_version
-
-from data.postprocessors import postprocess_text_for_metric
 
 GENERATION_RESULTS = "generations"
 

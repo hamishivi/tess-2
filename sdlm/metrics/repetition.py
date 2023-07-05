@@ -1,5 +1,4 @@
 """Computes the repetition metric. Adapted from: https://raw.githubusercontent.com/ari-holtzman/degen/master/metrics/repetition.py"""
-import pdb
 
 
 def repetition(tokenized_texts, tokenizer):
@@ -30,7 +29,9 @@ def repetition(tokenized_texts, tokenizer):
                 n_repeat += 1
             last_n_repeats[n - 1] = n_repeat
         max_repeated_n = max(range(max_n), key=lambda x: last_n_repeats[x])
-        if last_n_repeats[max_repeated_n] > 1 and (max_repeated_n + 1 >= 3 or last_n_repeats[max_repeated_n] > 50):
+        if last_n_repeats[max_repeated_n] > 1 and (
+            max_repeated_n + 1 >= 3 or last_n_repeats[max_repeated_n] > 50
+        ):
             repetition_stats.append(
                 {
                     "repeated_phrase": list(reversed(rev_gen[: max_repeated_n + 1])),
@@ -42,4 +43,6 @@ def repetition(tokenized_texts, tokenizer):
         else:
             repetition_stats.append({})
 
-    return {"repetition": n_repeated_examples * 1.0 / num_examples}  # , "repetition_stats": repetition_stats}
+    return {
+        "repetition": n_repeated_examples * 1.0 / num_examples
+    }  # , "repetition_stats": repetition_stats}

@@ -13,7 +13,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import WEIGHTS_NAME, check_min_version, send_example_telemetry
+from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 from .arguments import DataTrainingArguments as BaseDataTrainingArguments
@@ -27,7 +27,7 @@ from .metrics.metrics import get_glue_metrics
 from .models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainer import DiffusionTrainer
-from .utils import lmap, round_stsb_target
+from .utils import lmap
 
 # This is computed with scripts/compute_max_tokens_of_labels.py
 MAX_LABEL_LENGTH = 5
@@ -45,7 +45,7 @@ task_to_keys = {
     "sst2": ("sentence", None),
     "stsb": ("sentence1", "sentence2"),
     "wnli": ("sentence1", "sentence2"),
-    "sni": ("inputs", None)
+    "sni": ("inputs", None),
 }
 
 task_to_metric = {
@@ -58,7 +58,7 @@ task_to_metric = {
     "sst2": "accuracy",
     "stsb": "combined_score",
     "wnli": "accuracy",
-    "sni": "rouge"
+    "sni": "rouge",
 }
 
 logger = logging.getLogger(__name__)
@@ -172,7 +172,7 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
         )
         # sni has validation / test
-        raw_datasets['validation'] = raw_datasets['test']
+        raw_datasets["validation"] = raw_datasets["test"]
         # map into simple (inputs, labels) format
         # makes easy to explore few-shot formats if we want.
         collator = DataCollatorForNI(
@@ -185,7 +185,7 @@ def main():
         raw_datasets = raw_datasets.map(
             collator,
             batched=False,
-            num_proc=12, # lazy hardcode
+            num_proc=12,  # lazy hardcode
             # load_from_cache_file=False,
         )
     else:
@@ -223,7 +223,6 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    
     if model_args.model_name_or_path:
         model = RobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
@@ -251,14 +250,14 @@ def main():
         # TODO: here max_length should be max_length minus length of labels.
         # TODO: this is for now, but maybe compute one max_length as a whole.
         # Tokenize the labels.
-        targets = [
-            str(label) for label in examples["label"]
-        ]
+        targets = [str(label) for label in examples["label"]]
         # we have to set this, truncate.
         max_sni_lengths = 128
         labels = tokenizer(
             text_target=targets,
-            max_length=max_seq_length if data_args.dataset_name != "sni" else max_sni_lengths,
+            max_length=max_seq_length
+            if data_args.dataset_name != "sni"
+            else max_sni_lengths,
             padding=False,
             truncation=True,
         )
@@ -374,7 +373,7 @@ def main():
     # Data collator will default to DataCollatorWithPadding when the tokenizer is passed to Trainer, so we change it if
     # we already did the padding.
     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForSeq2Seq(
+    data_collator = lambda mode: DataCollatorForSeq2Seq(  # noqa: E731
         tokenizer,
         # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
@@ -390,14 +389,16 @@ def main():
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
     )
-    inference_noise_schedulers = [TokenWiseSimplexDDPMScheduler(
-        num_train_timesteps=timesteps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-    ) for timesteps in diffusion_args.num_inference_diffusion_steps]
-
+    inference_noise_schedulers = [
+        TokenWiseSimplexDDPMScheduler(
+            num_train_timesteps=timesteps,
+            beta_schedule=diffusion_args.beta_schedule,
+            simplex_value=diffusion_args.simplex_value,
+            clip_sample=diffusion_args.clip_sample,
+            device=training_args.device,
+        )
+        for timesteps in diffusion_args.num_inference_diffusion_steps
+    ]
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(

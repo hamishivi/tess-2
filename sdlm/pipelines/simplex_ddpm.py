@@ -25,8 +25,10 @@ class SimplexDiffusionPipelineOutput(BaseOutput):
     logits: np.ndarray
     loss: np.ndarray
 
+
 def yield_func(x):
     yield x
+
 
 class SimplexDDPMPipeline(DiffusionPipeline):
     r"""
@@ -124,16 +126,27 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 context_position = torch.arange(sequence_length)[:, None]
                 memory_position = torch.arange(sequence_length)[None, :]
                 relative_position = memory_position - context_position
-                relative_position = torch.abs(relative_position).unsqueeze(0).expand(batch["input_ids"].size(0), -1,-1).cuda()
+                relative_position = (
+                    torch.abs(relative_position)
+                    .unsqueeze(0)
+                    .expand(batch["input_ids"].size(0), -1, -1)
+                    .cuda()
+                )
                 # we now have size [bsz, seq_len, seq_len]. Zero out all unset positions.
-                relative_position = torch.where(batch["span_mask"][:,None].repeat(1, sequence_length, 1), 0, relative_position)
+                relative_position = torch.where(
+                    batch["span_mask"][:, None].repeat(1, sequence_length, 1),
+                    0,
+                    relative_position,
+                )
                 # now, sum over the last dimension to calculate 'how far from context' each token is.
                 relative_position = relative_position.sum(-1)
                 # normalize - the max token should be noisiest, so divide by that.
-                norm_relative_position = relative_position / relative_position.max(dim=-1)[0][:,None]
+                norm_relative_position = (
+                    relative_position / relative_position.max(dim=-1)[0][:, None]
+                )
             else:
                 norm_relative_position = torch.ones_like(batch["input_ids"])
-            
+
             t_scaled = scale(t, len(self.scheduler)).view(1)
             """
             if classifier_free_guidance:

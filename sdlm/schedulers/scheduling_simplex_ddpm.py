@@ -1,15 +1,15 @@
 """DDPM scheduler for the simplex diffusion model."""
 
-from diffusers import DDPMScheduler
-from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
-from dataclasses import dataclass
-from typing import Union, Tuple, Optional
-import torch
-import numpy as np
-from diffusers.configuration_utils import register_to_config
-from diffusers.utils import BaseOutput
 import math
-import pdb
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
+
+import numpy as np
+import torch
+from diffusers import DDPMScheduler
+from diffusers.configuration_utils import register_to_config
+from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
+from diffusers.utils import BaseOutput
 
 
 @dataclass
@@ -28,7 +28,9 @@ class SimplexDDPMSchedulerOutput(BaseOutput):
     projected_logits: Optional[torch.FloatTensor] = None
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps, device, max_beta=0.999, improved_ddpm=False):
+def betas_for_alpha_bar(
+    num_diffusion_timesteps, device, max_beta=0.999, improved_ddpm=False
+):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -47,7 +49,9 @@ def betas_for_alpha_bar(num_diffusion_timesteps, device, max_beta=0.999, improve
 
     if improved_ddpm:
         # Implements eqn. 17 in https://arxiv.org/pdf/2102.09672.pdf.
-        alpha_bar = lambda x: (default_alpha_bar(x) / default_alpha_bar(0.0))
+        alpha_bar = lambda x: (  # noqa: E731
+            default_alpha_bar(x) / default_alpha_bar(0.0)
+        )
         alphas_cumprod = []
     else:
         alpha_bar = default_alpha_bar
@@ -62,7 +66,9 @@ def betas_for_alpha_bar(num_diffusion_timesteps, device, max_beta=0.999, improve
     # TODO(rabeeh): maybe this cause memory issue.
     betas = torch.tensor(betas, dtype=torch.float32, device=device)
     if improved_ddpm:
-        return betas, torch.tensor(alphas_cumprod, dtype=torch.torch.float32, device=device)
+        return betas, torch.tensor(
+            alphas_cumprod, dtype=torch.torch.float32, device=device
+        )
     return betas
 
 
@@ -84,24 +90,40 @@ class SimplexDDPMScheduler(DDPMScheduler):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32, device=device)
+            self.betas = torch.linspace(
+                beta_start,
+                beta_end,
+                num_train_timesteps,
+                dtype=torch.float32,
+                device=device,
+            )
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
             self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32, device=device)
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                    device=device,
+                )
                 ** 2
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps, device=device)
         elif beta_schedule == "squaredcos_improved_ddpm":
-            self.betas, self.alphas_cumprod = betas_for_alpha_bar(num_train_timesteps, device=device, improved_ddpm=True)
+            self.betas, self.alphas_cumprod = betas_for_alpha_bar(
+                num_train_timesteps, device=device, improved_ddpm=True
+            )
         elif beta_schedule == "sigmoid":
             # GeoDiff sigmoid schedule
             betas = torch.linspace(-6, 6, num_train_timesteps, device=device)
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(
+                f"{beta_schedule} does is not implemented for {self.__class__}"
+            )
 
         if beta_schedule == "squaredcos_improved_ddpm":
             self.alphas = None
@@ -117,7 +139,9 @@ class SimplexDDPMScheduler(DDPMScheduler):
         # setable values
         self.num_inference_steps = None
         # TODO(rabeeh): if memory issue, we can not add this to GPU and convert them iteratively.
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy()).to(device=device)
+        self.timesteps = torch.from_numpy(
+            np.arange(0, num_train_timesteps)[::-1].copy()
+        ).to(device=device)
 
         self.variance_type = variance_type
 
@@ -151,9 +175,13 @@ class SimplexDDPMScheduler(DDPMScheduler):
         # See algorithm 2 in Figure 3 in https://arxiv.org/pdf/2210.17432.pdf.
         predicted_logits_coeff = alpha_prod_t_prev ** (0.5)
         noise_coeff = (1 - alpha_prod_t_prev) ** (0.5)
-        pred_prev_sample = predicted_logits_coeff * projected_logits + noise_coeff * noise
+        pred_prev_sample = (
+            predicted_logits_coeff * projected_logits + noise_coeff * noise
+        )
 
-        return SimplexDDPMSchedulerOutput(prev_sample=pred_prev_sample, projected_logits=projected_logits)
+        return SimplexDDPMSchedulerOutput(
+            prev_sample=pred_prev_sample, projected_logits=projected_logits
+        )
 
     def add_noise(
         self,
@@ -163,16 +191,16 @@ class SimplexDDPMScheduler(DDPMScheduler):
     ) -> torch.FloatTensor:
         # if same shape, we have per-token timesteps
         if timesteps.shape == noise.shape[:2]:
-            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:,:,None]
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:, :, None]
         else:
             alphas_cumprod_timesteps = self.alphas_cumprod[timesteps].view(-1, 1, 1)
-        
+
         sqrt_alpha_prod = alphas_cumprod_timesteps**0.5
         sqrt_one_minus_alpha_prod = (1 - alphas_cumprod_timesteps) ** 0.5
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        noisy_samples = (
+            sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        )
         return noisy_samples
-
-
 
 
 class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
@@ -193,24 +221,40 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32, device=device)
+            self.betas = torch.linspace(
+                beta_start,
+                beta_end,
+                num_train_timesteps,
+                dtype=torch.float32,
+                device=device,
+            )
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
             self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32, device=device)
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                    device=device,
+                )
                 ** 2
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps, device=device)
         elif beta_schedule == "squaredcos_improved_ddpm":
-            self.betas, self.alphas_cumprod = betas_for_alpha_bar(num_train_timesteps, device=device, improved_ddpm=True)
+            self.betas, self.alphas_cumprod = betas_for_alpha_bar(
+                num_train_timesteps, device=device, improved_ddpm=True
+            )
         elif beta_schedule == "sigmoid":
             # GeoDiff sigmoid schedule
             betas = torch.linspace(-6, 6, num_train_timesteps, device=device)
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+            raise NotImplementedError(
+                f"{beta_schedule} does is not implemented for {self.__class__}"
+            )
 
         if beta_schedule == "squaredcos_improved_ddpm":
             self.alphas = None
@@ -226,16 +270,18 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         # setable values
         self.num_inference_steps = None
         # TODO(rabeeh): if memory issue, we can not add this to GPU and convert them iteratively.
-        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy()).to(device=device)
+        self.timesteps = torch.from_numpy(
+            np.arange(0, num_train_timesteps)[::-1].copy()
+        ).to(device=device)
 
         self.variance_type = variance_type
 
     # TODO: is this an optimal timestep conversion?
-    # position percent 
+    # position percent
     def timestep_conversion(self, position_percent, timsteps):
         # we clamp position_percent so that we dont literally reduce timesteps to zero.
         position_percent = torch.clamp(position_percent, 0.1, 1)
-        return ((position_percent * (timsteps- 1)) + 1).round().long()
+        return ((position_percent * (timsteps - 1)) + 1).round().long()
 
     def step(
         self,
@@ -263,14 +309,18 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         # index into alphas cumprod
         alphas_cumprods = []
         for pos_timestep in position_timestep:
-            alphas_cumprods.append(torch.where(pos_timestep > 0, self.alphas_cumprod[pos_timestep - 1], self.one))
-            
+            alphas_cumprods.append(
+                torch.where(
+                    pos_timestep > 0, self.alphas_cumprod[pos_timestep - 1], self.one
+                )
+            )
+
         # alphas_cumprods has dim: [batch, positions, timesteps]
-        alpha_prod_t_prev = torch.stack(alphas_cumprods, dim=0)[:,:,None]
+        alpha_prod_t_prev = torch.stack(alphas_cumprods, dim=0)[:, :, None]
         # current_timesteps = current_timesteps.unsqueeze(-1)
         # now, we can use gather!
         # alpha_prod_t_prev = torch.where(current_timesteps > 0, alphas_cumprods.gather(dim=-1, index=current_timesteps.long()), self.one)
-        #alpha_prod_t_prev = self.alphas_cumprod[position_timestep][t - 1] if t > 0 else self.one
+        # alpha_prod_t_prev = self.alphas_cumprod[position_timestep][t - 1] if t > 0 else self.one
         # alpha_prod_t_prev = alpha_prod_t_prev
 
         # 3. Clip "predicted x_0"
@@ -280,9 +330,13 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         # See algorithm 2 in Figure 3 in https://arxiv.org/pdf/2210.17432.pdf.
         predicted_logits_coeff = alpha_prod_t_prev ** (0.5)
         noise_coeff = (1 - alpha_prod_t_prev) ** (0.5)
-        pred_prev_sample = predicted_logits_coeff * projected_logits + noise_coeff * noise
+        pred_prev_sample = (
+            predicted_logits_coeff * projected_logits + noise_coeff * noise
+        )
 
-        return SimplexDDPMSchedulerOutput(prev_sample=pred_prev_sample, projected_logits=projected_logits)
+        return SimplexDDPMSchedulerOutput(
+            prev_sample=pred_prev_sample, projected_logits=projected_logits
+        )
 
     def add_noise(
         self,
@@ -291,14 +345,16 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         timesteps: torch.IntTensor,
         position_percent: torch.FloatTensor,
     ) -> torch.FloatTensor:
-        timesteps = self.timestep_conversion(position_percent, timesteps[:,None])
+        timesteps = self.timestep_conversion(position_percent, timesteps[:, None])
         # if same shape, we have per-token timesteps
         if timesteps.shape == noise.shape[:2]:
-            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:,:,None]
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:, :, None]
         else:
             alphas_cumprod_timesteps = self.alphas_cumprod[timesteps].view(-1, 1, 1)
-        
+
         sqrt_alpha_prod = alphas_cumprod_timesteps**0.5
         sqrt_one_minus_alpha_prod = (1 - alphas_cumprod_timesteps) ** 0.5
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        noisy_samples = (
+            sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        )
         return noisy_samples

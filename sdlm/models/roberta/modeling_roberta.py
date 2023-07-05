@@ -147,7 +147,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             simplex = torch.where(span_mask[:, :, None], simplex, mask_value)
         """
         inputs_probs = F.softmax(simplex, dim=-1)
-        seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
 
         if classifier_free_guidance or classifier_free_guidance_in_train:
@@ -251,9 +250,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
 
         # TODO: remove conversion.
         # apply token rel pos to transformer timesteps
-        timesteps = token_rel_positions * timesteps[:,None]
+        timesteps = token_rel_positions * timesteps[:, None]
         # where we have conditional input we are effectively at the final timesteps
-        timesteps = torch.where(span_mask, timesteps, torch.zeros_like(timesteps) + max_timestep)
+        timesteps = torch.where(
+            span_mask, timesteps, torch.zeros_like(timesteps) + max_timestep
+        )
         timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
         inputs_embeds = inputs_embeds + timesteps_embed
 
@@ -303,7 +304,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),
             )
-            if reduce_loss is 'none':
+            if reduce_loss == "none":
                 # take the average loss over tokens, not counting the masked tokens.
                 masked_lm_loss = masked_lm_loss.view(input_ids.shape[0], -1)
                 masked_lm_loss = masked_lm_loss.sum(dim=-1) / span_mask.sum(dim=-1)

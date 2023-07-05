@@ -10,6 +10,10 @@ import datasets
 import evaluate
 import numpy as np
 import transformers
+from arguments import DataTrainingArguments as BaseDataTrainingArguments
+from arguments import ModelArguments as BaseModelArguments
+from arguments import TrainingArguments
+from data.data_utils import split_glue
 from datasets import load_dataset
 from transformers import (
     AutoConfig,
@@ -26,11 +30,6 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-
-from arguments import DataTrainingArguments as BaseDataTrainingArguments
-from arguments import ModelArguments as BaseModelArguments
-from arguments import TrainingArguments
-from data.data_utils import split_glue
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")

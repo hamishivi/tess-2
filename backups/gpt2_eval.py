@@ -9,10 +9,6 @@ import datasets
 import numpy as np
 import torch
 import transformers
-from datasets import load_from_disk
-from torch.utils.data import DataLoader
-from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser, set_seed
-
 from arguments import (
     DataTrainingArguments,
     DiffusionArguments,
@@ -21,7 +17,10 @@ from arguments import (
 )
 from data.data_collator import SpanInfillingDataCollator
 from data.data_utils import load_data, tokenize_data_new
+from datasets import load_from_disk
 from inference.inference_utils import evaluate_generation
+from torch.utils.data import DataLoader
+from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser, set_seed
 
 logger = logging.getLogger(__name__)
 

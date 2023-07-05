@@ -1,8 +1,8 @@
-from itertools import chain
-from datasets import load_dataset
 import logging
+from itertools import chain
+
 import torch
-from datasets import DatasetDict, IterableDataset
+from datasets import DatasetDict, load_dataset
 
 SMALL_GLUE_DATA = ["cola", "wnli", "rte", "mrpc", "stsb"]
 LARGE_GLUE_DATA = ["qnli", "qqp", "sst2"]
@@ -18,7 +18,7 @@ def load_data(data_args, model_args):
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
-            streaming=data_args.streaming
+            streaming=data_args.streaming,
         )
     else:
         data_files = {}
@@ -34,7 +34,7 @@ def load_data(data_args, model_args):
             data_files=data_files,
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
-            streaming=data_args.streaming
+            streaming=data_args.streaming,
         )
     return raw_datasets
 
@@ -77,7 +77,9 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
         def tokenize_function(examples):
             # Remove empty lines
             examples[text_column_name] = [
-                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+                line
+                for line in examples[text_column_name]
+                if len(line) > 0 and not line.isspace()
             ]
             return tokenizer(
                 examples[text_column_name],
@@ -103,7 +105,9 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
         # efficient when it receives the `special_tokens_mask`.
         def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
+            return tokenizer(
+                examples[text_column_name], return_special_tokens_mask=True
+            )
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             if not data_args.streaming:
@@ -126,7 +130,9 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
         # max_seq_length.
         def group_texts(examples):
             # Concatenate all texts.
-            concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+            concatenated_examples = {
+                k: list(chain(*examples[k])) for k in examples.keys()
+            }
             total_length = len(concatenated_examples[list(examples.keys())[0]])
             # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
             # customize this part to your needs.
@@ -134,7 +140,10 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
                 total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+                k: [
+                    t[i : i + max_seq_length]
+                    for i in range(0, total_length, max_seq_length)
+                ]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -193,9 +202,16 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
         def tokenize_function(examples):
             # Remove empty lines
             examples[text_column_name] = [
-                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+                line
+                for line in examples[text_column_name]
+                if len(line) > 0 and not line.isspace()
             ]
-            return tokenizer(examples[text_column_name], padding=padding, truncation=True, max_length=max_seq_length)
+            return tokenizer(
+                examples[text_column_name],
+                padding=padding,
+                truncation=True,
+                max_length=max_seq_length,
+            )
 
         with accelerator.main_process_first():
             tokenized_datasets = raw_datasets.map(
@@ -225,7 +241,9 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
         # max_seq_length.
         def group_texts(examples):
             # Concatenate all texts.
-            concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+            concatenated_examples = {
+                k: list(chain(*examples[k])) for k in examples.keys()
+            }
             total_length = len(concatenated_examples[list(examples.keys())[0]])
             # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
             # customize this part to your needs.
@@ -233,7 +251,10 @@ def tokenize_data(data_args, tokenizer, raw_datasets, accelerator):
                 total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+                k: [
+                    t[i : i + max_seq_length]
+                    for i in range(0, total_length, max_seq_length)
+                ]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -269,10 +290,14 @@ def split_data_to_train_validation(data_args, data, seed):
 
     remaining_size = total_size - train_size - validation_size
     train, validation, _ = torch.utils.data.random_split(
-        data["train"], [train_size, validation_size, remaining_size], generator=torch.Generator().manual_seed(seed)
+        data["train"],
+        [train_size, validation_size, remaining_size],
+        generator=torch.Generator().manual_seed(seed),
     )
     data["train"], data["validation"] = train, validation
-    assert len(data["train"]) == train_size and len(data["validation"]) == validation_size
+    assert (
+        len(data["train"]) == train_size and len(data["validation"]) == validation_size
+    )
     return data
 
 
@@ -292,14 +317,28 @@ def split_glue(raw_datasets, dataset_name, seed):
         )
     elif dataset_name in SMALL_GLUE_DATA:
         # Splits the validation set into half for validation and half for test.
-        splits = raw_datasets["validation"].train_test_split(test_size=0.5, shuffle=True, seed=seed)
-        raw_datasets = DatasetDict({"validation": splits["train"], "test": splits["test"], "train": raw_datasets["train"]})
+        splits = raw_datasets["validation"].train_test_split(
+            test_size=0.5, shuffle=True, seed=seed
+        )
+        raw_datasets = DatasetDict(
+            {
+                "validation": splits["train"],
+                "test": splits["test"],
+                "train": raw_datasets["train"],
+            }
+        )
     elif dataset_name in LARGE_GLUE_DATA:
         # Splits the training set into 1K as validation, rest as train.
         test_size = 1000 / len(raw_datasets["train"])
-        splits = raw_datasets["train"].train_test_split(test_size=test_size, shuffle=True, seed=seed)
+        splits = raw_datasets["train"].train_test_split(
+            test_size=test_size, shuffle=True, seed=seed
+        )
         raw_datasets = DatasetDict(
-            {"train": splits["train"], "validation": splits["test"], "test": raw_datasets["validation"]}
+            {
+                "train": splits["train"],
+                "validation": splits["test"],
+                "test": raw_datasets["validation"],
+            }
         )
     else:
         raise NotImplementedError

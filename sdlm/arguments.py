@@ -2,7 +2,7 @@
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List
+from typing import List, Optional
 
 from transformers import MODEL_MAPPING, HfArgumentParser, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
@@ -471,9 +471,7 @@ class DataTrainingArguments:
     )
     shuffle: bool = field(
         default=False,
-        metadata={
-            "help": "If set, we will shuffle the data before training."
-        },
+        metadata={"help": "If set, we will shuffle the data before training."},
     )
 
     def __post_init__(self):
@@ -529,17 +527,14 @@ class DiffusionArguments:
     )
     token_warp: bool = field(
         default=False,
-        metadata={
-            "help": (
-                "Turns on timestep warping for tokens. Very experimental."
-            )
-        }
+        metadata={"help": ("Turns on timestep warping for tokens. Very experimental.")},
     )
     num_diffusion_steps: int = field(
         default=2500, metadata={"help": "Defines the number of diffusion steps."}
     )
     num_inference_diffusion_steps: List[int] = field(
-        default_factory=lambda: [1, 10, 100], metadata={"help": "Diffusion timesteps to try during inference."}
+        default_factory=lambda: [1, 10, 100],
+        metadata={"help": "Diffusion timesteps to try during inference."},
     )
     beta_schedule: str = field(
         default="squaredcos_improved_ddpm",

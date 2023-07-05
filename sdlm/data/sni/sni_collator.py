@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DataCollatorForNI:
-
     tokenizer: PreTrainedTokenizerBase
     model: Optional[Any] = None
     padding: Union[bool, str, PaddingStrategy] = True
@@ -31,7 +30,6 @@ class DataCollatorForNI:
     random_gen: random.Random = random.Random(42)
 
     def __call__(self, batch, return_tensors=None):
-
         if return_tensors is None:
             return_tensors = self.return_tensors
 
@@ -121,7 +119,9 @@ class DataCollatorForNI:
 
             # try to add positive examples.
             pos_examples = []
-            for idx, pos_example in enumerate(instance["Positive Examples"][:num_pos_examples]):
+            for idx, pos_example in enumerate(
+                instance["Positive Examples"][:num_pos_examples]
+            ):
                 pos_example_str = f" Positive Example {idx+1} -\n"
                 pos_example_str += f"Input: {pos_example['input'].strip()}"
                 if not pos_example_str[-1] in string.punctuation:
@@ -132,7 +132,9 @@ class DataCollatorForNI:
                     pos_example_str += "."
                 pos_example_str += "\n"
                 if add_explanation and "explanation" in pos_example:
-                    pos_example_str += f" Explanation: {pos_example['explanation'].strip()}"
+                    pos_example_str += (
+                        f" Explanation: {pos_example['explanation'].strip()}"
+                    )
                     if not pos_example_str[-1] in string.punctuation:
                         pos_example_str += "."
                     pos_example_str += "\n"
@@ -140,7 +142,10 @@ class DataCollatorForNI:
                 if (
                     len(
                         self.tokenizer(
-                            definition + " ".join(pos_examples) + pos_example_str + task_input
+                            definition
+                            + " ".join(pos_examples)
+                            + pos_example_str
+                            + task_input
                         )["input_ids"]
                     )
                     <= self.max_source_length
@@ -151,7 +156,9 @@ class DataCollatorForNI:
 
             # try to add negative examples.
             neg_examples = []
-            for idx, neg_example in enumerate(instance["Negative Examples"][:num_neg_examples]):
+            for idx, neg_example in enumerate(
+                instance["Negative Examples"][:num_neg_examples]
+            ):
                 neg_example_str = f" Negative Example {idx+1} -\n"
                 neg_example_str += f"Input: {neg_example['input'].strip()}"
                 if not neg_example_str[-1] in string.punctuation:
@@ -162,7 +169,9 @@ class DataCollatorForNI:
                     neg_example_str += "."
                 neg_example_str += "\n"
                 if add_explanation and "explanation" in neg_example:
-                    neg_example_str += f" Explanation: {neg_example['explanation'].strip()}"
+                    neg_example_str += (
+                        f" Explanation: {neg_example['explanation'].strip()}"
+                    )
                     if not neg_example_str[-1] in string.punctuation:
                         neg_example_str += "."
                     neg_example_str += "\n"
@@ -184,7 +193,11 @@ class DataCollatorForNI:
                     break
 
             source = (
-                task_name + definition + "".join(pos_examples) + "".join(neg_examples) + task_input
+                task_name
+                + definition
+                + "".join(pos_examples)
+                + "".join(neg_examples)
+                + task_input
             )
             tokenized_source = self.tokenizer(source)["input_ids"]
             if len(tokenized_source) <= self.max_source_length:
@@ -192,7 +205,8 @@ class DataCollatorForNI:
             else:
                 sources.append(
                     self.tokenizer.decode(
-                        tokenized_source[: self.max_source_length], skip_special_tokens=True
+                        tokenized_source[: self.max_source_length],
+                        skip_special_tokens=True,
                     )
                 )
 
@@ -242,4 +256,4 @@ class DataCollatorForNI:
             model_inputs["decoder_input_ids"] = decoder_input_ids
 
         # flatten the inputs to avoid listing
-        return {k: v[0] for k,v in model_inputs.items()}
+        return {k: v[0] for k, v in model_inputs.items()}

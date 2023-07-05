@@ -1,5 +1,4 @@
 import random
-import logging
 from dataclasses import dataclass
 from enum import Enum
 from random import choices
@@ -16,6 +15,7 @@ from sdlm.data.preprocessors import (
     t5_random_spans_mask_batch,
     uncond_span_mask_batch,
 )
+
 
 class Objective(Enum):
     # Prefix language modeling like GPT style pretraining.
@@ -105,7 +105,9 @@ class SpanInfillingDataCollator:
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(
                 batch
             )
-            self.mask_generator[Objective.unconditional] = lambda batch: uncond_span_mask_batch(batch)
+            self.mask_generator[
+                Objective.unconditional
+            ] = lambda batch: uncond_span_mask_batch(batch)
         elif self.conditional_generation == "span_infilling":
             self.mask_generator = lambda batch: t5_random_spans_mask_batch(
                 batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
@@ -121,7 +123,9 @@ class SpanInfillingDataCollator:
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(
                 batch
             )
-            self.mask_generator[Objective.unconditional] = lambda batch: uncond_span_mask_batch(batch)
+            self.mask_generator[
+                Objective.unconditional
+            ] = lambda batch: uncond_span_mask_batch(batch)
         elif self.conditional_generation == "ul2" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[
@@ -152,7 +156,6 @@ class SpanInfillingDataCollator:
             )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
-
         if self.extra_padding_ratio:
             # Inserting random tokens uniformly, we do not modify start and end of
             # sequence tokens.
@@ -293,6 +296,6 @@ class DataCollatorForSeq2Seq:
             for input in input_ids
         ]
         features["span_mask"] = torch.tensor(masks)
-        if 'attention_mask' in features:
-            features.pop('attention_mask')
+        if "attention_mask" in features:
+            features.pop("attention_mask")
         return features

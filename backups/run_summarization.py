@@ -11,12 +11,6 @@ import datasets
 import evaluate
 import nltk
 import transformers
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
-from transformers.trainer_callback import TrainerState
-from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, send_example_telemetry
-from transformers.utils.versions import require_version
-
 from arguments import (
     DataTrainingArguments,
     DiffusionArguments,
@@ -30,6 +24,11 @@ from inference.inference_utils import process_text
 from models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from schedulers import SimplexDDPMScheduler
 from trainer import DiffusionTrainer
+from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers.trainer_callback import TrainerState
+from transformers.trainer_utils import get_last_checkpoint
+from transformers.utils import check_min_version, send_example_telemetry
+from transformers.utils.versions import require_version
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")

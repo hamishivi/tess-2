@@ -1,21 +1,24 @@
 """Implements the metrics for evaluation of the diffusion models."""
-from mauve import compute_mauve
-from nltk.util import ngrams
-import numpy as np
-from collections import Counter
-from scipy import stats
-import operator
 import math
+import operator
+from collections import Counter
+
+import numpy as np
 import scipy
 import sklearn
+from mauve import compute_mauve
+from nltk.util import ngrams
 from rouge_score import rouge_scorer
+from scipy import stats
 
 MAX_TEXT_LENGTH = 256
 
 default_rouge_scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
 
 
-def mauve(predictions, references, featurize_model_name="gpt2-large", length=MAX_TEXT_LENGTH):
+def mauve(
+    predictions, references, featurize_model_name="gpt2-large", length=MAX_TEXT_LENGTH
+):
     """Computes MAUVE scores between two lists of generated text and reference text.
     Args:
     predictions (list of str) of predictions.
@@ -57,7 +60,12 @@ def distinct_n_grams(texts):
             dist_2.append(len(bigrams) / total_words)
             dist_3.append(len(trigrams) / total_words)
             dist_4.append(len(fourgrams) / total_words)
-    return {"dist-1": np.nanmean(dist_1), "dist-2": np.nanmean(dist_2), "dist-3": np.nanmean(dist_3),  "dist-4": np.nanmean(dist_4)}
+    return {
+        "dist-1": np.nanmean(dist_1),
+        "dist-2": np.nanmean(dist_2),
+        "dist-3": np.nanmean(dist_3),
+        "dist-4": np.nanmean(dist_4),
+    }
 
 
 def zipf(tokenized_texts, N=5000):
@@ -126,12 +134,18 @@ def f1_score_with_invalid(predictions, targets) -> dict:
 # TODO: maybe gaurd against invalid values https://stackoverflow.com/questions/56865344/how-do-i-calculate-the-matthews-correlation-coefficient-in-tensorflow
 def matthews_corrcoef(predictions, targets) -> dict:
     """Computes the Matthews correlation coefficient."""
-    return {"matthews_correlation": 100 * sklearn.metrics.matthews_corrcoef(targets, predictions)}
+    return {
+        "matthews_correlation": 100
+        * sklearn.metrics.matthews_corrcoef(targets, predictions)
+    }
 
 
 def rouge(predictions, targets) -> dict:
     """Computes the ROUGE score."""
-    scores = [default_rouge_scorer.score(prediction=p, target=t) for p, t in zip(predictions, targets)]
+    scores = [
+        default_rouge_scorer.score(prediction=p, target=t)
+        for p, t in zip(predictions, targets)
+    ]
     average_scores = {k: np.mean([score[k] for score in scores]) for k in scores[0]}
     return average_scores
 
@@ -147,6 +161,6 @@ def get_glue_metrics(task):
         "qnli": [accuracy],
         "rte": [accuracy],
         "wnli": [accuracy],
-        "sni": [rouge]
+        "sni": [rouge],
     }
     return GLUE_TASKS_TO_METRICS[task]

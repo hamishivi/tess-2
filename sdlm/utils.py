@@ -1,14 +1,14 @@
 """Defines the utilities used during the training/infernece of diffusion language models."""
-import torch.nn.functional as F
 import os
 import re
-import pdb
-from pathlib import Path
-from transformers.utils import logging
 import shutil
-import numpy as np
+from pathlib import Path
 from typing import Callable, Iterable, List
+
+import numpy as np
 import torch
+import torch.nn.functional as F
+from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
@@ -27,7 +27,7 @@ def scale(inputs, scale_value):
 
 
 def tokenwise_timestep(position, timestep, max_length, max_timesteps):
-    n_e, t_e = 2* max_length, max_timesteps
+    n_e, t_e = 2 * max_length, max_timesteps
     n_s = min(max(max_length - timestep, 0), max_length)
     t_s = min(max(timestep - max_length, 0), max_timesteps)
     token_timestep = ((t_e - t_s) / (n_e - n_s)) * (position - n_s) + t_s
@@ -38,17 +38,28 @@ def get_last_checkpoint(folder, prefix_checkpoint_dir="step"):
     re_checkpoint = re.compile(r"^" + prefix_checkpoint_dir + r"\_(\d+)$")
     content = os.listdir(folder)
     checkpoints = [
-        path for path in content if re_checkpoint.search(path) is not None and os.path.isdir(os.path.join(folder, path))
+        path
+        for path in content
+        if re_checkpoint.search(path) is not None
+        and os.path.isdir(os.path.join(folder, path))
     ]
     if len(checkpoints) == 0:
         return
-    return os.path.join(folder, max(checkpoints, key=lambda x: int(re_checkpoint.search(x).groups()[0])))
+    return os.path.join(
+        folder, max(checkpoints, key=lambda x: int(re_checkpoint.search(x).groups()[0]))
+    )
 
 
 def remove_checkpoints(output_dir, checkpoint_prefix="step"):
-    checkpoints = [str(x) for x in Path(output_dir).glob(f"{checkpoint_prefix}_*") if os.path.isdir(x)]
+    checkpoints = [
+        str(x)
+        for x in Path(output_dir).glob(f"{checkpoint_prefix}_*")
+        if os.path.isdir(x)
+    ]
     for checkpoint in checkpoints:
-        logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+        logger.info(
+            f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
+        )
         shutil.rmtree(checkpoint)
 
 
@@ -56,11 +67,17 @@ def get_norm_stats(model):
     # Gradient norm of word embeddings and lm_head.
     input_embed_grad_norm = 0
     if model.roberta.embeddings.word_embeddings.weight.grad is not None:
-        input_embed_grad_norm = model.roberta.embeddings.word_embeddings.weight.grad.detach().data.norm(2).item()
+        input_embed_grad_norm = (
+            model.roberta.embeddings.word_embeddings.weight.grad.detach()
+            .data.norm(2)
+            .item()
+        )
 
     output_embed_grad_norm = 0.0
     if model.lm_head.decoder.weight.grad is not None:
-        output_embed_grad_norm = model.lm_head.decoder.weight.grad.detach().data.norm(2).item()
+        output_embed_grad_norm = (
+            model.lm_head.decoder.weight.grad.detach().data.norm(2).item()
+        )
 
     """
     total_grad_norm = 0.0
@@ -91,13 +108,23 @@ def get_norm_stats(model):
 
 
 def self_condition_preds(self_condition, logits, logits_projection=None):
-    if self_condition in ["logits", "logits_addition", "logits_mean", "logits_max", "logits_multiply"]:
+    if self_condition in [
+        "logits",
+        "logits_addition",
+        "logits_mean",
+        "logits_max",
+        "logits_multiply",
+    ]:
         previous_pred = logits.detach()
-    elif self_condition in ["logits_with_projection", "logits_with_projection_addition"]:
+    elif self_condition in [
+        "logits_with_projection",
+        "logits_with_projection_addition",
+    ]:
         previous_pred = logits_projection(logits.detach())
     else:
         assert NotImplementedError(f"{self_condition} is not implemented.")
     return previous_pred
+
 
 def mix_values_based_on_self_condition(self_condition_type, value_1, value_2):
     if self_condition_type in ["logits_with_projection_addition", "logits_addition"]:
@@ -111,6 +138,7 @@ def mix_values_based_on_self_condition(self_condition_type, value_1, value_2):
     else:
         assert NotImplementedError
     return mixed_values
+
 
 def round_stsb_target(label):
     """STSB maps two sentences to a floating point number between 1 and 5

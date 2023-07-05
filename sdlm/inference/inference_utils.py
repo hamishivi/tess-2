@@ -1,10 +1,11 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
-from sdlm.utils import convert_to_simplex, join_texts
-from sdlm.metrics.perplexity import perplexity, conditional_perplexity
+
 from sdlm.metrics.metrics import distinct_n_grams, mauve, zipf
+from sdlm.metrics.perplexity import conditional_perplexity, perplexity
 from sdlm.metrics.repetition import repetition
+from sdlm.utils import convert_to_simplex, join_texts
 
 
 def sample_logits(sampling_type, logits, top_p, temperature):
@@ -23,13 +24,17 @@ def sample_logits(sampling_type, logits, top_p, temperature):
             sorted_indices_to_keep[..., 1:] = sorted_indices_to_keep[..., :-1].clone()
             sorted_indices_to_keep[..., 0] = 1
 
-            indices_to_keep = sorted_indices_to_keep.scatter(dim=2, index=sorted_indices, src=sorted_indices_to_keep)
+            indices_to_keep = sorted_indices_to_keep.scatter(
+                dim=2, index=sorted_indices, src=sorted_indices_to_keep
+            )
             filtered_logits = logits.masked_fill(indices_to_keep == 0, -float("Inf"))
 
             # sample from the filtered distribution.
-            token_ids = torch.distributions.categorical.Categorical(logits=filtered_logits).sample()
+            token_ids = torch.distributions.categorical.Categorical(
+                logits=filtered_logits
+            ).sample()
         else:
-            token_ids=torch.argmax(probs, dim=-1)
+            token_ids = torch.argmax(probs, dim=-1)
     else:
         assert NotImplementedError
     return token_ids
@@ -74,7 +79,7 @@ def split_into_masked_and_unmasked(token_ids, span_mask, return_masked=None):
         # TODO: this needs to be here for previous version of the codes.
         # span = torch.stack(span)
         masked.append(span) if mask else unmasked.append(span)
-    
+
     for _, (token_id, mask) in enumerate(zip(token_ids, span_mask)):
         if mask == prev_mask:
             span.append(token_id)
@@ -100,8 +105,8 @@ def concatenate_alternatively(longer, shorter, mark=""):
     a `mark` text on both sides.
     """
     concatenated_str = ""
-    for l, s in zip(longer, shorter):
-        concatenated_str += l + " " + mark + s + mark + " "
+    for long, short in zip(longer, shorter):
+        concatenated_str += long + " " + mark + short + mark + " "
     if len(longer) == len(shorter) + 1:
         return concatenated_str + longer[-1]
     elif len(longer) == len(shorter):
@@ -114,8 +119,8 @@ def aggregate_list(x):
     str = ""
     if len(x) == 0:
         return str
-    for l in x:
-        str += l + " "
+    for line in x:
+        str += line + " "
     return str[:-1]
 
 
@@ -135,19 +140,47 @@ def filter_empty(texts):
     return list(non_empty_texts), list(remained_inds)
 
 
-def predict_conditional_generated(span_masks, input_ids, tokenizer, predicted_token_ids, prefix_name, skip_special_tokens):
+def predict_conditional_generated(
+    span_masks,
+    input_ids,
+    tokenizer,
+    predicted_token_ids,
+    prefix_name,
+    skip_special_tokens,
+):
     masked = list(
-        map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=True), predicted_token_ids, span_masks)
+        map(
+            lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=True),
+            predicted_token_ids,
+            span_masks,
+        )
     )
-    unmasked = list(map(lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=False), input_ids, span_masks))
-    pred_masked_texts = [tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens) for x in masked]
-    pred_unmasked_texts = [tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens) for x in unmasked]
-    pred_texts = list(map(lambda x, y: concatenate_alternatively(x, y), pred_unmasked_texts, pred_masked_texts))
+    unmasked = list(
+        map(
+            lambda x, y: split_into_masked_and_unmasked(x, y, return_masked=False),
+            input_ids,
+            span_masks,
+        )
+    )
+    pred_masked_texts = [
+        tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens)
+        for x in masked
+    ]
+    pred_unmasked_texts = [
+        tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens)
+        for x in unmasked
+    ]
     pred_texts_marked = list(
-        map(lambda x, y: concatenate_alternatively(x, y, mark="***"), pred_unmasked_texts, pred_masked_texts)
+        map(
+            lambda x, y: concatenate_alternatively(x, y, mark="***"),
+            pred_unmasked_texts,
+            pred_masked_texts,
+        )
     )
     aggregated_masked_texts = list(map(lambda x: aggregate_list(x), pred_masked_texts))
-    predicted_tokens = [np.array(item).tolist() for submasked in masked for item in submasked]
+    predicted_tokens = [
+        np.array(item).tolist() for submasked in masked for item in submasked
+    ]
     return {
         # prefix_name: pred_texts,
         prefix_name + "_marked": pred_texts_marked,
@@ -183,11 +216,11 @@ def evaluate_generation(
     if is_conditional_generation:
         gold_texts = results[gold_text_key]
         if not skip_special_tokens:
-           gold_texts = process_text(gold_texts)
+            gold_texts = process_text(gold_texts)
     if "prefixes" in results:
         prefixes = results["prefixes"]
     else:
-        prefixes = None 
+        prefixes = None
 
     for key in keys:
         key_metrics = {}
@@ -201,12 +234,27 @@ def evaluate_generation(
 
         # Perplexity measured by a causal model.
         if prefixes is None:
-            key_metrics.update({"perplexity": perplexity(non_empty_texts, causal_model, causal_tokenizer)["mean_perplexity"]})
+            key_metrics.update(
+                {
+                    "perplexity": perplexity(
+                        non_empty_texts, causal_model, causal_tokenizer
+                    )["mean_perplexity"]
+                }
+            )
         else:
-            non_empty_prefixes = [prefix for i, prefix in enumerate(prefixes) if i in remained_indices ]
-            perplexity_results = conditional_perplexity(non_empty_texts, non_empty_prefixes, causal_model, causal_tokenizer)
-            key_metrics.update({"perplexity": perplexity_results["mean_perplexity"], "total_perplexity":perplexity_results["mean_perplexity_total"]})
-        
+            non_empty_prefixes = [
+                prefix for i, prefix in enumerate(prefixes) if i in remained_indices
+            ]
+            perplexity_results = conditional_perplexity(
+                non_empty_texts, non_empty_prefixes, causal_model, causal_tokenizer
+            )
+            key_metrics.update(
+                {
+                    "perplexity": perplexity_results["mean_perplexity"],
+                    "total_perplexity": perplexity_results["mean_perplexity_total"],
+                }
+            )
+
         # Dist-1,2,3 measurements.
         key_metrics.update(distinct_n_grams(texts))
 
@@ -218,7 +266,13 @@ def evaluate_generation(
             texts_with_context = join_texts(prefixes, texts)
             gold_with_context = join_texts(prefixes, gold_texts)
             length = data_args.max_seq_length - data_args.truncation_length
-            key_metrics.update(mauve(predictions=texts_with_context, references=gold_with_context, length=length))
+            key_metrics.update(
+                mauve(
+                    predictions=texts_with_context,
+                    references=gold_with_context,
+                    length=length,
+                )
+            )
 
         if key + "_tokens" in results and eval_for_all_metrics:
             key_metrics.update(repetition(results[key + "_tokens"], causal_tokenizer))

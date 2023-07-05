@@ -1,16 +1,19 @@
 import nltk  # Here to have a nice missing dependency error message early on
-from transformers.utils import is_offline_mode
 from filelock import FileLock
+from transformers.utils import is_offline_mode
 
 try:
     nltk.data.find("tokenizers/punkt")
 except (LookupError, OSError):
     if is_offline_mode():
-        raise LookupError("Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files")
+        raise LookupError(
+            "Offline mode: run this script without TRANSFORMERS_OFFLINE first to download nltk data files"
+        )
     with FileLock(".lock") as lock:
         nltk.download("punkt", quiet=True)
 
-def string_to_float(string, default=-1.):
+
+def string_to_float(string, default=-1.0):
     """Converts string to float, using default when conversion not possible."""
     try:
         return float(string)

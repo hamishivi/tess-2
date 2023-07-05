@@ -3,6 +3,7 @@ from transformers import AutoTokenizer
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 
+
 def model_config_helper(model_name_or_path):
     if "roberta" in model_name_or_path:
         return RobertaDiffusionConfig, RobertaForDiffusionLM

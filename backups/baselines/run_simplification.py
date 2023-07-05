@@ -10,7 +10,9 @@ import evaluate
 import numpy as np
 import transformers
 from arguments import BaselineSeq2SeqTrainingArguments
+from data.postprocessors import postprocess_text_for_metric
 from datasets import Dataset, DatasetDict, load_dataset
+from metrics.metrics import distinct_n_grams
 from trainer_seq2seq import BaselineSeq2SeqTrainer
 from transformers import (
     AutoConfig,
@@ -25,9 +27,6 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
-
-from data.postprocessors import postprocess_text_for_metric
-from metrics.metrics import distinct_n_grams
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")

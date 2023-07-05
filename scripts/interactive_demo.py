@@ -4,33 +4,33 @@ import sys
 
 import gradio as gr
 import torch
-import torch.nn.functional as F
 from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoTokenizer,
     HfArgumentParser,
     set_seed,
 )
-from sdlm.arguments import ModelArguments, DiffusionArguments
+
+from sdlm.arguments import DiffusionArguments, ModelArguments
 from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
-from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
-
-
+from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
 logger = logging.getLogger(__name__)
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+
 
 def main():
     parser = HfArgumentParser((ModelArguments, DiffusionArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
-        model_args, diffusion_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        model_args, diffusion_args = parser.parse_json_file(
+            json_file=os.path.abspath(sys.argv[1])
+        )
     else:
         model_args, diffusion_args = parser.parse_args_into_dataclasses()
-
 
     # Set seed before initializing model.
     set_seed(42)
@@ -59,9 +59,13 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.tokenizer_name, **tokenizer_kwargs
+        )
     elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path, **tokenizer_kwargs
+        )
     else:
         raise ValueError(
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
@@ -87,17 +91,27 @@ def main():
         model.resize_token_embeddings(len(tokenizer))
 
     # for some insane reason some of the model is not correctly loaded using from_pretrained...
-    state_dict = torch.load(os.path.join(model_args.model_name_or_path, "pytorch_model.bin"), map_location="cpu")
+    state_dict = torch.load(
+        os.path.join(model_args.model_name_or_path, "pytorch_model.bin"),
+        map_location="cpu",
+    )
     # for some insane reason the word embeddings dont get loaded
-    model.roberta.embeddings.word_embeddings.weight = torch.nn.Parameter(state_dict['roberta.embeddings.word_embeddings.weight'])
+    model.roberta.embeddings.word_embeddings.weight = torch.nn.Parameter(
+        state_dict["roberta.embeddings.word_embeddings.weight"]
+    )
     model.tie_weights()
     # make sure loading is entirely correct.
-    assert(len([k for k in state_dict if torch.any(state_dict[k] != model.state_dict()[k])]) == 0)
+    assert (
+        len(
+            [k for k in state_dict if torch.any(state_dict[k] != model.state_dict()[k])]
+        )
+        == 0
+    )
 
     def generate(
         inputs,
         simplex_value=5.0,
-        top_p=.99,
+        top_p=0.99,
         temperature=1.0,
         diffusion_steps=2500,
         beta_schedule="squaredcos_improved_ddpm",
@@ -105,26 +119,27 @@ def main():
         guidance_scale=1.0,
         generated_sequence_length=256,
         token_warping=False,
-        progress=gr.Progress()
+        progress=gr.Progress(),
     ):
         generated_sequence_length = int(generated_sequence_length)
-        tokenized_input = tokenizer([inputs], add_special_tokens=False, return_tensors='pt').input_ids
+        tokenized_input = tokenizer(
+            [inputs], add_special_tokens=False, return_tensors="pt"
+        ).input_ids
         tokenized_input_len = tokenized_input.shape[1]
         tokenized_input = torch.cat(
-            [tokenized_input, torch.ones((1, generated_sequence_length))],
-            axis=-1
+            [tokenized_input, torch.ones((1, generated_sequence_length))], axis=-1
         ).long()
         span_mask = torch.cat(
-            [torch.zeros((1, tokenized_input_len)), torch.ones((1, generated_sequence_length))],
-            axis=-1
+            [
+                torch.zeros((1, tokenized_input_len)),
+                torch.ones((1, generated_sequence_length)),
+            ],
+            axis=-1,
         ).bool()
-        inputs = {
-            'input_ids': tokenized_input.cuda(),
-            'span_mask': span_mask.cuda()
-        }
+        inputs = {"input_ids": tokenized_input.cuda(), "span_mask": span_mask.cuda()}
 
         model.eval()
-        
+
         pipeline = SimplexDDPMPipeline(
             model=model.cuda(),
             scheduler=TokenWiseSimplexDDPMScheduler(
@@ -139,12 +154,12 @@ def main():
             sampling_type="top_p",  # currently only this is supported
             is_conditional_generation=True,
             tokenizer=tokenizer,
-            classifier_free_uncond_input='empty_token',
+            classifier_free_uncond_input="empty_token",
             temperature=temperature,
             guidance_softmax_combination=True,
             token_warp=token_warping,
         )
-        #pipeline.progress_bar = progress.tqdm
+        # pipeline.progress_bar = progress.tqdm
         pipeline_args = {
             "batch_size": 1,
             "seq_length": generated_sequence_length,
@@ -160,20 +175,27 @@ def main():
         inputs=[
             gr.Textbox(lines=5),
             gr.Number(value=5.0),
-            gr.Slider(0, 1, value=.99),
+            gr.Slider(0, 1, value=0.99),
             gr.Slider(0, 5, value=1),
             gr.Number(value=100, precision=0),
             gr.Dropdown(
-                choices=["linear", "scaled_linear", "squaredcos_cap_v2", "squaredcos_improved_ddpm"], value="squaredcos_improved_ddpm"
+                choices=[
+                    "linear",
+                    "scaled_linear",
+                    "squaredcos_cap_v2",
+                    "squaredcos_improved_ddpm",
+                ],
+                value="squaredcos_improved_ddpm",
             ),
             gr.Checkbox(value=False),
             gr.Number(value=1.0),
             gr.Number(value=256),
-            gr.Checkbox(value=False),],
-        outputs="text"
+            gr.Checkbox(value=False),
+        ],
+        outputs="text",
     )
 
-    demo.queue().launch(server_name="0.0.0.0", server_port=8888, share=True)  
+    demo.queue().launch(server_name="0.0.0.0", server_port=8888, share=True)
 
 
 if __name__ == "__main__":
