@@ -93,7 +93,6 @@ def main():
     model.tie_weights()
     # make sure loading is entirely correct.
     assert(len([k for k in state_dict if torch.any(state_dict[k] != model.state_dict()[k])]) == 0)
-    import pdb; pdb.set_trace()
 
     def generate(
         inputs,
@@ -105,6 +104,7 @@ def main():
         clip_sample=False,
         guidance_scale=1.0,
         generated_sequence_length=256,
+        token_warping=False,
         progress=gr.Progress()
     ):
         generated_sequence_length = int(generated_sequence_length)
@@ -141,7 +141,8 @@ def main():
             tokenizer=tokenizer,
             classifier_free_uncond_input='empty_token',
             temperature=temperature,
-            guidance_softmax_combination=True
+            guidance_softmax_combination=True,
+            token_warp=token_warping,
         )
         #pipeline.progress_bar = progress.tqdm
         pipeline_args = {
@@ -167,7 +168,8 @@ def main():
             ),
             gr.Checkbox(value=False),
             gr.Number(value=1.0),
-            gr.Number(value=256),],
+            gr.Number(value=256),
+            gr.Checkbox(value=False),],
         outputs="text"
     )
 

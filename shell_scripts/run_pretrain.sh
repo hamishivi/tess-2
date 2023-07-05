@@ -1,4 +1,6 @@
-EXP_NAME="prefix_uncond_100k_c4_roberta_base_shorter_gen"
+# this was for prefix, but didnt work as well as ul2.
+
+# EXP_NAME="prefix_uncond_100k_c4_roberta_base_shorter_gen"
 
 # gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
 #     --workspace ai2/tess2 \
@@ -44,7 +46,7 @@ EXP_NAME="prefix_uncond_100k_c4_roberta_base_shorter_gen"
 #         --dataset_name c4 --streaming --dataset_config_name en
 
 
-EXP_NAME="ul2_orig_100k_c4_roberta_base_preatrain_50k"
+EXP_NAME="ul2_orig_100k_c4_roberta_base_pretrain_50k"
 
 gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --workspace ai2/tess2 \
@@ -89,6 +91,8 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --self_condition_mix_before_weights \
         --dataset_name c4 --streaming --dataset_config_name en
 
+
+# this was for uncondtional + prefix, but didnt work well.
 
 # EXP_NAME="ul2_orig_100k_c4_roberta_scratch_base_self_cond_big_eval"
 

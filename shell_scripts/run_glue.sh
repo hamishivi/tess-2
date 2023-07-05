@@ -1,9 +1,9 @@
 
-checkpoint_mount="XXXXXXX:checkpoint-1000:/model"
+checkpoint_mount="01H41EQ41B36BB6B9T60HJ772N:checkpoint-10000"
 
 for task in mnli mrpc qnli qqp rte sst2
 do 
-    EXP_NAME="${task}_orig_100k_c4_roberta_base_raw"
+    EXP_NAME="${task}_orig_100k_c4_roberta_base_10k_raw_1k_shot"
     gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
@@ -30,10 +30,10 @@ do
             --overwrite_output_dir \
             --pad_to_max_length \
             --simplex_value 5 \
-            --max_train_samples 5000 \
-            --num_train_epochs 5 \
+            --max_train_samples 1000 \
+            --num_train_epochs 3 \
             --num_diffusion_steps 5000 \
-            --num_inference_diffusion_steps 500 \
+            --num_inference_diffusion_steps 100 \
             --conditional_generation seq2seq \
             --learning_rate 3e-5 \
             --gradient_accumulation_steps 1 \
@@ -48,7 +48,7 @@ done
 
 # stsb needs longer sequences
 task="stsb"
-EXP_NAME="${task}_orig_100k_c4_roberta_base_raw"
+EXP_NAME="${task}_orig_100k_c4_roberta_base_10k_raw_1k_shot"
 gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --workspace ai2/tess2 \
     --nfs \
@@ -61,7 +61,7 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --venv 'base' \
     --pip requirements.txt \
     -- python -m sdlm.run_glue \
-        --model_name_or_path roberta-base \
+        --model_name_or_path roberta-base  \
         --dataset_name $task \
         --output_dir /results \
         --do_train \
@@ -75,10 +75,10 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --overwrite_output_dir \
         --pad_to_max_length \
         --simplex_value 5 \
-        --max_train_samples 5000 \
-        --num_train_epochs 5 \
+        --max_train_samples 1000 \
+        --num_train_epochs 3 \
         --num_diffusion_steps 5000 \
-        --num_inference_diffusion_steps 500 \
+        --num_inference_diffusion_steps 100 \
         --conditional_generation seq2seq \
         --learning_rate 3e-5 \
         --gradient_accumulation_steps 1 \
@@ -91,7 +91,7 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --max_eval_samples 500
 
 # and for sni, but this is not few-shot.
-EXP_NAME="sni_orig_100k_c4_roberta_base_raw"
+EXP_NAME="sni_orig_100k_c4_roberta_base_10k_pretrained"
 
 gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --workspace ai2/tess2 \
@@ -103,9 +103,10 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
     --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
     --venv 'base' \
+    --dataset "${checkpoint_mount}:/model" \
     --pip requirements.txt \
     -- python -m sdlm.run_glue \
-        --model_name_or_path roberta-base \
+        --model_name_or_path /model \
         --dataset_name sni \
         --output_dir /results \
         --do_train \
