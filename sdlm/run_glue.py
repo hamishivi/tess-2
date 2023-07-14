@@ -207,6 +207,9 @@ def main():
         ]  # mismatched is for reverse, and for normal is matched.
         raw_datasets["test"] = raw_datasets["test_matched"]
 
+    # shuffle our datasets with the split_seed (split glue does this but otherwise not.)
+    raw_datasets = raw_datasets.shuffle(data_args.glue_split_seed)
+
     # Labels
     config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
