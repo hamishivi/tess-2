@@ -196,6 +196,23 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
         )
 
+    # for glue tasks, grab the string labels
+    if data_args.dataset_name != "sni":
+        if data_args.dataset_name != "stsb":
+            label_list = raw_datasets["train"].features["label"].names
+            # map labels to the strings
+            raw_datasets = raw_datasets.map(
+                lambda x: {"label": label_list[x["label"]]},
+                batched=False,
+            )
+        else:
+            # stsb in t5 style - round stsb values
+            label_list = list(map(str, range(0, 5.2, 0.2)))
+            raw_datasets = raw_datasets.map(
+                lambda x: {"label": f"{(round(x['label']*5) / 5):.1f}"},
+                batched=False,
+            )
+
     # Split dataset, since test sets of GLUE do not have the labels.
     if data_args.split_glue:
         raw_datasets = split_glue(
