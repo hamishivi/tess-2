@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import datasets
 import numpy as np
 import transformers
-from datasets import load_dataset
+from datasets import Value, load_dataset
 from transformers import AutoTokenizer, HfArgumentParser, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
@@ -200,19 +200,22 @@ def main():
     if data_args.dataset_name != "sni":
         if data_args.dataset_name != "stsb":
             label_list = raw_datasets["train"].features["label"].names
+            raw_datasets = raw_datasets.cast_column(
+                "label", Value(dtype="string", id=None)
+            )
             # map labels to the strings
             raw_datasets = raw_datasets.map(
-                lambda x: {"label": label_list[x["label"]]},
-                batched=False,
+                lambda x: {"label": label_list[int(x["label"])].replace("_", " ")},
             )
         else:
             # stsb in t5 style - round stsb values
-            label_list = list(map(str, range(0, 5.2, 0.2)))
-            raw_datasets = raw_datasets.map(
-                lambda x: {"label": f"{(round(x['label']*5) / 5):.1f}"},
-                batched=False,
+            label_list = [str(x / 5.0) for x in range(26)]
+            raw_datasets = raw_datasets.cast_column(
+                "label", Value(dtype="string", id=None)
             )
-
+            raw_datasets = raw_datasets.map(
+                lambda x: {"label": f"{(round(float(x['label'])*5) / 5):.1f}"},
+            )
     # Split dataset, since test sets of GLUE do not have the labels.
     if data_args.split_glue:
         raw_datasets = split_glue(
