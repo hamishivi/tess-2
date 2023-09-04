@@ -539,8 +539,8 @@ class DiffusionTrainer(Trainer):
                 prefixes = None
             # Update containers on host
             if prefixes is not None:
-                prefixes = self._pad_across_processes(
-                    prefixes, pad_index=self.eos_token_id
+                prefixes = self.accelerator.pad_across_processes(
+                    prefixes, dim=1, pad_index=self.eos_token_id
                 )
                 prefixes = self._nested_gather(prefixes)
                 prefixes_host = (
@@ -551,8 +551,8 @@ class DiffusionTrainer(Trainer):
                     )
                 )
             if inputs_decode is not None:
-                inputs_decode = self._pad_across_processes(
-                    inputs_decode, pad_index=self.eos_token_id
+                inputs_decode = self.accelerator.pad_across_processes(
+                    inputs_decode, dim=1, pad_index=self.eos_token_id
                 )
                 inputs_decode = self._nested_gather(inputs_decode)
                 inputs_host = (
@@ -574,8 +574,8 @@ class DiffusionTrainer(Trainer):
                 simplex = F.softmax(simplex, dim=-1)
                 if self.preprocess_logits_for_metrics is not None:
                     simplex = self.preprocess_logits_for_metrics(simplex)
-                simplex = self._pad_across_processes(
-                    simplex, pad_index=self.eos_token_id
+                simplex = self.accelerator.pad_across_processes(
+                    simplex, dim=1, pad_index=self.eos_token_id
                 )
                 simplex = self._nested_gather(simplex)
                 # TODO: note that this is no more a simplex, but the processed one.
@@ -587,7 +587,7 @@ class DiffusionTrainer(Trainer):
                     )
                 )
             if masks is not None:
-                masks = self._pad_across_processes(masks, pad_index=0)
+                masks = self.accelerator.pad_across_processes(masks, dim=1, pad_index=0)
                 masks = self._nested_gather(masks)
                 # We pad masks with False tokens.
                 masks_host = (
@@ -598,7 +598,9 @@ class DiffusionTrainer(Trainer):
             if logits is not None:
                 if self.preprocess_logits_for_metrics is not None:
                     logits = self.preprocess_logits_for_metrics(logits)
-                logits = self._pad_across_processes(logits, pad_index=self.eos_token_id)
+                logits = self.accelerator.pad_across_processes(
+                    logits, dim=1, pad_index=self.eos_token_id
+                )
                 logits = self._nested_gather(logits)
                 logits_host = (
                     logits
