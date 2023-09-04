@@ -40,8 +40,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.lm_head = RobertaLMHead(config)
 
-        # The LM head weights require special treatment only when they are tied with the word embeddings
-        self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
+        # # The LM head weights require special treatment only when they are tied with the word embeddings
+        # self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
 
         self.vocab_to_hidden_dim_embed = nn.Linear(
             config.vocab_size, config.hidden_size, bias=False
