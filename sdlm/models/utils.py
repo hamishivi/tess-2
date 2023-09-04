@@ -1,11 +1,14 @@
 from transformers import AutoTokenizer
 
+from .cdcd.warper_model import CDCDRobertaForDiffusionLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
-def model_config_helper(model_name_or_path):
-    if "roberta" in model_name_or_path:
+def model_config_helper(model_name_or_path, use_cdcd=True):
+    if "roberta" in model_name_or_path and use_cdcd:
+        return RobertaDiffusionConfig, CDCDRobertaForDiffusionLM
+    elif "roberta" in model_name_or_path:
         return RobertaDiffusionConfig, RobertaForDiffusionLM
     raise ValueError
 
@@ -16,7 +19,9 @@ def load_model(model_args, diffusion_args, logger):
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    cfg_cls, model_cls = model_config_helper(model_args.model_name_or_path)
+    cfg_cls, model_cls = model_config_helper(
+        model_args.model_name_or_path, use_cdcd=model_args.use_cdcd
+    )
     config = cfg_cls.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,

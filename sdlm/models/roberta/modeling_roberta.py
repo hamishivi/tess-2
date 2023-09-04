@@ -126,6 +126,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         max_timestep: int = 5000,
         reduce_loss: str = "mean",  # passed to 'reduction' in F.cross_entropy
         # unconditional_simplex: torch.FloatTensor = None,
+        return_all_losses: bool = False,  # return per-token loss for all items in batch
+        previous_hidden: Optional[torch.FloatTensor] = None,  # for CDCD predictions...
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -249,8 +251,10 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             )
 
         # TODO: remove conversion.
+        if len(timesteps.shape) != len(token_rel_positions.shape):
+            timesteps = timesteps[:, None]
         # apply token rel pos to transformer timesteps
-        timesteps = token_rel_positions * timesteps[:, None]
+        timesteps = token_rel_positions * timesteps
         # where we have conditional input we are effectively at the final timesteps
         timesteps = torch.where(
             span_mask, timesteps, torch.zeros_like(timesteps) + max_timestep
@@ -304,6 +308,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),
             )
+            if return_all_losses:
+                all_lm_losses = masked_lm_loss.view(input_ids.shape[0], -1)
             if reduce_loss == "none":
                 # take the average loss over tokens, not counting the masked tokens.
                 masked_lm_loss = masked_lm_loss.view(input_ids.shape[0], -1)
@@ -316,7 +322,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             )
 
         return MaskedLMOutput(
-            loss=masked_lm_loss,
+            loss=all_lm_losses if return_all_losses else masked_lm_loss,
             logits=prediction_scores,
             hidden_states=outputs.last_hidden_state,
             attentions=outputs.attentions,

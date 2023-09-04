@@ -52,6 +52,12 @@ class ModelArguments:
             + ", ".join(MODEL_TYPES)
         },
     )
+    use_cdcd: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, uses the cdcd model. Otherwise, uses the vanilla model."
+        },
+    )
     config_overrides: Optional[str] = field(
         default=None,
         metadata={
@@ -527,7 +533,7 @@ class DiffusionArguments:
     )
     token_warp: bool = field(
         default=False,
-        metadata={"help": ("Turns on timestep warping for tokens. Very experimental.")},
+        metadata={"help": ("Turns on warping for tokens, make sure to use with cdcd.")},
     )
     num_diffusion_steps: int = field(
         default=2500, metadata={"help": "Defines the number of diffusion steps."}

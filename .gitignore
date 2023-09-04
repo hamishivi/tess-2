@@ -166,3 +166,6 @@ test
 ul2_test
 sni_test
 test_chkpnt
+tmp2
+.lock
+test_results

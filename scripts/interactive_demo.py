@@ -12,7 +12,7 @@ from transformers import (
 )
 
 from sdlm.arguments import DiffusionArguments, ModelArguments
-from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
+from sdlm.models import CDCDRobertaForDiffusionLM, RobertaDiffusionConfig
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -73,7 +73,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = RobertaForDiffusionLM.from_pretrained(
+        model = CDCDRobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,

@@ -120,33 +120,13 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         losses = []
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            if self.token_warp:
-                # my token-wise timestep thing.
-                sequence_length = batch["input_ids"].shape[1]
-                context_position = torch.arange(sequence_length)[:, None]
-                memory_position = torch.arange(sequence_length)[None, :]
-                relative_position = memory_position - context_position
-                relative_position = (
-                    torch.abs(relative_position)
-                    .unsqueeze(0)
-                    .expand(batch["input_ids"].size(0), -1, -1)
-                    .cuda()
-                )
-                # we now have size [bsz, seq_len, seq_len]. Zero out all unset positions.
-                relative_position = torch.where(
-                    batch["span_mask"][:, None].repeat(1, sequence_length, 1),
-                    0,
-                    relative_position,
-                )
-                # now, sum over the last dimension to calculate 'how far from context' each token is.
-                relative_position = relative_position.sum(-1)
-                # normalize - the max token should be noisiest, so divide by that.
-                norm_relative_position = (
-                    relative_position / relative_position.max(dim=-1)[0][:, None]
-                )
-            else:
-                norm_relative_position = torch.ones_like(batch["input_ids"])
+            norm_relative_position = torch.ones_like(batch["input_ids"])
 
+            if self.token_warp:
+                # warp timesteps based on cdf
+                t = self.model.warp_timesteps(
+                    t, t_min=0, t_max=len(self.scheduler)
+                ) * len(self.scheduler)
             t_scaled = scale(t, len(self.scheduler)).view(1)
             """
             if classifier_free_guidance:

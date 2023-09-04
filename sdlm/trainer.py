@@ -169,38 +169,20 @@ class DiffusionTrainer(Trainer):
             device=simplex.device,
             dtype=torch.int64,
         )
-        # my thing
-        # construct token grid - same as alibi, basically.
+
+        # if we're not doing token warping, just set all relative positions to 1.
+        norm_relative_position = torch.ones_like(inputs["input_ids"])
+        # warp timesteps according to cdf
+        # we re-scale the timesteps to the correct range.
         if self.token_warp:
-            sequence_length = inputs["input_ids"].shape[1]
-            context_position = torch.arange(sequence_length)[:, None]
-            memory_position = torch.arange(sequence_length)[None, :]
-            relative_position = memory_position - context_position
-            relative_position = (
-                torch.abs(relative_position)
-                .unsqueeze(0)
-                .expand(inputs["input_ids"].size(0), -1, -1)
-                .cuda()
-            )
-            # we now have size [bsz, seq_len, seq_len]. Zero out all unset positions.
-            relative_position = torch.where(
-                inputs["span_mask"][:, None].repeat(1, sequence_length, 1),
-                0,
-                relative_position,
-            )
-            # now, sum over the last dimension to calculate 'how far from context' each token is.
-            relative_position = relative_position.sum(-1)
-            # normalize - the max token should be noisiest, so divide by that.
-            norm_relative_position = (
-                relative_position / relative_position.max(dim=-1)[0][:, None]
-            )
-        else:
-            # if we're not doing token warping, just set all relative positions to 1.
-            norm_relative_position = torch.ones_like(inputs["input_ids"])
+            timesteps = self.model.warp_timesteps(
+                timesteps, t_max=len(self.noise_scheduler)
+            ) * len(self.noise_scheduler)
         # Adds noise to each simplex representation (Forward diffusion process).
         noisy_simplex = self.noise_scheduler.add_noise(
             simplex, noise, timesteps, norm_relative_position
         )
+        # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
 
         inputs.update(
@@ -237,7 +219,6 @@ class DiffusionTrainer(Trainer):
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
-
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
         elif self.use_apex:
@@ -277,34 +258,17 @@ class DiffusionTrainer(Trainer):
                 device=simplex.device,
                 dtype=torch.int64,
             )
-            # my thing
-            # construct token grid - same as alibi, basically.
+
+            # if we're not doing token warping, just set all relative positions to 1.
+            norm_relative_position = torch.ones_like(inputs["input_ids"])
+
+            # if cdcd, we need to wrap the timesteps in a cdf.
+            # make sure we scale the timesteps to the correct range!
             if self.token_warp:
-                sequence_length = inputs["input_ids"].shape[1]
-                context_position = torch.arange(sequence_length)[:, None]
-                memory_position = torch.arange(sequence_length)[None, :]
-                relative_position = memory_position - context_position
-                relative_position = (
-                    torch.abs(relative_position)
-                    .unsqueeze(0)
-                    .expand(inputs["input_ids"].size(0), -1, -1)
-                    .cuda()
-                )
-                # we now have size [bsz, seq_len, seq_len]. Zero out all unset positions.
-                relative_position = torch.where(
-                    inputs["span_mask"][:, None].repeat(1, sequence_length, 1),
-                    0,
-                    relative_position,
-                )
-                # now, sum over the last dimension to calculate 'how far from context' each token is.
-                relative_position = relative_position.sum(-1)
-                # normalize - the max token should be noisiest, so divide by that.
-                norm_relative_position = (
-                    relative_position / relative_position.max(dim=-1)[0][:, None]
-                )
-            else:
-                # if we're not doing token warping, just set all relative positions to 1.
-                norm_relative_position = torch.ones_like(inputs["input_ids"])
+                timesteps = self.model.warp_timesteps(
+                    timesteps, t_max=len(self.noise_scheduler)
+                ) * len(self.noise_scheduler)
+
             # Adds noise to each simplex representation (Forward diffusion process).
             noisy_simplex = self.noise_scheduler.add_noise(
                 simplex, noise, timesteps, norm_relative_position
@@ -322,6 +286,7 @@ class DiffusionTrainer(Trainer):
             inputs.update({"max_timestep": len(self.noise_scheduler)})
             if self.diffusion_args.self_condition is not None:
                 previous_pred = None
+                last_hidden_state = None
                 if np.random.rand(1) > 0.5:
                     outputs = model(**inputs, previous_pred=previous_pred)
                     logits_projection_fct = lambda x: logits_projection(  # noqa: E731
@@ -336,7 +301,13 @@ class DiffusionTrainer(Trainer):
                         outputs.logits,
                         logits_projection_fct,
                     )
-                inputs.update({"previous_pred": previous_pred})
+                    last_hidden_state = outputs.hidden_states
+                inputs.update(
+                    {
+                        "previous_pred": previous_pred,
+                        "previous_hidden": last_hidden_state,
+                    }
+                )
             # NOTE: we do this after computation of self-conditioning to not affect that one.
             inputs.update(
                 {"classifier_free_guidance_in_train": self.classifier_free_guidance}
@@ -1548,3 +1519,61 @@ class DiffusionTrainer(Trainer):
         )
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
+
+    def create_optimizer(self):
+        from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+        from transformers.trainer_pt_utils import get_parameter_names
+
+        # overriden
+        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+
+        if self.optimizer is None:
+            decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
+            decay_parameters = [name for name in decay_parameters if "bias" not in name]
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+                self.args
+            )
+
+            optimizer_grouped_parameters = [
+                {
+                    "params": [
+                        p
+                        for n, p in opt_model.named_parameters()
+                        if (
+                            n in decay_parameters and p.requires_grad and "cdf" not in n
+                        )
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                    "lr": optimizer_kwargs["lr"],
+                },
+                {
+                    "params": [
+                        p
+                        for n, p in opt_model.named_parameters()
+                        if (
+                            n not in decay_parameters
+                            and p.requires_grad
+                            and "cdf" not in n
+                        )
+                    ],
+                    "weight_decay": 0.0,
+                    "lr": optimizer_kwargs["lr"],
+                },
+                {
+                    "params": [
+                        p
+                        for n, p in opt_model.named_parameters()
+                        if ("cdf" in n and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                    "lr": 1e-2,  # hardcoded for now...
+                },
+            ]
+
+            optimizer_kwargs.pop("lr")
+
+            self.optimizer = optimizer_cls(
+                optimizer_grouped_parameters, **optimizer_kwargs
+            )
+
+        return self.optimizer
