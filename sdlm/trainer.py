@@ -174,10 +174,11 @@ class DiffusionTrainer(Trainer):
         norm_relative_position = torch.ones_like(inputs["input_ids"])
         # warp timesteps according to cdf
         # we re-scale the timesteps to the correct range.
+        # the -1 is due to the timestep should be in range [0, 5000)
         if self.token_warp:
             timesteps = self.model.warp_timesteps(
-                timesteps, t_max=len(self.noise_scheduler)
-            ) * len(self.noise_scheduler)
+                timesteps, t_max=len(self.noise_scheduler) - 1
+            ) * (len(self.noise_scheduler) - 1)
         # Adds noise to each simplex representation (Forward diffusion process).
         noisy_simplex = self.noise_scheduler.add_noise(
             simplex, noise, timesteps, norm_relative_position
@@ -266,8 +267,8 @@ class DiffusionTrainer(Trainer):
             # make sure we scale the timesteps to the correct range!
             if self.token_warp:
                 timesteps = self.model.warp_timesteps(
-                    timesteps, t_max=len(self.noise_scheduler)
-                ) * len(self.noise_scheduler)
+                    timesteps, t_max=len(self.noise_scheduler) - 1
+                ) * (len(self.noise_scheduler) - 1)
 
             # Adds noise to each simplex representation (Forward diffusion process).
             noisy_simplex = self.noise_scheduler.add_noise(
