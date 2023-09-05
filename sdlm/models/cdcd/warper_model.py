@@ -82,10 +82,9 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             new_timesteps_clone = timesteps.clone()
             new_timesteps_clone.requires_grad = True
             with torch.enable_grad():
-                # grab the predictions for the loss values
-                xent_pred = self.cdf(
-                    t=new_timesteps_clone, normalized=False, t_max=max_timestep
-                )
+                # grab the predictions for the loss values - note at this point timesteps
+                # are normalised to [0, 1]
+                xent_pred = self.cdf(t=new_timesteps_clone, normalized=False, t_max=1)
                 # importance weights -> reciprocal of grad of CDF.
                 imp_weights = (
                     1.0 / autograd.grad(xent_pred.sum(), [new_timesteps_clone])[0]
@@ -94,8 +93,7 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             cdf_loss = (
                 imp_weights
                 * (
-                    self.cdf(t=timesteps, normalized=False, t_max=max_timestep)
-                    - loss.detach()
+                    self.cdf(t=timesteps, normalized=False, t_max=1) - loss.detach()
                 ).pow(2)
             ).mean()
             loss = loss.mean() + cdf_loss  # upweight cdf loss as its too small :(
