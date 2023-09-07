@@ -256,9 +256,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # apply token rel pos to transformer timesteps
         timesteps = token_rel_positions * timesteps
         # where we have conditional input we are effectively at the final timesteps
-        timesteps = torch.where(
-            span_mask, timesteps, torch.zeros_like(timesteps) + max_timestep
-        )
+        # we set to 1, since inside everything is scaled to [0,1]
+        timesteps = torch.where(span_mask, timesteps, torch.ones_like(timesteps))
         timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
         inputs_embeds = inputs_embeds + timesteps_embed
 
@@ -308,6 +307,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),
             )
+            import pdb
+
+            pdb.set_trace()
             if return_all_losses:
                 all_lm_losses = masked_lm_loss.view(input_ids.shape[0], -1)
             if reduce_loss == "none":
