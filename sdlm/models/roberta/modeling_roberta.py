@@ -256,8 +256,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # apply token rel pos to transformer timesteps
         timesteps = token_rel_positions * timesteps
         # where we have conditional input we are effectively at the final timesteps
-        # we set to 1, since inside everything is scaled to [0,1]
-        timesteps = torch.where(span_mask, timesteps, torch.ones_like(timesteps))
+        # we set to 0, since inside everything is scaled to [0,1] (0 = no noise)
+        timesteps = torch.where(span_mask, timesteps, torch.zeros_like(timesteps))
         timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
         inputs_embeds = inputs_embeds + timesteps_embed
 
