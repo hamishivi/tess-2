@@ -307,9 +307,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),
             )
-            import pdb
-
-            pdb.set_trace()
             if return_all_losses:
                 all_lm_losses = masked_lm_loss.view(input_ids.shape[0], -1)
             if reduce_loss == "none":
