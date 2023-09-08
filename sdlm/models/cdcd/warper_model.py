@@ -25,7 +25,7 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
     def warp_timesteps(self, timesteps: torch.FloatTensor, t_min=0, t_max=1):
         # warp timesteps. sep. call so we can pass to scheduler
         # detach so we don't backprop through this
-        return self.cdf(t=timesteps, normalized=True, t_min=t_min, t_max=t_max).detach()
+        return self.cdf(u=timesteps, normalized=True, t_min=t_min, t_max=t_max).detach()
 
     def forward(
         self,
