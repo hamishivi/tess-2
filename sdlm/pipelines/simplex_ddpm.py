@@ -124,9 +124,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
             if self.token_warp:
                 # warp timesteps based on cdf
-                t = self.model.warp_timesteps(
-                    t, t_min=0, t_max=len(self.scheduler) - 1
-                ) * (len(self.scheduler) - 1)
+                t = self.model.warp_timesteps(t, t_min=0, t_max=len(self.scheduler) - 1)
             t_scaled = scale(t, len(self.scheduler)).view(1)
             """
             if classifier_free_guidance:

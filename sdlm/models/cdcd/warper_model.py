@@ -23,6 +23,14 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
         self.cdf = LossCDF(100)
 
     def warp_timesteps(self, timesteps: torch.FloatTensor, t_min=0, t_max=1):
+        # u has to be in normalized range...
+        if t_max - t_min > 0:
+            timesteps = (timesteps - t_min) / (t_max - t_min)
+        else:
+            # weird case, only really happens with 1 diffusion steps (tmin=0,tmax=0)
+            # in this case, we just set timesteps to 0
+            timesteps = timesteps - t_min
+            t_max = 1  # just to avoid div by 0
         # warp timesteps. sep. call so we can pass to scheduler
         # detach so we don't backprop through this
         return self.cdf(u=timesteps, normalized=True, t_min=t_min, t_max=t_max).detach()

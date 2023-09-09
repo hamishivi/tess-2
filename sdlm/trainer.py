@@ -178,7 +178,7 @@ class DiffusionTrainer(Trainer):
         if self.token_warp:
             timesteps = self.model.warp_timesteps(
                 timesteps, t_max=len(self.noise_scheduler) - 1
-            ) * (len(self.noise_scheduler) - 1)
+            )
         # Adds noise to each simplex representation (Forward diffusion process).
         noisy_simplex = self.noise_scheduler.add_noise(
             simplex, noise, timesteps, norm_relative_position
@@ -268,7 +268,7 @@ class DiffusionTrainer(Trainer):
             if self.token_warp:
                 timesteps = self.model.warp_timesteps(
                     timesteps, t_max=len(self.noise_scheduler) - 1
-                ) * (len(self.noise_scheduler) - 1)
+                )
 
             # Adds noise to each simplex representation (Forward diffusion process).
             noisy_simplex = self.noise_scheduler.add_noise(
