@@ -46,6 +46,8 @@ from transformers.utils import (
 )
 
 from .inference.inference_utils import logits_projection, predict_conditional_generated
+from .models.cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
+from .models.cdcd.warper_model import CDCDRobertaForDiffusionLM
 from .pipelines.simplex_ddpm import SimplexDDPMPipeline
 from .utils import convert_to_simplex, pad_data, scale, self_condition_preds
 
@@ -108,7 +110,6 @@ class DiffusionTrainer(Trainer):
             diffusion_args.guidance_scale > 1.0
             and data_args.conditional_generation is not None
         )
-        self.token_warp = diffusion_args.token_warp
 
     def annotated_split(self, split):
         return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}_seed_{self.args.seed}_guidance_scale_{self.diffusion_args.guidance_scale}"
@@ -165,17 +166,26 @@ class DiffusionTrainer(Trainer):
         timesteps = torch.randint(
             0,
             len(self.noise_scheduler),
-            (bsz,),
+            (bsz, inputs["input_ids"].shape[1])
+            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM)
+            else (bsz,),
             device=simplex.device,
             dtype=torch.int64,
         )
+        # expand out timesteps to match tokenwise setup
+        if not isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM):
+            timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
         # if we're not doing token warping, just set all relative positions to 1.
         norm_relative_position = torch.ones_like(inputs["input_ids"])
+        # save original timesteps for warping
+        original_timesteps = timesteps
         # warp timesteps according to cdf
         # we re-scale the timesteps to the correct range.
         # the -1 is due to the timestep should be in range [0, 5000)
-        if self.token_warp:
+        if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
+            self.model, CDCDRobertaForDiffusionLM
+        ):
             timesteps = self.model.warp_timesteps(
                 timesteps, t_max=len(self.noise_scheduler) - 1
             )
@@ -196,7 +206,8 @@ class DiffusionTrainer(Trainer):
         inputs.update({"max_timestep": len(self.noise_scheduler)})
         if self.diffusion_args.self_condition is not None:
             previous_pred = None
-            if np.random.rand(1) > 0.5:
+            previous_hidden = None
+            if True:  # np.random.rand(1) > 0.5:
                 outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(  # noqa: E731
                     x,
@@ -210,11 +221,34 @@ class DiffusionTrainer(Trainer):
                     outputs.logits,
                     logits_projection_fct,
                 )
+                # following rest of self-conditioning, don't backprop through.
+                previous_hidden = outputs.hidden_states.detach()
             inputs.update({"previous_pred": previous_pred})
+            inputs.update({"previous_hidden": previous_hidden})
         # NOTE: we do this after computation of self-conditioning to not affect that one.
         inputs.update(
             {"classifier_free_guidance_in_train": self.classifier_free_guidance}
         )
+        # re-warp based on previous hidden state
+        if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
+            self.model, CDCDRobertaForDiffusionLM
+        ):
+            timesteps = self.model.warp_timesteps(
+                original_timesteps,
+                t_max=len(self.noise_scheduler) - 1,
+                previous_hidden=previous_hidden,
+            )
+            noisy_simplex = self.noise_scheduler.add_noise(
+                simplex, noise, timesteps, norm_relative_position
+            )
+            timesteps = scale(timesteps, len(self.noise_scheduler))
+            inputs.update(
+                {
+                    "timesteps": timesteps,
+                    "simplex": noisy_simplex,
+                    "token_rel_positions": norm_relative_position,
+                }
+            )
         with self.compute_loss_context_manager():
             loss = self.compute_loss(model, inputs)
 
@@ -255,17 +289,23 @@ class DiffusionTrainer(Trainer):
             timesteps = torch.randint(
                 0,
                 len(self.noise_scheduler),
-                (bsz,),
+                (bsz, inputs["input_ids"].shape[1])
+                if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM)
+                else (bsz,),
                 device=simplex.device,
                 dtype=torch.int64,
             )
+            if not isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM):
+                timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
             # if we're not doing token warping, just set all relative positions to 1.
             norm_relative_position = torch.ones_like(inputs["input_ids"])
 
             # if cdcd, we need to wrap the timesteps in a cdf.
             # make sure we scale the timesteps to the correct range!
-            if self.token_warp:
+            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
+                self.model, CDCDRobertaForDiffusionLM
+            ):
                 timesteps = self.model.warp_timesteps(
                     timesteps, t_max=len(self.noise_scheduler) - 1
                 )
@@ -434,7 +474,6 @@ class DiffusionTrainer(Trainer):
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
             temperature=self.diffusion_args.temperature,
             guidance_softmax_combination=self.diffusion_args.guidance_softmax_combination,
-            token_warp=self.diffusion_args.token_warp,
         )
 
         self.callback_handler.eval_dataloader = dataloader

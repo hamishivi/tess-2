@@ -1,13 +1,16 @@
 from transformers import AutoTokenizer
 
-from .cdcd.warper_model import CDCDRobertaForDiffusionLM
+from .cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
+from .cdcd.warper_model import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
-def model_config_helper(model_name_or_path, use_cdcd=True):
-    if "roberta" in model_name_or_path and use_cdcd:
-        return RobertaDiffusionConfig, CDCDRobertaForDiffusionLM
+def model_config_helper(model_name_or_path, use_model="cdcd"):
+    if "roberta" in model_name_or_path and use_model == "cdcd":
+        return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+    elif "roberta" in model_name_or_path and use_model == "tokenwise_cdcd":
+        return CDCDRobertaConfig, TokenwiseCDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path:
         return RobertaDiffusionConfig, RobertaForDiffusionLM
     raise ValueError
@@ -20,7 +23,7 @@ def load_model(model_args, diffusion_args, logger):
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     cfg_cls, model_cls = model_config_helper(
-        model_args.model_name_or_path, use_cdcd=model_args.use_cdcd
+        model_args.model_name_or_path, use_model=model_args.use_model
     )
     config = cfg_cls.from_pretrained(
         model_args.model_name_or_path,

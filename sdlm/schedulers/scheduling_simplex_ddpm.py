@@ -276,13 +276,6 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
 
         self.variance_type = variance_type
 
-    # TODO: is this an optimal timestep conversion?
-    # position percent
-    def timestep_conversion(self, position_percent, timsteps):
-        # we clamp position_percent so that we dont literally reduce timesteps to zero.
-        position_percent = torch.clamp(position_percent, 0.1, 1)
-        return ((position_percent * (timsteps - 1)) + 1).round().long()
-
     def step(
         self,
         projected_logits: torch.FloatTensor,
@@ -302,8 +295,7 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         Returns:
             [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] resulted values.
         """
-        t = timestep
-        position_timestep = self.timestep_conversion(position_percent, t)
+        position_timestep = timestep.long()
 
         # 1. compute alphas, betas
         # index into alphas cumprod
@@ -345,13 +337,13 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         timesteps: torch.IntTensor,
         position_percent: torch.FloatTensor,
     ) -> torch.FloatTensor:
-        timesteps = self.timestep_conversion(position_percent, timesteps[:, None])
         # if same shape, we have per-token timesteps
         if timesteps.shape == noise.shape[:2]:
-            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:, :, None]
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps.long()][:, :, None]
         else:
-            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps].view(-1, 1, 1)
-
+            alphas_cumprod_timesteps = self.alphas_cumprod[timesteps.long()].view(
+                -1, 1, 1
+            )
         sqrt_alpha_prod = alphas_cumprod_timesteps**0.5
         sqrt_one_minus_alpha_prod = (1 - alphas_cumprod_timesteps) ** 0.5
         noisy_samples = (

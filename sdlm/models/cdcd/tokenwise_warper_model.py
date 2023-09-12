@@ -10,20 +10,26 @@ from sdlm.models.roberta.modeling_roberta import RobertaForDiffusionLM
 
 
 # only difference is that we add n_bins to the config
-class CDCDRobertaConfig(RobertaDiffusionConfig):
+class TokenwiseCDCDRobertaConfig(RobertaDiffusionConfig):
     def __init__(self, *args, n_bins=100, **kwargs):
         super().__init__(*args, **kwargs)
         self.n_bins = n_bins
 
 
 # Roberta with the CDF timestep warper.
-class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
+class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
     def __init__(self, config):
         super().__init__(config)
         self.cdf = LossCDF(100)
+        self.linear_lu = torch.nn.Linear(self.config.hidden_size, 100)
+        self.linear_lt = torch.nn.Linear(self.config.hidden_size, 100)
 
     def warp_timesteps(
-        self, timesteps: torch.FloatTensor, previous_hidden=None, t_min=0, t_max=1
+        self,
+        timesteps: torch.FloatTensor,
+        previous_hidden: Optional[torch.FloatTensor] = None,
+        t_min=0,
+        t_max=1,
     ):
         # u has to be in normalized range...
         if t_max - t_min > 0:
@@ -33,9 +39,17 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             # in this case, we just set timesteps to 0
             timesteps = timesteps - t_min
             t_max = 1  # just to avoid div by 0
+        if previous_hidden is None:
+            lu, lt = None, None
+        else:
+            # predict out the new timesteps
+            lu = self.linear_lu(previous_hidden)
+            lt = self.linear_lt(previous_hidden)
         # warp timesteps. sep. call so we can pass to scheduler
         # detach so we don't backprop through this
-        return self.cdf(u=timesteps, normalized=True, t_min=t_min, t_max=t_max).detach()
+        return self.cdf(
+            u=timesteps, normalized=True, t_min=t_min, t_max=t_max, l_u=lu, l_t=lt
+        ).detach()
 
     def forward(
         self,
@@ -82,7 +96,7 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             classifier_free_guidance_in_train,
             max_timestep,
             reduce_loss="none",
-            return_all_losses=False,
+            return_all_losses=True,
             previous_hidden=previous_hidden,  # for CDCD predictions...
         )
         loss = output.loss
@@ -94,17 +108,23 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             with torch.enable_grad():
                 # grab the predictions for the loss values - note at this point timesteps
                 # are normalised to [0, 1]
-                xent_pred = self.cdf(t=new_timesteps_clone, normalized=False, t_max=1)
+                if previous_hidden is None:
+                    lu, lt = None, None
+                else:
+                    lu = self.linear_lu(previous_hidden)
+                    lt = self.linear_lt(previous_hidden)
+                xent_pred = self.cdf(
+                    t=new_timesteps_clone, normalized=False, t_max=1, l_u=lu, l_t=lt
+                )
                 # importance weights -> reciprocal of grad of CDF.
                 imp_weights = (
                     1.0 / autograd.grad(xent_pred.sum(), [new_timesteps_clone])[0]
-                )[:, 0]
+                )
             imp_weights = imp_weights.detach() * 1e-5
-            # just one index of timesteps since all are the same. required for compat with tokenwise
             cdf_loss = (
                 imp_weights
                 * (
-                    self.cdf(t=timesteps, normalized=False, t_max=1)[:, 0]
+                    self.cdf(t=timesteps, normalized=False, t_max=1, l_u=lu, l_t=lt)
                     - loss.detach()
                 ).pow(2)
             ).mean()

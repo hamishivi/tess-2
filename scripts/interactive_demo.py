@@ -12,7 +12,7 @@ from transformers import (
 )
 
 from sdlm.arguments import DiffusionArguments, ModelArguments
-from sdlm.models import CDCDRobertaForDiffusionLM, RobertaDiffusionConfig
+from sdlm.models import TokenwiseCDCDRobertaConfig, TokenwiseCDCDRobertaForDiffusionLM
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -39,7 +39,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    config = RobertaDiffusionConfig.from_pretrained(
+    config = TokenwiseCDCDRobertaConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -73,7 +73,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = CDCDRobertaForDiffusionLM.from_pretrained(
+        model = TokenwiseCDCDRobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -118,7 +118,6 @@ def main():
         clip_sample=False,
         guidance_scale=1.0,
         generated_sequence_length=256,
-        token_warping=False,
         progress=gr.Progress(),
     ):
         generated_sequence_length = int(generated_sequence_length)
@@ -157,7 +156,6 @@ def main():
             classifier_free_uncond_input="empty_token",
             temperature=temperature,
             guidance_softmax_combination=True,
-            token_warp=token_warping,
         )
         # pipeline.progress_bar = progress.tqdm
         pipeline_args = {
@@ -190,7 +188,6 @@ def main():
             gr.Checkbox(value=False),
             gr.Number(value=1.0),
             gr.Number(value=256),
-            gr.Checkbox(value=False),
         ],
         outputs="text",
     )

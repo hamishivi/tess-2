@@ -8,6 +8,8 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.utils import BaseOutput
 
 from sdlm.inference.inference_utils import logits_projection
+from sdlm.models.cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
+from sdlm.models.cdcd.warper_model import CDCDRobertaForDiffusionLM
 from sdlm.utils import scale, self_condition_preds
 
 
@@ -51,7 +53,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         classifier_free_uncond_input,
         temperature,
         guidance_softmax_combination,
-        token_warp,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler)
@@ -63,7 +64,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         self.classifier_free_uncond_input = classifier_free_uncond_input
         self.temperature = temperature
         self.guidance_softmax_combination = guidance_softmax_combination
-        self.token_warp = token_warp
 
     @torch.no_grad()
     def __call__(
@@ -118,14 +118,24 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
         )
         losses = []
+        previous_hidden = None
 
         for t in self.progress_bar(self.scheduler.timesteps):
             norm_relative_position = torch.ones_like(batch["input_ids"])
 
-            if self.token_warp:
+            t = torch.tensor([t], device=self.device).expand(batch_size, seq_length)
+            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
+                self.model, CDCDRobertaForDiffusionLM
+            ):
                 # warp timesteps based on cdf
-                t = self.model.warp_timesteps(t, t_min=0, t_max=len(self.scheduler) - 1)
-            t_scaled = scale(t, len(self.scheduler)).view(1)
+                t = self.model.warp_timesteps(
+                    t,
+                    t_min=0,
+                    t_max=len(self.scheduler) - 1,
+                    previous_hidden=previous_hidden,
+                )
+
+            t_scaled = scale(t, len(self.scheduler))
             """
             if classifier_free_guidance:
                 if self.classifier_free_uncond_input == "empty_token":
@@ -153,8 +163,10 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 classifier_free_guidance=classifier_free_guidance,
                 reduce_loss="none",
                 max_timestep=len(self.scheduler),
+                previous_hidden=previous_hidden,
             )
             model_output_logits = model_output.logits
+            previous_hidden = model_output.hidden_states
 
             # Performs classifier-free guidance.
             if classifier_free_guidance:

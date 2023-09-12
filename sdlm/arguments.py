@@ -52,10 +52,10 @@ class ModelArguments:
             + ", ".join(MODEL_TYPES)
         },
     )
-    use_cdcd: bool = field(
-        default=False,
+    use_model: str = field(
+        default="",
         metadata={
-            "help": "If set, uses the cdcd model. Otherwise, uses the vanilla model."
+            "help": "Choose whether to use a cdcd or tokenwise model. Options: cdcd, tokenwise_cdcd."
         },
     )
     config_overrides: Optional[str] = field(
@@ -530,10 +530,6 @@ class DiffusionArguments:
                 "equal to the token id `-simplex_value` is selected, and `simplex_value` otherwise."
             )
         },
-    )
-    token_warp: bool = field(
-        default=False,
-        metadata={"help": ("Turns on warping for tokens, make sure to use with cdcd.")},
     )
     num_diffusion_steps: int = field(
         default=2500, metadata={"help": "Defines the number of diffusion steps."}
