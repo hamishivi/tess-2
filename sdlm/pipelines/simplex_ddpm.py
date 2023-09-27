@@ -120,22 +120,26 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         losses = []
         previous_hidden = None
 
+        warped_steps = []
+        prev_t = 0
         for t in self.progress_bar(self.scheduler.timesteps):
             norm_relative_position = torch.ones_like(batch["input_ids"])
 
-            t = torch.tensor([t], device=self.device).expand(batch_size, seq_length)
+            original_t = torch.tensor([t], device=self.device).expand(
+                batch_size, seq_length
+            )
             if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
                 self.model, CDCDRobertaForDiffusionLM
             ):
                 # warp timesteps based on cdf
                 t = self.model.warp_timesteps(
-                    t,
+                    original_t,
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
                     previous_hidden=previous_hidden,
                 )
-
             t_scaled = scale(t, len(self.scheduler))
+            warped_steps.append(t)
             """
             if classifier_free_guidance:
                 if self.classifier_free_uncond_input == "empty_token":
@@ -204,8 +208,25 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             noise = self.simplex_value * torch.randn(
                 simplex_shape, generator=generator, device=self.device
             )
+            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
+                self.model, CDCDRobertaForDiffusionLM
+            ):
+                # warp timesteps based on cdf
+                prev_t = self.model.warp_timesteps(
+                    original_t - 1,
+                    t_min=0,
+                    t_max=len(self.scheduler) - 1,
+                    previous_hidden=previous_hidden,
+                ).long()
+                # since the tokenwise can do some wild stuff.
+                prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)
             simplex = self.scheduler.step(
-                projected_logits, t, norm_relative_position, noise, generator=generator
+                projected_logits,
+                t,
+                prev_t,
+                norm_relative_position,
+                noise,
+                generator=generator,
             ).prev_sample
 
             # keep loss for logging

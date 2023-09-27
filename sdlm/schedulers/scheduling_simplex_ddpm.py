@@ -280,6 +280,7 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         self,
         projected_logits: torch.FloatTensor,
         timestep: int,
+        t_prev: int,  # previous timestep. recall we are in backward process, so this is the next timestep.
         position_percent: float,
         noise: torch.FloatTensor,
         generator=None,
@@ -300,11 +301,9 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         # 1. compute alphas, betas
         # index into alphas cumprod
         alphas_cumprods = []
-        for pos_timestep in position_timestep:
+        for i, pos_timestep in enumerate(position_timestep):
             alphas_cumprods.append(
-                torch.where(
-                    pos_timestep > 0, self.alphas_cumprod[pos_timestep - 1], self.one
-                )
+                torch.where(pos_timestep > 0, self.alphas_cumprod[t_prev[i]], self.one)
             )
 
         # alphas_cumprods has dim: [batch, positions, timesteps]
