@@ -8,8 +8,7 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.utils import BaseOutput
 
 from sdlm.inference.inference_utils import logits_projection
-from sdlm.models.cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
-from sdlm.models.cdcd.warper_model import CDCDRobertaForDiffusionLM
+from sdlm.models.utils import is_cdcd_check
 from sdlm.utils import scale, self_condition_preds
 
 
@@ -128,9 +127,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             original_t = torch.tensor([t], device=self.device).expand(
                 batch_size, seq_length
             )
-            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
-                self.model, CDCDRobertaForDiffusionLM
-            ):
+            if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
                 t = self.model.warp_timesteps(
                     original_t,
@@ -138,6 +135,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                     t_max=len(self.scheduler) - 1,
                     previous_hidden=previous_hidden,
                 )
+            else:
+                t = original_t
             t_scaled = scale(t, len(self.scheduler))
             warped_steps.append(t)
             """
@@ -208,9 +207,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             noise = self.simplex_value * torch.randn(
                 simplex_shape, generator=generator, device=self.device
             )
-            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
-                self.model, CDCDRobertaForDiffusionLM
-            ):
+            if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
                 prev_t = self.model.warp_timesteps(
                     original_t - 1,
@@ -220,6 +217,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 ).long()
                 # since the tokenwise can do some wild stuff.
                 prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)
+            else:
+                prev_t = original_t - 1
             simplex = self.scheduler.step(
                 projected_logits,
                 t,

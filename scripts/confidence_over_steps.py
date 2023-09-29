@@ -2,8 +2,9 @@ import logging
 import os
 import sys
 
-import gradio as gr
+import matplotlib.pyplot as plt
 import torch
+from scipy.special import kl_div
 from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoTokenizer,
@@ -12,7 +13,7 @@ from transformers import (
 )
 
 from sdlm.arguments import DiffusionArguments, ModelArguments
-from sdlm.models import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+from sdlm.models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -39,7 +40,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    config = CDCDRobertaConfig.from_pretrained(
+    config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -73,7 +74,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = CDCDRobertaForDiffusionLM.from_pretrained(
+        model = RobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -111,14 +112,13 @@ def main():
     def generate(
         inputs,
         simplex_value=5.0,
-        top_p=0.99,
+        top_p=1.0,
         temperature=1.0,
-        diffusion_steps=2500,
+        diffusion_steps=100,
         beta_schedule="squaredcos_improved_ddpm",
         clip_sample=False,
         guidance_scale=1.0,
         generated_sequence_length=256,
-        progress=gr.Progress(),
     ):
         generated_sequence_length = int(generated_sequence_length)
         tokenized_input = tokenizer(
@@ -165,36 +165,58 @@ def main():
             "guidance_scale": guidance_scale,
             "is_generator": True,
         }
-        for output in pipeline(**pipeline_args):
-            yield tokenizer.decode(output.logits.argmax(-1)[0])
+        # return the generator
+        return pipeline(**pipeline_args)
 
-    generate("The best things in life are")
-
-    demo = gr.Interface(
-        fn=generate,
-        inputs=[
-            gr.Textbox(lines=5),
-            gr.Number(value=5.0),
-            gr.Slider(0, 1, value=0.99),
-            gr.Slider(0, 5, value=1),
-            gr.Number(value=100, precision=0),
-            gr.Dropdown(
-                choices=[
-                    "linear",
-                    "scaled_linear",
-                    "squaredcos_cap_v2",
-                    "squaredcos_improved_ddpm",
-                ],
-                value="squaredcos_improved_ddpm",
-            ),
-            gr.Checkbox(value=False),
-            gr.Number(value=1.0),
-            gr.Number(value=256),
-        ],
-        outputs="text",
+    generator = generate("The best things in life are", generated_sequence_length=250)
+    confidences = []
+    diff_2_confidences = []
+    kl_divs = []
+    prev_dist = None
+    for output in generator:
+        dist = torch.softmax(output.logits, dim=-1)
+        conf = dist.max(dim=-1).values
+        conf_sec = dist.topk(2, dim=-1).values[:, :, 1]
+        diff_2_confidences.append(conf - conf_sec)
+        confidences.append(conf)
+        if prev_dist is not None:
+            kl_divs.append(kl_div(dist.cpu(), prev_dist.cpu()).mean(-1))
+        prev_dist = dist
+    tokens = [tokenizer.decode(t) for t in output.logits[0].argmax(-1).cpu().numpy()]
+    confidences = torch.cat(confidences, dim=0).cpu().numpy()
+    plt.figure(figsize=(15, 6))
+    heatmap = plt.imshow(
+        confidences, cmap="hot", interpolation="nearest", aspect="auto"
     )
+    plt.xticks(range(len(tokens)), tokens, rotation=90)
+    plt.colorbar(heatmap)
+    plt.xlabel("token position")
+    plt.ylabel("diffusion step")
+    plt.savefig("confidence_over_steps.png")
+    plt.clf()
 
-    demo.queue().launch(server_name="0.0.0.0", server_port=8888, share=True)
+    diff_2_confidences = torch.cat(diff_2_confidences, dim=0).cpu().numpy()
+    plt.figure(figsize=(15, 6))
+    heatmap = plt.imshow(
+        diff_2_confidences, cmap="hot", interpolation="nearest", aspect="auto"
+    )
+    plt.xticks(range(len(tokens)), tokens, rotation=90)
+    plt.colorbar(heatmap)
+    plt.xlabel("token position")
+    plt.ylabel("diffusion step")
+    plt.savefig("diff_two_confidence_over_steps.png")
+    plt.clf()
+
+    kl_divs = torch.cat(kl_divs, dim=0).cpu().numpy()
+    plt.figure(figsize=(15, 6))
+    heatmap = plt.imshow(kl_divs, cmap="hot", interpolation="nearest", aspect="auto")
+    plt.xticks(range(len(tokens)), tokens, rotation=90)
+    plt.colorbar(heatmap)
+    plt.xlabel("token position")
+    plt.ylabel("diffusion step")
+    plt.savefig("kl_div.png")
+    plt.clf()
+    print(f"Prediction: {tokenizer.decode(output.logits[0].argmax(-1).cpu().numpy())}")
 
 
 if __name__ == "__main__":

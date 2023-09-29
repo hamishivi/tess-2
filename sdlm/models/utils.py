@@ -1,5 +1,9 @@
 from transformers import AutoTokenizer
 
+from .cdcd.positionwise_warper_model import (
+    PositionwiseCDCDRobertaConfig,
+    PositionwiseCDCDRobertaForDiffusionLM,
+)
 from .cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
 from .cdcd.warper_model import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
@@ -11,9 +15,25 @@ def model_config_helper(model_name_or_path, use_model="cdcd"):
         return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "tokenwise_cdcd":
         return CDCDRobertaConfig, TokenwiseCDCDRobertaForDiffusionLM
+    elif "roberta" in model_name_or_path and use_model == "positionwise_cdcd":
+        return PositionwiseCDCDRobertaConfig, PositionwiseCDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path:
         return RobertaDiffusionConfig, RobertaForDiffusionLM
     raise ValueError
+
+
+def is_cdcd_check(model):
+    return (
+        isinstance(model, CDCDRobertaForDiffusionLM)
+        or isinstance(model, TokenwiseCDCDRobertaForDiffusionLM)
+        or isinstance(model, PositionwiseCDCDRobertaForDiffusionLM)
+    )
+
+
+def is_tokenwise_cdcd_check(model):
+    return isinstance(model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
+        model, PositionwiseCDCDRobertaForDiffusionLM
+    )
 
 
 def load_model(model_args, diffusion_args, logger):

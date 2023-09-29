@@ -46,8 +46,7 @@ from transformers.utils import (
 )
 
 from .inference.inference_utils import logits_projection, predict_conditional_generated
-from .models.cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
-from .models.cdcd.warper_model import CDCDRobertaForDiffusionLM
+from .models.utils import is_cdcd_check, is_tokenwise_cdcd_check
 from .pipelines.simplex_ddpm import SimplexDDPMPipeline
 from .utils import convert_to_simplex, pad_data, scale, self_condition_preds
 
@@ -167,13 +166,13 @@ class DiffusionTrainer(Trainer):
             0,
             len(self.noise_scheduler),
             (bsz, inputs["input_ids"].shape[1])
-            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM)
+            if is_tokenwise_cdcd_check(self.model)
             else (bsz,),
             device=simplex.device,
             dtype=torch.int64,
         )
         # expand out timesteps to match tokenwise setup
-        if not isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM):
+        if not is_tokenwise_cdcd_check(self.model):
             timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
         # if we're not doing token warping, just set all relative positions to 1.
@@ -183,9 +182,7 @@ class DiffusionTrainer(Trainer):
         # warp timesteps according to cdf
         # we re-scale the timesteps to the correct range.
         # the -1 is due to the timestep should be in range [0, 5000)
-        if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
-            self.model, CDCDRobertaForDiffusionLM
-        ):
+        if is_tokenwise_cdcd_check(self.model):
             timesteps = self.model.warp_timesteps(
                 timesteps, t_max=len(self.noise_scheduler) - 1
             )
@@ -195,6 +192,8 @@ class DiffusionTrainer(Trainer):
         )
         # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
+        original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
+        inputs.update({"original_timesteps": original_timesteps_scaled})
 
         inputs.update(
             {
@@ -230,9 +229,7 @@ class DiffusionTrainer(Trainer):
             {"classifier_free_guidance_in_train": self.classifier_free_guidance}
         )
         # re-warp based on previous hidden state
-        if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
-            self.model, CDCDRobertaForDiffusionLM
-        ):
+        if is_cdcd_check(self.model):
             timesteps = self.model.warp_timesteps(
                 original_timesteps,
                 t_max=len(self.noise_scheduler) - 1,
@@ -290,12 +287,13 @@ class DiffusionTrainer(Trainer):
                 0,
                 len(self.noise_scheduler),
                 (bsz, inputs["input_ids"].shape[1])
-                if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM)
+                if is_tokenwise_cdcd_check(self.model)
                 else (bsz,),
                 device=simplex.device,
                 dtype=torch.int64,
             )
-            if not isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM):
+            original_timesteps = timesteps
+            if not is_tokenwise_cdcd_check(self.model):
                 timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
             # if we're not doing token warping, just set all relative positions to 1.
@@ -303,9 +301,7 @@ class DiffusionTrainer(Trainer):
 
             # if cdcd, we need to wrap the timesteps in a cdf.
             # make sure we scale the timesteps to the correct range!
-            if isinstance(self.model, TokenwiseCDCDRobertaForDiffusionLM) or isinstance(
-                self.model, CDCDRobertaForDiffusionLM
-            ):
+            if is_cdcd_check(self.model):
                 timesteps = self.model.warp_timesteps(
                     timesteps, t_max=len(self.noise_scheduler) - 1
                 )
@@ -316,6 +312,10 @@ class DiffusionTrainer(Trainer):
             )
 
             timesteps = scale(timesteps, len(self.noise_scheduler))
+            original_timesteps_scaled = scale(
+                original_timesteps, len(self.noise_scheduler)
+            )
+            inputs.update({"original_timesteps": original_timesteps_scaled})
 
             inputs.update(
                 {
@@ -1582,7 +1582,9 @@ class DiffusionTrainer(Trainer):
                         p
                         for n, p in opt_model.named_parameters()
                         if (
-                            n in decay_parameters and p.requires_grad and "cdf" not in n
+                            n in decay_parameters
+                            and p.requires_grad
+                            and not ("cdf" in n or "linear_l" in n)
                         )
                     ],
                     "weight_decay": self.args.weight_decay,
@@ -1595,7 +1597,7 @@ class DiffusionTrainer(Trainer):
                         if (
                             n not in decay_parameters
                             and p.requires_grad
-                            and "cdf" not in n
+                            and not ("cdf" in n or "linear_l" in n)
                         )
                     ],
                     "weight_decay": 0.0,
@@ -1605,7 +1607,7 @@ class DiffusionTrainer(Trainer):
                     "params": [
                         p
                         for n, p in opt_model.named_parameters()
-                        if ("cdf" in n and p.requires_grad)
+                        if (("cdf" in n or "linear_l" in n) and p.requires_grad)
                     ],
                     "weight_decay": 0.0,
                     "lr": 1e-2,  # hardcoded for now...

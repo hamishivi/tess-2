@@ -1,5 +1,6 @@
 from typing import Optional
 
+import numpy as np
 import torch
 from torch import autograd
 from transformers.modeling_outputs import MaskedLMOutput
@@ -10,28 +11,23 @@ from sdlm.models.roberta.modeling_roberta import RobertaForDiffusionLM
 
 
 # only difference is that we add n_bins to the config
-class TokenwiseCDCDRobertaConfig(RobertaDiffusionConfig):
+class PositionwiseCDCDRobertaConfig(RobertaDiffusionConfig):
     def __init__(self, *args, n_bins=100, **kwargs):
         super().__init__(*args, **kwargs)
         self.n_bins = n_bins
 
 
 # Roberta with the CDF timestep warper.
-class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
+class PositionwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
     def __init__(self, config):
         super().__init__(config)
+        self.position_lus = torch.nn.Parameter(
+            torch.zeros([config.max_position_embeddings, 100]) - float(np.log(100))
+        )
+        self.position_lts = torch.nn.Parameter(
+            torch.zeros([config.max_position_embeddings, 100]) - float(np.log(100))
+        )
         self.cdf = LossCDF(100)
-        # keep the hidden dim larger?
-        self.linear_lu = torch.nn.Sequential(
-            torch.nn.Linear(self.config.hidden_size + 1, self.config.hidden_size),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.config.hidden_size, 100),
-        )
-        self.linear_lt = torch.nn.Sequential(
-            torch.nn.Linear(self.config.hidden_size + 1, self.config.hidden_size),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.config.hidden_size, 100),
-        )
 
     def warp_timesteps(
         self,
@@ -48,22 +44,23 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             # in this case, we just set timesteps to 0
             timesteps = timesteps - t_min
             t_max = 1  # just to avoid div by 0
-        if previous_hidden is None:
-            lu, lt = None, None
-        else:
-            # predict out the new timesteps
-            lu = self.linear_lu(
-                torch.cat([previous_hidden, timesteps[:, :, None]], dim=-1)
-            )
-            lt = self.linear_lt(
-                torch.cat([previous_hidden, timesteps[:, :, None]], dim=-1)
-            )
-            # lu = self.linear_lu(previous_hidden)
-            # lt = self.linear_lt(previous_hidden)
+
         # warp timesteps. sep. call so we can pass to scheduler
         # detach so we don't backprop through this
+        # not all batches will have max seq length, so cut to suze
+        pos_lus = self.position_lus[None, : timesteps.shape[1]].expand(
+            timesteps.shape[0], -1, -1
+        )
+        pos_lts = self.position_lts[None, : timesteps.shape[1]].expand(
+            timesteps.shape[0], -1, -1
+        )
         return self.cdf(
-            u=timesteps, normalized=True, t_min=t_min, t_max=t_max, l_u=lu, l_t=lt
+            u=timesteps,
+            normalized=True,
+            t_min=t_min,
+            t_max=t_max,
+            l_u=pos_lus,
+            l_t=pos_lts,
         ).detach()
 
     def forward(
@@ -124,23 +121,18 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             with torch.enable_grad():
                 # grab the predictions for the loss values - note at this point timesteps
                 # are normalised to [0, 1]
-                if previous_hidden is None:
-                    lu, lt = None, None
-                else:
-                    lu = self.linear_lu(
-                        torch.cat(
-                            [previous_hidden, original_timesteps[:, :, None]], dim=-1
-                        )
-                    )
-                    lt = self.linear_lt(
-                        torch.cat(
-                            [previous_hidden, original_timesteps[:, :, None]], dim=-1
-                        )
-                    )
-                    # lu = self.linear_lu(previous_hidden)
-                    # lt = self.linear_lt(previous_hidden)
+                pos_lus = self.position_lus[None, : timesteps.shape[1]].expand(
+                    timesteps.shape[0], -1, -1
+                )
+                pos_lts = self.position_lts[None, : timesteps.shape[1]].expand(
+                    timesteps.shape[0], -1, -1
+                )
                 xent_pred = self.cdf(
-                    t=new_timesteps_clone, normalized=False, t_max=1, l_u=lu, l_t=lt
+                    t=new_timesteps_clone,
+                    normalized=False,
+                    t_max=1,
+                    l_u=pos_lus,
+                    l_t=pos_lts,
                 )
                 # importance weights -> reciprocal of grad of CDF.
                 imp_weights = (
@@ -150,7 +142,9 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             cdf_loss = (
                 imp_weights
                 * (
-                    self.cdf(t=timesteps, normalized=False, t_max=1, l_u=lu, l_t=lt)
+                    self.cdf(
+                        t=timesteps, normalized=False, t_max=1, l_u=pos_lus, l_t=pos_lts
+                    )
                     - loss.detach()
                 ).pow(2)
             ).mean()
