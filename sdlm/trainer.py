@@ -192,8 +192,8 @@ class DiffusionTrainer(Trainer):
         )
         # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
-        original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
-        inputs.update({"original_timesteps": original_timesteps_scaled})
+        # original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
+        # inputs.update({"original_timesteps": original_timesteps_scaled})
 
         inputs.update(
             {
@@ -207,6 +207,26 @@ class DiffusionTrainer(Trainer):
             previous_pred = None
             previous_hidden = None
             if True:  # np.random.rand(1) > 0.5:
+                next_timestep = inputs.pop("timesteps")
+                next_simplex = inputs.pop("simplex")
+                timesteps = torch.clamp(
+                    (next_timestep * len(self.noise_scheduler)) + 1,
+                    max=len(self.noise_scheduler) - 1,
+                )
+                if is_tokenwise_cdcd_check(self.model):
+                    timesteps = self.model.warp_timesteps(
+                        timesteps, t_max=len(self.noise_scheduler) - 1
+                    )
+                noisy_simplex = self.noise_scheduler.add_noise(
+                    simplex, noise, timesteps, norm_relative_position
+                )
+                timesteps = scale(timesteps, len(self.noise_scheduler))
+                inputs.update(
+                    {
+                        "timesteps": timesteps,
+                        "simplex": noisy_simplex,
+                    }
+                )
                 outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(  # noqa: E731
                     x,
@@ -222,6 +242,13 @@ class DiffusionTrainer(Trainer):
                 )
                 # following rest of self-conditioning, don't backprop through.
                 previous_hidden = outputs.hidden_states.detach()
+                # pop timestep/simplex and put the old ones back.
+                inputs.update(
+                    {
+                        "timesteps": next_timestep,
+                        "simplex": next_simplex,
+                    }
+                )
             inputs.update({"previous_pred": previous_pred})
             inputs.update({"previous_hidden": previous_hidden})
         # NOTE: we do this after computation of self-conditioning to not affect that one.
@@ -292,7 +319,7 @@ class DiffusionTrainer(Trainer):
                 device=simplex.device,
                 dtype=torch.int64,
             )
-            original_timesteps = timesteps
+            # original_timesteps = timesteps
             if not is_tokenwise_cdcd_check(self.model):
                 timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
@@ -312,10 +339,10 @@ class DiffusionTrainer(Trainer):
             )
 
             timesteps = scale(timesteps, len(self.noise_scheduler))
-            original_timesteps_scaled = scale(
-                original_timesteps, len(self.noise_scheduler)
-            )
-            inputs.update({"original_timesteps": original_timesteps_scaled})
+            # original_timesteps_scaled = scale(
+            #     original_timesteps, len(self.noise_scheduler)
+            # )
+            # inputs.update({"original_timesteps": original_timesteps_scaled})
 
             inputs.update(
                 {
@@ -1584,7 +1611,7 @@ class DiffusionTrainer(Trainer):
                         if (
                             n in decay_parameters
                             and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n)
+                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
                         )
                     ],
                     "weight_decay": self.args.weight_decay,
@@ -1597,7 +1624,7 @@ class DiffusionTrainer(Trainer):
                         if (
                             n not in decay_parameters
                             and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n)
+                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
                         )
                     ],
                     "weight_decay": 0.0,
@@ -1607,7 +1634,10 @@ class DiffusionTrainer(Trainer):
                     "params": [
                         p
                         for n, p in opt_model.named_parameters()
-                        if (("cdf" in n or "linear_l" in n) and p.requires_grad)
+                        if (
+                            ("cdf" in n or "linear_l" in n or "position_l" in n)
+                            and p.requires_grad
+                        )
                     ],
                     "weight_decay": 0.0,
                     "lr": 1e-2,  # hardcoded for now...

@@ -1,3 +1,7 @@
+from .cdcd.positionwise_warper_model import (
+    PositionwiseCDCDRobertaConfig,
+    PositionwiseCDCDRobertaForDiffusionLM,
+)
 from .cdcd.tokenwise_warper_model import (
     TokenwiseCDCDRobertaConfig,
     TokenwiseCDCDRobertaForDiffusionLM,
@@ -15,4 +19,6 @@ __all__ = (
     "CDCDRobertaConfig",
     "TokenwiseCDCDRobertaForDiffusionLM",
     "TokenwiseCDCDRobertaConfig",
+    "PositionwiseCDCDRobertaForDiffusionLM",
+    "PositionwiseCDCDRobertaConfig",
 )
