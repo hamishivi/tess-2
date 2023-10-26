@@ -128,6 +128,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # unconditional_simplex: torch.FloatTensor = None,
         return_all_losses: bool = False,  # return per-token loss for all items in batch
         previous_hidden: Optional[torch.FloatTensor] = None,  # for CDCD predictions...
+        original_timesteps: Optional[torch.FloatTensor] = None,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):

@@ -109,6 +109,7 @@ class DiffusionTrainer(Trainer):
             diffusion_args.guidance_scale > 1.0
             and data_args.conditional_generation is not None
         )
+        self.counter = 0
 
     def annotated_split(self, split):
         return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}_seed_{self.args.seed}_guidance_scale_{self.diffusion_args.guidance_scale}"
@@ -193,7 +194,9 @@ class DiffusionTrainer(Trainer):
         # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
         # original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
-        # inputs.update({"original_timesteps": original_timesteps_scaled})
+        inputs.update(
+            {"original_timesteps": scale(original_timesteps, len(self.noise_scheduler))}
+        )
 
         inputs.update(
             {
@@ -206,7 +209,7 @@ class DiffusionTrainer(Trainer):
         if self.diffusion_args.self_condition is not None:
             previous_pred = None
             previous_hidden = None
-            if True:  # np.random.rand(1) > 0.5:
+            if np.random.rand(1) > 0.5:
                 next_timestep = inputs.pop("timesteps")
                 next_simplex = inputs.pop("simplex")
                 timesteps = torch.clamp(
@@ -402,20 +405,22 @@ class DiffusionTrainer(Trainer):
         # full inference.
         with torch.no_grad():
             with self.compute_loss_context_manager():
-                for x in pipeline(
-                    batch_size=inputs["input_ids"].shape[0]
-                    if is_conditional_generation
-                    else self.args.per_device_eval_batch_size,
-                    seq_length=self.data_args.max_seq_length
-                    - self.data_args.truncation_length,
-                    batch=inputs,
-                    guidance_scale=self.diffusion_args.guidance_scale,
-                    generator=torch.Generator(device=self.args.device).manual_seed(
-                        self.args.seed
+                for i, x in enumerate(
+                    pipeline(
+                        batch_size=inputs["input_ids"].shape[0]
+                        if is_conditional_generation
+                        else self.args.per_device_eval_batch_size,
+                        seq_length=self.data_args.max_seq_length
+                        - self.data_args.truncation_length,
+                        batch=inputs,
+                        guidance_scale=self.diffusion_args.guidance_scale,
+                        generator=torch.Generator(device=self.args.device).manual_seed(
+                            self.args.seed
+                        )
+                        if self.diffusion_args.generate_with_seed
+                        else None,
+                        is_generator=False,
                     )
-                    if self.diffusion_args.generate_with_seed
-                    else None,
-                    is_generator=False,
                 ):
                     outputs = x
         logits = nested_detach(outputs.logits)
@@ -1603,6 +1608,7 @@ class DiffusionTrainer(Trainer):
                 self.args
             )
 
+            # only training warping parameters...
             optimizer_grouped_parameters = [
                 {
                     "params": [
@@ -1640,7 +1646,7 @@ class DiffusionTrainer(Trainer):
                         )
                     ],
                     "weight_decay": 0.0,
-                    "lr": 1e-2,  # hardcoded for now...
+                    "lr": 1e-3,
                 },
             ]
 

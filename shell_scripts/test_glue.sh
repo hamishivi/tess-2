@@ -1,6 +1,6 @@
 python -m sdlm.run_glue \
     --model_name_or_path roberta-base \
-    --dataset_name rte \
+    --dataset_name stsb \
     --output_dir tmp \
     --do_train \
     --do_eval \
@@ -13,7 +13,7 @@ python -m sdlm.run_glue \
     --overwrite_output_dir \
     --pad_to_max_length \
     --simplex_value 5 \
-    --max_train_samples 1000 \
+    --max_train_samples 100 \
     --num_train_epochs 3 \
     --num_diffusion_steps 5000 \
     --num_inference_diffusion_steps 500 \
@@ -26,4 +26,5 @@ python -m sdlm.run_glue \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
     --save_total_limit 1 \
-    --max_eval_samples 500
+    --max_eval_samples 50 \
+    --skip_special_tokens False  # required to cut tokens at the right spot

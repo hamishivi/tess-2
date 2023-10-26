@@ -126,11 +126,16 @@ def main():
         ).input_ids
         tokenized_input_len = tokenized_input.shape[1]
         tokenized_input = torch.cat(
-            [tokenized_input, torch.ones((1, generated_sequence_length))], axis=-1
+            [
+                torch.ones((1, 1)) * tokenizer.bos_token_id,
+                tokenized_input,
+                torch.ones((1, generated_sequence_length)),
+            ],
+            axis=-1,
         ).long()
         span_mask = torch.cat(
             [
-                torch.zeros((1, tokenized_input_len)),
+                torch.zeros((1, tokenized_input_len + 1)),
                 torch.ones((1, generated_sequence_length)),
             ],
             axis=-1,
@@ -165,7 +170,7 @@ def main():
             "guidance_scale": guidance_scale,
             "is_generator": True,
         }
-        for output in pipeline(**pipeline_args):
+        for i, output in enumerate(pipeline(**pipeline_args)):
             yield tokenizer.decode(output.logits.argmax(-1)[0])
 
     generate("The best things in life are")

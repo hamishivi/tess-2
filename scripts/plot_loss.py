@@ -2,11 +2,8 @@ import logging
 import os
 import sys
 
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
-from scipy.special import kl_div
-from scipy.stats import entropy
+from matplotlib import pyplot as plt
 from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoTokenizer,
@@ -15,7 +12,7 @@ from transformers import (
 )
 
 from sdlm.arguments import DiffusionArguments, ModelArguments
-from sdlm.models import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+from sdlm.models import TokenwiseCDCDRobertaConfig, TokenwiseCDCDRobertaForDiffusionLM
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -42,7 +39,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    config = CDCDRobertaConfig.from_pretrained(
+    config = TokenwiseCDCDRobertaConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -76,7 +73,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = CDCDRobertaForDiffusionLM.from_pretrained(
+        model = TokenwiseCDCDRobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -114,31 +111,23 @@ def main():
     def generate(
         inputs,
         simplex_value=5.0,
-        top_p=1.0,
+        top_p=0.99,
         temperature=1.0,
-        diffusion_steps=1000,
+        diffusion_steps=2500,
         beta_schedule="squaredcos_improved_ddpm",
         clip_sample=False,
         guidance_scale=1.0,
         generated_sequence_length=256,
+        use_model="cdcd",
     ):
-        generated_sequence_length = int(generated_sequence_length)
         tokenized_input = tokenizer(
             [inputs], add_special_tokens=False, return_tensors="pt"
         ).input_ids
-        tokenized_input_len = tokenized_input.shape[1]
-        tokenized_input = torch.cat(
-            [
-                torch.ones((1, 1)),
-                tokenized_input,
-                torch.ones((1, generated_sequence_length)),
-            ],
-            axis=-1,
-        ).long()
+        tokenized_input_len = tokenized_input.shape[-1]
         span_mask = torch.cat(
             [
-                torch.zeros((1, tokenized_input_len + 1)),
-                torch.ones((1, generated_sequence_length)),
+                torch.zeros((1, tokenized_input_len // 2)),
+                torch.ones((1, tokenized_input_len - tokenized_input_len // 2)),
             ],
             axis=-1,
         ).bool()
@@ -172,81 +161,33 @@ def main():
             "guidance_scale": guidance_scale,
             "is_generator": True,
         }
-        # return the generator
-        return pipeline(**pipeline_args)
+        for output in pipeline(**pipeline_args):
+            yield output.loss.item()
 
     generator = generate(
-        "When I talk about music, I talk about",
-        generated_sequence_length=300,
+        inputs="bounded to KDE, whereas I think Gaim is not so quite involved with Gnome.\nSo we can reduce this redundancy problem to the problem of two desktops, if it is a problem. I'm not sure it is, after all competition is good and drives development. Is it that much of a problem that some coders have spent time and effort re-inventing the wheel anyway?\nWell I think it is a problem, unless you are heavily camped in either desktop. I'm not. When I develop a GUI application, I have to make a decision about which environment suits me best. I know there's more to it than that - Gnome has all that other stuff like Glib and KDE isn't just QT - but the GUI is a major consideration.\nSo if I opt for (say) GTK+, will some QT zealot prefer to code an alternative to using my version?\nI run a mixture of Gnome and KDE applications. I use Konqueror as a web browser, Gimp for some graphic stuff, etc. The two toolkits are somewhat annoying because they do not interact particularly well.\nWhen I write a GUI app, I want the interface code to be as separate from the logic as possible, to make swapping them in and out as easy as possible. Don't code an alternative, write a new interface for me!\nGlade is a GTK+ interface builder. You use a drag-and-drop program to compose a UI, and it can generate the corresponding GTK+ code. You can save the project seperately as an XML application.\nWhat is really exciting however is the companion libglade. This library reads in the XML that Glade writes at runtime and constructs the UI from that.\nYou therefore don't even need to necessarily use the UI builder to generate the XML if you don't want to. Perhaps you'll just translate a UI described in a different XML application.\nSo why do I think this is exciting?\nAlter/tweak the UI at runtime, without a recompilation.\nTranslate (via XSL) an interface description in a different XML application. I haven't looked at the design of the XML glade dialect much myself, it might be a nightmare; but at least that nightmare could be hidden behind a translation.\nWant a KDE version? Write a runtime, XML-interpreting UI builder for KDE!\nArgh! so this rant has gone",
         diffusion_steps=100,
     )
-    confidences = []
-    diff_2_confidences = []
-    kl_divs = []
-    entropies = []
-    prev_dist = None
-    for i, output in enumerate(generator):
-        dist = torch.softmax(output.logits, dim=-1)
-        conf = dist.max(dim=-1).values
-        conf_sec = dist.topk(2, dim=-1).values[:, :, 1]
-        diff_2_confidences.append(conf - conf_sec)
-        confidences.append(conf)
-        entropies.append(entropy(dist.cpu().numpy(), axis=-1))
-        if prev_dist is not None:
-            kl_divs.append(kl_div(dist.cpu(), prev_dist.cpu()).mean(-1))
-        prev_dist = dist
-        # if i > (800):
-        #     break
-    tokens = [tokenizer.decode(t) for t in output.logits[0].argmax(-1).cpu().numpy()]
-    confidences = torch.cat(confidences, dim=0).cpu().numpy()
-    plt.figure(figsize=(15, 6))
-    heatmap = plt.imshow(
-        confidences,
-        cmap="hot",
-        interpolation="nearest",
-        aspect="auto",  # norm=LogNorm(vmin=0.000000001, vmax=1)
+    losses = list(generator)
+    # now, we need to warp timesteps
+    from sdlm.models.cdcd.cdf import LossCDF
+
+    module = LossCDF(100)
+    weights = torch.load(
+        model_args.model_name_or_path + "/pytorch_model.bin", map_location="cpu"
     )
-    plt.xticks(range(len(tokens)), tokens, rotation=90)
-    plt.colorbar(heatmap)
-    plt.xlabel("token position")
-    plt.ylabel("diffusion step")
-    plt.savefig("confidence_over_steps.png")
+    l_t = weights["cdf.l_t"]
+    l_u = weights["cdf.l_u"]
+    module.load_state_dict({"l_t": l_t, "l_u": l_u})
+
+    t = torch.linspace(0, 1, 100)
+    u = module(t=t, normalized=True)
+    u = torch.clamp((u * 100).long(), 0, 99)
     plt.clf()
 
-    entropies = np.concatenate(entropies, axis=0)
-    plt.figure(figsize=(15, 6))
-    heatmap = plt.imshow(
-        entropies, cmap="hot", interpolation="nearest", aspect="auto", vmax=1
-    )
-    plt.xticks(range(len(tokens)), tokens, rotation=90)
-    plt.colorbar(heatmap)
-    plt.xlabel("token position")
-    plt.ylabel("diffusion step")
-    plt.savefig("entopy_dist.png")
     plt.clf()
-
-    diff_2_confidences = torch.cat(diff_2_confidences, dim=0).cpu().numpy()
-    plt.figure(figsize=(15, 6))
-    heatmap = plt.imshow(
-        diff_2_confidences, cmap="hot", interpolation="nearest", aspect="auto"
-    )
-    plt.xticks(range(len(tokens)), tokens, rotation=90)
-    plt.colorbar(heatmap)
-    plt.xlabel("token position")
-    plt.ylabel("diffusion step")
-    plt.savefig("diff_two_confidence_over_steps.png")
-    plt.clf()
-
-    kl_divs = torch.cat(kl_divs, dim=0).cpu().numpy()
-    plt.figure(figsize=(15, 6))
-    heatmap = plt.imshow(kl_divs, cmap="hot", interpolation="nearest", aspect="auto")
-    plt.xticks(range(len(tokens)), tokens, rotation=90)
-    plt.colorbar(heatmap)
-    plt.xlabel("token position")
-    plt.ylabel("diffusion step")
-    plt.savefig("kl_div.png")
-    plt.clf()
-    print(f"Prediction: {tokenizer.decode(output.logits[0].argmax(-1).cpu().numpy())}")
+    plt.plot(losses)
+    plt.savefig("losses.jpg")
 
 
 if __name__ == "__main__":

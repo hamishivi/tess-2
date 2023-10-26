@@ -169,3 +169,5 @@ test_chkpnt
 tmp2
 .lock
 test_results
+checkpoints
+*.png

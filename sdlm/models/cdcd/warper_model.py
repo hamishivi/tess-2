@@ -61,6 +61,7 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
         # unconditional_simplex: torch.FloatTensor = None,
         return_all_losses: bool = False,  # return per-token loss for all items in batch):
         previous_hidden: Optional[torch.FloatTensor] = None,
+        original_timesteps: Optional[torch.FloatTensor] = None,
     ):
         output = super().forward(
             timesteps,
