@@ -254,6 +254,10 @@ class DiffusionTrainer(Trainer):
                 )
             inputs.update({"previous_pred": previous_pred})
             inputs.update({"previous_hidden": previous_hidden})
+        else:
+            inputs.update({"previous_pred": None})
+            inputs.update({"previous_hidden": None})
+            previous_hidden = None
         # NOTE: we do this after computation of self-conditioning to not affect that one.
         inputs.update(
             {"classifier_free_guidance_in_train": self.classifier_free_guidance}
