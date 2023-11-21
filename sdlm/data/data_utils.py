@@ -92,14 +92,21 @@ def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
             )
 
         with training_args.main_process_first(desc="dataset map tokenization"):
-            tokenized_datasets = raw_datasets.map(
-                tokenize_function,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=[text_column_name],
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on dataset line_by_line",
-            )
+            if not data_args.streaming:
+                tokenized_datasets = raw_datasets.map(
+                    tokenize_function,
+                    batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
+                    remove_columns=[text_column_name],
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    desc="Running tokenizer on dataset line_by_line",
+                )
+            else:
+                tokenized_datasets = raw_datasets.map(
+                    tokenize_function,
+                    batched=True,
+                    remove_columns=[text_column_name],
+                )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
