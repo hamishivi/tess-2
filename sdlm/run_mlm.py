@@ -199,7 +199,11 @@ def main():
     if training_args.do_eval:
         compute_metrics = get_compute_metrics(data_args, training_args, model_args)
 
-    if data_args.shuffle:
+    if data_args.shuffle and data_args.streaming:
+        train_dataset = train_dataset.shuffle(
+            seed=training_args.seed, buffer_size=10_000
+        )
+    elif data_args.shuffle:
         train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     # Initialize our Trainer
