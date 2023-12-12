@@ -132,6 +132,7 @@ def main():
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
+        multiply_factor=diffusion_args.multiply_factor,
     )
     inference_noise_schedulers = [
         TokenWiseSimplexDDPMScheduler(
@@ -140,6 +141,7 @@ def main():
             simplex_value=diffusion_args.simplex_value,
             clip_sample=diffusion_args.clip_sample,
             device=training_args.device,
+            multiply_factor=diffusion_args.multiply_factor,
         )
         for timesteps in diffusion_args.num_inference_diffusion_steps
     ]

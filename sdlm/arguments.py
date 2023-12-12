@@ -634,3 +634,7 @@ class DiffusionArguments:
     generate_with_seed: bool = field(
         default=False, metadata={"help": "If set, generates with seed."}
     )
+    multiply_factor: float = field(
+        default=1.0,
+        metadata={"help": "Determines the starting noise level."},
+    )
