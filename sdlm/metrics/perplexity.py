@@ -177,6 +177,7 @@ def conditional_perplexity(
         ppls.extend(perplexity_batch.tolist())
         total_nlls += torch.sum(loss[i] - prefix_loss[i]).item()
         total_tokens += torch.sum(lengths[i] - prefix_lengths[i]).item()
+    ppls[ppls == float("inf")] = float("nan")
     return {
         "perplexities": ppls,
         "mean_perplexity": np.nanmean(ppls),

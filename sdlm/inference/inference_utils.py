@@ -163,13 +163,28 @@ def predict_conditional_generated(
         )
     )
     pred_masked_texts = [
-        tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens)
-        for x in masked
+        tokenizer.batch_decode(x, skip_special_tokens=False) for x in masked
     ]
     pred_unmasked_texts = [
-        tokenizer.batch_decode(x, skip_special_tokens=skip_special_tokens)
-        for x in unmasked
+        tokenizer.batch_decode(x, skip_special_tokens=False) for x in unmasked
     ]
+    assert tokenizer.eos_token == "</s>"  # guard against model changes in future.
+    # stop text at the first occurrence of </s> token.
+    pred_masked_texts = [
+        x[: x.index("</s>")] if "</s>" in x else x for x in pred_masked_texts
+    ]
+    pred_unmasked_texts = [
+        x[: x.index("</s>")] if "</s>" in x else x for x in pred_unmasked_texts
+    ]
+    # remove <s> and </s> tokens if needed.
+    if skip_special_tokens:
+        pred_masked_texts = [
+            x.replace("<s>", "").replace("</s>", "") for x in pred_masked_texts
+        ]
+        pred_unmasked_texts = [
+            x.replace("<s>", "").replace("</s>", "") for x in pred_unmasked_texts
+        ]
+
     pred_texts_marked = list(
         map(
             lambda x, y: concatenate_alternatively(x, y, mark="***"),
