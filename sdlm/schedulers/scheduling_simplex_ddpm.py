@@ -217,6 +217,7 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = False,
+        multiply_factor: float = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -263,6 +264,7 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
             self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         self.one = torch.tensor(1.0, device=device)
+        self.alphas_cumprod = multiply_factor * self.alphas_cumprod
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0

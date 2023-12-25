@@ -143,7 +143,7 @@
 #         --dataset_name c4 --streaming --dataset_config_name en
 
 
-EXP_NAME="ul2_orig_100k_c4_roberta_base_pretrain_50k_positionwisecdcd_fixed"
+EXP_NAME="jake_test"
 
 gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
     --workspace ai2/tess2 \
