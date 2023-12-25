@@ -179,10 +179,10 @@ def predict_conditional_generated(
     # remove <s> and </s> tokens if needed.
     if skip_special_tokens:
         pred_masked_texts = [
-            x.replace("<s>", "").replace("</s>", "") for x in pred_masked_texts
+            [x[0].replace("<s>", "").replace("</s>", "")] for x in pred_masked_texts
         ]
         pred_unmasked_texts = [
-            x.replace("<s>", "").replace("</s>", "") for x in pred_unmasked_texts
+            [x[0].replace("<s>", "").replace("</s>", "")] for x in pred_unmasked_texts
         ]
 
     pred_texts_marked = list(
