@@ -6,11 +6,15 @@ from .cdcd.positionwise_warper_model import (
 )
 from .cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
 from .cdcd.warper_model import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+from .llama.configuration_llama import LlamaDiffusionConfig
+from .llama.modeling_llama import LlamaForDiffusionLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
 def model_config_helper(model_name_or_path, use_model="cdcd"):
+    if "llama" in model_name_or_path:
+        return LlamaDiffusionConfig, LlamaForDiffusionLM
     if "roberta" in model_name_or_path and use_model == "cdcd":
         return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "tokenwise_cdcd":
@@ -78,7 +82,9 @@ def load_model(model_args, diffusion_args, logger):
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
     if not tokenizer.pad_token_id:
-        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        # HACK: use eos token for padding token
+        # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        tokenizer.pad_token_id = tokenizer.eos_token_id
 
     if model_args.model_name_or_path and not model_args.from_scratch:
         model = model_cls.from_pretrained(

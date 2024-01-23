@@ -9,7 +9,7 @@ from transformers.activations import ACT2FN
 from transformers.modeling_outputs import MaskedLMOutput
 from transformers.models.llama.modeling_llama import (  # RobertaLMHead,
     LlamaModel,
-    LlamaPretrainedModel,
+    LlamaPreTrainedModel,
 )
 from transformers.utils import logging
 
@@ -18,7 +18,7 @@ from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
 logger = logging.get_logger(__name__)
 
 
-class LlamaForDiffusionLM(LlamaPretrainedModel):
+class LlamaForDiffusionLM(LlamaPreTrainedModel):
     _keys_to_ignore_on_save = [r"lm_head.decoder.weight", r"lm_head.decoder.bias"]
     _keys_to_ignore_on_load_missing = [
         r"position_ids",
@@ -36,8 +36,7 @@ class LlamaForDiffusionLM(LlamaPretrainedModel):
                 "bi-directional self-attention."
             )
 
-        # HACK: keeping roberta name to keep rest of code unchanged
-        self.roberta = LlamaModel(config)
+        self.model = LlamaModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -287,7 +286,7 @@ class LlamaForDiffusionLM(LlamaPretrainedModel):
             # TODO: we need to fix classifier-free guidance for the case of deepmind_conditional.
             if classifier_free_guidance:
                 inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
-        outputs = self.roberta(
+        outputs = self.model(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=None,  # attention_mask,
             # token_type_ids=token_type_ids,
