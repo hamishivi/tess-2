@@ -1,15 +1,15 @@
 python -m sdlm.run_mlm \
-        --model_name_or_path meta-llama/Llama-2-7b-hf \
+        --model_name_or_path TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T \
         --per_device_train_batch_size 1  \
         --per_device_eval_batch_size 1 \
         --do_train \
         --do_eval \
-        --output_dir outputs/noise/1500_5000 \
+        --output_dir outputs/test \
         --evaluation_strategy steps \
         --eval_steps 1000 \
         --report_to tensorboard \
-        --max_seq_length 64  \
-        --max_eval_samples 24 \
+        --max_seq_length 4  \
+        --max_eval_samples 1 \
         --simplex_value 5 \
         --num_diffusion_steps 5000  \
         --num_inference_diffusion_steps 100 \

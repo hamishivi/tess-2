@@ -13,7 +13,7 @@ from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
 def model_config_helper(model_name_or_path, use_model="cdcd"):
-    if "llama" in model_name_or_path:
+    if "llama" in model_name_or_path.lower():
         return LlamaDiffusionConfig, LlamaForDiffusionLM
     if "roberta" in model_name_or_path and use_model == "cdcd":
         return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
@@ -23,7 +23,7 @@ def model_config_helper(model_name_or_path, use_model="cdcd"):
         return PositionwiseCDCDRobertaConfig, PositionwiseCDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path:
         return RobertaDiffusionConfig, RobertaForDiffusionLM
-    raise ValueError
+    raise ValueError("Unsupported model.")
 
 
 def is_cdcd_check(model):
@@ -94,6 +94,9 @@ def load_model(model_args, diffusion_args, logger):
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
+            # HACk: for tiny llama
+            ignore_mismatched_sizes=True,
+            # attn_implementation="flash_attention_2" if model_args.use_flash_attention2 else "eager",
         )
     else:
         logger.warning("Training new model from scratch")
