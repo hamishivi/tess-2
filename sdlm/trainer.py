@@ -26,9 +26,8 @@ from transformers.trainer_pt_utils import (
     nested_detach,
     nested_numpify,
 )
-from transformers.trainer_utils import (
+from transformers.trainer_utils import (  # ShardedDDPOption,
     HPSearchBackend,
-    ShardedDDPOption,
     TrainOutput,
     denumpify_detensorize,
     has_length,
@@ -285,8 +284,9 @@ class DiffusionTrainer(Trainer):
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
-        if self.do_grad_scaling:
-            self.scaler.scale(loss).backward()
+        # HACK: transformer update
+        # if self.do_grad_scaling:
+        #     self.scaler.scale(loss).backward()
         elif self.use_apex:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
@@ -1175,12 +1175,14 @@ class DiffusionTrainer(Trainer):
             else:
                 debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
 
-        delay_optimizer_creation = (
-            self.sharded_ddp is not None
-            and self.sharded_ddp != ShardedDDPOption.SIMPLE
-            or is_sagemaker_mp_enabled()
-            or self.fsdp is not None
-        )
+        # delay_optimizer_creation = (
+        #     self.sharded_ddp is not None
+        #     and self.sharded_ddp != ShardedDDPOption.SIMPLE
+        #     or is_sagemaker_mp_enabled()
+        #     or self.fsdp is not None
+        # )
+        # HACK: transformer version update
+        delay_optimizer_creation = False
 
         if self.is_deepspeed_enabled:
             self.optimizer, self.lr_scheduler = deepspeed_init(
@@ -1433,16 +1435,17 @@ class DiffusionTrainer(Trainer):
                 ):
                     # Gradient clipping
                     if args.max_grad_norm is not None and args.max_grad_norm > 0:
+                        # HACK: transformer update
                         # deepspeed does its own clipping
-                        if self.do_grad_scaling:
-                            # Reduce gradients first for XLA
-                            if is_torch_tpu_available():
-                                gradients = xm._fetch_gradients(self.optimizer)
-                                xm.all_reduce(
-                                    "sum", gradients, scale=1.0 / xm.xrt_world_size()
-                                )
-                            # AMP: gradients need unscaling
-                            self.scaler.unscale_(self.optimizer)
+                        # if self.do_grad_scaling:
+                        #     # Reduce gradients first for XLA
+                        #     if is_torch_tpu_available():
+                        #         gradients = xm._fetch_gradients(self.optimizer)
+                        #         xm.all_reduce(
+                        #             "sum", gradients, scale=1.0 / xm.xrt_world_size()
+                        #         )
+                        #     # AMP: gradients need unscaling
+                        #     self.scaler.unscale_(self.optimizer)
 
                         if is_sagemaker_mp_enabled() and args.fp16:
                             self.optimizer.clip_master_grads(args.max_grad_norm)
@@ -1472,12 +1475,13 @@ class DiffusionTrainer(Trainer):
                             self.scaler.update()
                         else:
                             xm.optimizer_step(self.optimizer)
-                    elif self.do_grad_scaling:
-                        scale_before = self.scaler.get_scale()
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                        scale_after = self.scaler.get_scale()
-                        optimizer_was_run = scale_before <= scale_after
+                    # HACK: transformer update
+                    # elif self.do_grad_scaling:
+                    #     scale_before = self.scaler.get_scale()
+                    #     self.scaler.step(self.optimizer)
+                    #     self.scaler.update()
+                    #     scale_after = self.scaler.get_scale()
+                    #     optimizer_was_run = scale_before <= scale_after
                     else:
                         self.optimizer.step()
                         optimizer_was_run = (

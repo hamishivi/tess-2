@@ -82,9 +82,10 @@ def load_model(model_args, diffusion_args, logger):
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
     if not tokenizer.pad_token_id:
-        # HACK: use eos token for padding token
+        # HACK: add pad token without resizing
         # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
         tokenizer.pad_token_id = tokenizer.eos_token_id
+        config.pad_token_id = tokenizer.pad_token_id
 
     if model_args.model_name_or_path and not model_args.from_scratch:
         model = model_cls.from_pretrained(
@@ -96,7 +97,10 @@ def load_model(model_args, diffusion_args, logger):
             use_auth_token=True if model_args.use_auth_token else None,
             # HACk: for tiny llama
             ignore_mismatched_sizes=True,
-            # attn_implementation="flash_attention_2" if model_args.use_flash_attention2 else "eager",
+            # NOTE: flash attention 2
+            attn_implementation="flash_attention_2"
+            if model_args.use_flash_attention2
+            else "eager",
         )
     else:
         logger.warning("Training new model from scratch")
