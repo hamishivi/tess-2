@@ -67,7 +67,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        batch_size: int = 1,
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
         batch: Optional[torch.FloatTensor] = None,
@@ -105,6 +104,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # TODO(rabeeh): is giving the length cheating for this setting?
             # Adapts the sequence length to the given `span_mask`'s length.
             seq_length = batch["input_ids"].shape[1]
+        # idk why i have the bsz argument.
+        batch_size = batch["input_ids"].shape[0]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(
             simplex_shape, generator=generator, device=self.device
@@ -133,7 +134,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                     original_t,
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
-                    previous_hidden=previous_hidden,
+                    token_input=batch["input_ids"],
+                    span_mask=batch["span_mask"],
                 )
             else:
                 t = original_t
@@ -213,7 +215,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                     original_t - 1,
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
-                    previous_hidden=previous_hidden,
+                    token_input=batch["input_ids"],
+                    span_mask=batch["span_mask"],
                 ).long()
                 # since the tokenwise can do some wild stuff.
                 prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)

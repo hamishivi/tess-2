@@ -15,7 +15,10 @@ from transformers import (
 )
 
 from sdlm.arguments import DiffusionArguments, ModelArguments
-from sdlm.models import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+from sdlm.models.cdcd.tokenwise_warper_model import (
+    TokenwiseCDCDRobertaConfig,
+    TokenwiseCDCDRobertaForDiffusionLM,
+)
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -42,7 +45,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    config = CDCDRobertaConfig.from_pretrained(
+    config = TokenwiseCDCDRobertaConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -76,7 +79,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = CDCDRobertaForDiffusionLM.from_pretrained(
+        model = TokenwiseCDCDRobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -177,16 +180,19 @@ def main():
 
     generator = generate(
         "When I talk about music, I talk about",
-        generated_sequence_length=300,
+        generated_sequence_length=50,
         diffusion_steps=100,
     )
     confidences = []
     diff_2_confidences = []
     kl_divs = []
     entropies = []
+    dists = []
     prev_dist = None
+    final_toks = None
     for i, output in enumerate(generator):
         dist = torch.softmax(output.logits, dim=-1)
+        dists.append(dist.cpu().detach())
         conf = dist.max(dim=-1).values
         conf_sec = dist.topk(2, dim=-1).values[:, :, 1]
         diff_2_confidences.append(conf - conf_sec)
@@ -195,6 +201,7 @@ def main():
         if prev_dist is not None:
             kl_divs.append(kl_div(dist.cpu(), prev_dist.cpu()).mean(-1))
         prev_dist = dist
+        final_toks = output.logits[0].argmax(-1).cpu()
         # if i > (800):
         #     break
     tokens = [tokenizer.decode(t) for t in output.logits[0].argmax(-1).cpu().numpy()]
@@ -211,6 +218,28 @@ def main():
     plt.xlabel("token position")
     plt.ylabel("diffusion step")
     plt.savefig("confidence_over_steps.png")
+    plt.clf()
+
+    tok_probs = []
+    for d in dists:
+        tok_probs.append(
+            torch.stack(
+                [d[0, i, tok_idx] for i, tok_idx in enumerate(final_toks)], dim=0
+            )
+        )
+    confidences = torch.stack(tok_probs, dim=0).cpu().numpy()
+    plt.figure(figsize=(15, 6))
+    heatmap = plt.imshow(
+        confidences,
+        cmap="hot",
+        interpolation="nearest",
+        aspect="auto",  # norm=LogNorm(vmin=0.000000001, vmax=1)
+    )
+    plt.xticks(range(len(tokens)), tokens, rotation=90)
+    plt.colorbar(heatmap)
+    plt.xlabel("token position")
+    plt.ylabel("diffusion step")
+    plt.savefig("confidence_over_steps_final_token_prob.png")
     plt.clf()
 
     entropies = np.concatenate(entropies, axis=0)

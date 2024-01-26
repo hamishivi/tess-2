@@ -16,7 +16,7 @@ from transformers import (
 from sdlm.arguments import DiffusionArguments, ModelArguments
 from sdlm.metrics.metrics import distinct_n_grams, mauve
 from sdlm.metrics.perplexity import conditional_perplexity
-from sdlm.models import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+from sdlm.models import TokenwiseCDCDRobertaConfig, TokenwiseCDCDRobertaForDiffusionLM
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -43,7 +43,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    config = CDCDRobertaConfig.from_pretrained(
+    config = TokenwiseCDCDRobertaConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -77,7 +77,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = CDCDRobertaForDiffusionLM.from_pretrained(
+        model = TokenwiseCDCDRobertaForDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -112,7 +112,7 @@ def main():
         == 0
     )
 
-    max_eval_samples = 128
+    max_eval_samples = 512
     # load eval outputs
     dataset = load_dataset("c4", "en", split="validation", streaming=True)
     # try to keep only longer examples for prompting
@@ -120,6 +120,9 @@ def main():
     dataset = dataset.shuffle(seed=42).take(max_eval_samples)
     # get gold texts
     gold = [tokenizer.decode(tokenizer(x["text"]).input_ids[:512]) for x in dataset]
+    gold_output_only = [
+        tokenizer.decode(tokenizer(x["text"]).input_ids[256:512]) for x in dataset
+    ]
     # some constants for generations
     simplex_value = 5.0
     top_p = 1.0
@@ -180,39 +183,67 @@ def main():
     )
     outputs = []
     prefixes = []
-    # if not os.path.exists(f"{model_args.model_name_or_path}-outputs.json"):
-    if True:
-        with torch.inference_mode():
-            for batch in dataloader:
-                for input_tokens in batch["input_ids"]:
-                    prefixes.append(
-                        tokenizer.decode(
-                            input_tokens.squeeze()[:256], skip_special_tokens=True
+    if not os.path.exists(f"{model_args.model_name_or_path}-outputs.json"):
+        # AR model path
+        if False:
+            from transformers import pipeline
+
+            ar_generator = pipeline(model="gpt2", device=0)
+            with torch.inference_mode():
+                for batch in dataloader:
+                    for input_tokens in batch["input_ids"]:
+                        prefixes.append(
+                            tokenizer.decode(
+                                input_tokens.squeeze()[:256], skip_special_tokens=True
+                            )
                         )
-                    )
-                # yield over until end.
-                for o in pipeline(
-                    batch={
-                        "input_ids": batch["input_ids"].squeeze().cuda(),
-                        "span_mask": batch["span_mask"].squeeze().cuda(),
-                    },
-                    guidance_scale=guidance_scale,
-                    seq_length=generated_sequence_length,
-                ):
-                    output = o
-                for output_tokens in output.logits.argmax(-1):
-                    outputs.append(
-                        tokenizer.decode(output_tokens[256:], skip_special_tokens=False)
-                        .split("</s>")[0]
-                        .replace("<s>", "")
-                        .strip()
-                    )
+                        output = ar_generator(
+                            tokenizer.decode(
+                                input_tokens.squeeze()[:256], skip_special_tokens=True
+                            ),
+                            max_length=generated_sequence_length + 256,
+                            do_sample=True,
+                            top_p=0.99,
+                            return_full_text=False,
+                        )
+                        outputs.append(output[0]["generated_text"])
+        elif True:
+            with torch.inference_mode():
+                for batch in dataloader:
+                    for input_tokens in batch["input_ids"]:
+                        prefixes.append(
+                            tokenizer.decode(
+                                input_tokens.squeeze()[:256], skip_special_tokens=True
+                            )
+                        )
+                    # yield over until end.
+                    for o in pipeline(
+                        batch={
+                            "input_ids": batch["input_ids"].squeeze().cuda(),
+                            "span_mask": batch["span_mask"].squeeze().cuda(),
+                        },
+                        guidance_scale=guidance_scale,
+                        seq_length=generated_sequence_length,
+                    ):
+                        output = o
+                    for output_tokens in output.logits.argmax(-1):
+                        outputs.append(
+                            tokenizer.decode(
+                                output_tokens[256:], skip_special_tokens=False
+                            )
+                            .split("</s>")[0]
+                            .replace("<s>", "")
+                            .strip()
+                        )
     else:
-        with open(f"{model_args.model_name_or_path}-outputs.json", "r") as f:
+        with open(f"{model_args.model_name_or_path}-outputs-500steps.json", "r") as f:
             results = json.load(f)
             outputs = results["outputs"]
             prefixes = results["prefixes"]
     combined = [p.strip() + " " + o.strip() for p, o in zip(prefixes, outputs)]
+    # gold_combined = [
+    #     p.strip() + " " + o.strip() for p, o in zip(prefixes, gold_output_only)
+    # ]
     # setup causal model for metrics
     causal_model = AutoModelForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B")
     causal_model = causal_model.cuda()
@@ -222,17 +253,16 @@ def main():
         "outputs": outputs,
         "prefixes": prefixes,
     }
-    # with open(f"{model_args.model_name_or_path}-outputs.json", "w") as f:
-    #     f.write(json.dumps(results, indent=4))
+    with open("outputs.json", "w") as f:
+        f.write(json.dumps(results, indent=4))
     # quick clean: add a space after the prefix
     filtered_prefixes = [p for i, p in enumerate(prefixes) if p and outputs[i]]
     filtered_outputs = [o for i, o in enumerate(outputs) if o and prefixes[i]]
     prefixes = filtered_prefixes
     outputs = filtered_outputs
     prefixes = [
-        p + " "
+        p + " " if prefixes[i][-1] != " " and gold_output_only[i][0] != " " else p
         for i, p in enumerate(prefixes)
-        if prefixes[i][-1] != " " and outputs[i][0] != " "
     ]
     # okay! metrics time!
     perplexity_scores = conditional_perplexity(
@@ -275,10 +305,11 @@ def main():
         "entropy": entropy_scores,
         "outputs": outputs,
         "prefixes": prefixes,
+        "full_outputs": [x + "***" + y + "***" for x, y in zip(prefixes, outputs)],
     }
     # save outputs
-    # with open(f"{model_args.model_name_or_path}-outputs.json", "w") as f:
-    #     f.write(json.dumps(results, indent=4))
+    with open("outputs.json", "w") as f:
+        f.write(json.dumps(results, indent=4))
 
 
 if __name__ == "__main__":

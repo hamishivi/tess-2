@@ -1,7 +1,9 @@
 from typing import Optional
 
+import numpy as np
 import torch
 from torch import autograd
+from transformers import RobertaForMaskedLM
 from transformers.modeling_outputs import MaskedLMOutput
 
 from sdlm.models.cdcd.cdf import LossCDF
@@ -22,21 +24,28 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
         super().__init__(config)
         self.cdf = LossCDF(100)
         # keep the hidden dim larger?
+        self.base_lm = RobertaForMaskedLM.from_pretrained("roberta-base")
         self.linear_lu = torch.nn.Sequential(
-            torch.nn.Linear(self.config.hidden_size + 1, self.config.hidden_size),
+            torch.nn.Linear(self.config.hidden_size, self.config.hidden_size),
             torch.nn.ReLU(),
             torch.nn.Linear(self.config.hidden_size, 100),
         )
         self.linear_lt = torch.nn.Sequential(
-            torch.nn.Linear(self.config.hidden_size + 1, self.config.hidden_size),
+            torch.nn.Linear(self.config.hidden_size, self.config.hidden_size),
             torch.nn.ReLU(),
             torch.nn.Linear(self.config.hidden_size, 100),
         )
+        self.start_lt = torch.zeros([100]) - float(np.log(100))
+        self.start_lu = torch.zeros([100]) - float(np.log(100))
+        # small starting a
+        self.linear_lu_start_a = torch.nn.Parameter(torch.zeros([1]) + 0.001)
+        self.linear_lt_start_a = torch.nn.Parameter(torch.zeros([1]) + 0.001)
 
     def warp_timesteps(
         self,
         timesteps: torch.FloatTensor,
-        previous_hidden: Optional[torch.FloatTensor] = None,
+        token_input: Optional[torch.LongTensor] = None,
+        span_mask: Optional[torch.FloatTensor] = None,
         t_min=0,
         t_max=1,
     ):
@@ -48,15 +57,25 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             # in this case, we just set timesteps to 0
             timesteps = timesteps - t_min
             t_max = 1  # just to avoid div by 0
-        if previous_hidden is None:
+        if token_input is None:
             lu, lt = None, None
         else:
+            # replace padding tokens with <mask> token
+            # to avoid model ignoring those tokens
+            token_input = torch.where(token_input == 1, 50264, token_input)
+            hidden_states = self.base_lm.roberta(
+                input_ids=token_input, output_hidden_states=True
+            ).hidden_states[-1]
             # predict out the new timesteps
-            lu = self.linear_lu(
-                torch.cat([previous_hidden, timesteps[:, :, None]], dim=-1)
+            lu = self.start_lu.to(
+                self.linear_lu_start_a.device
+            ) + self.linear_lu_start_a * self.linear_lu(
+                torch.cat([hidden_states], dim=-1)
             )
-            lt = self.linear_lt(
-                torch.cat([previous_hidden, timesteps[:, :, None]], dim=-1)
+            lt = self.start_lt.to(
+                self.linear_lu_start_a.device
+            ) + self.linear_lt_start_a * self.linear_lt(
+                torch.cat([hidden_states], dim=-1)
             )
             # lu = self.linear_lu(previous_hidden)
             # lt = self.linear_lt(previous_hidden)
@@ -124,18 +143,22 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             with torch.enable_grad():
                 # grab the predictions for the loss values - note at this point timesteps
                 # are normalised to [0, 1]
+                token_input = torch.where(input_ids == 1, 50264, input_ids)
+                previous_hidden = self.base_lm.roberta(
+                    input_ids=token_input, output_hidden_states=True
+                ).hidden_states[-1]
                 if previous_hidden is None:
                     lu, lt = None, None
                 else:
-                    lu = self.linear_lu(
-                        torch.cat(
-                            [previous_hidden, original_timesteps[:, :, None]], dim=-1
-                        )
+                    lu = self.start_lu.to(
+                        self.linear_lu_start_a.device
+                    ) + self.linear_lu_start_a * self.linear_lu(
+                        torch.cat([previous_hidden], dim=-1)
                     )
-                    lt = self.linear_lt(
-                        torch.cat(
-                            [previous_hidden, original_timesteps[:, :, None]], dim=-1
-                        )
+                    lt = self.start_lt.to(
+                        self.linear_lu_start_a.device
+                    ) + self.linear_lt_start_a * self.linear_lt(
+                        torch.cat([previous_hidden], dim=-1)
                     )
                     # lu = self.linear_lu(previous_hidden)
                     # lt = self.linear_lt(previous_hidden)
@@ -147,13 +170,12 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
                     1.0 / autograd.grad(xent_pred.sum(), [new_timesteps_clone])[0]
                 )
             imp_weights = imp_weights.detach() * 1e-5
-            cdf_loss = (
-                imp_weights
-                * (
-                    self.cdf(t=timesteps, normalized=False, t_max=1, l_u=lu, l_t=lt)
-                    - loss.detach()
-                ).pow(2)
-            ).mean()
+            cdf_loss = imp_weights * (
+                self.cdf(t=timesteps, normalized=False, t_max=1, l_u=lu, l_t=lt)
+                - loss.detach()
+            ).pow(2)
+            # mask regular input part of loss, since we don't warp this anyway.
+            cdf_loss = (cdf_loss * span_mask).mean()
             loss = loss.mean() + cdf_loss  # upweight cdf loss as its too small :(
         else:
             loss = loss.mean()
