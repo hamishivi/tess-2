@@ -29,6 +29,8 @@ require_version(
 
 logger = logging.getLogger(__name__)
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 
 def get_compute_metrics(data_args, training_args, model_args):
     # Causal language model.
@@ -123,7 +125,7 @@ def main():
     set_seed(training_args.seed)
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, logger)
+    tokenizer, model = load_model(model_args, diffusion_args, training_args, logger)
 
     # init schedulers
     noise_scheduler = TokenWiseSimplexDDPMScheduler(

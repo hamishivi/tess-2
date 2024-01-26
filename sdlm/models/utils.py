@@ -1,3 +1,4 @@
+import torch
 from transformers import AutoTokenizer
 
 from .cdcd.positionwise_warper_model import (
@@ -40,7 +41,7 @@ def is_tokenwise_cdcd_check(model):
     )
 
 
-def load_model(model_args, diffusion_args, logger):
+def load_model(model_args, diffusion_args, training_args, logger):
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
@@ -88,6 +89,12 @@ def load_model(model_args, diffusion_args, logger):
         config.pad_token_id = tokenizer.pad_token_id
 
     if model_args.model_name_or_path and not model_args.from_scratch:
+        # identify dtype
+        torch_dtype = torch.float32
+        if training_args.bf16:
+            torch_dtype = torch.bfloat16
+        elif training_args.fp16:
+            torch_dtype = torch.float16
         model = model_cls.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -95,9 +102,7 @@ def load_model(model_args, diffusion_args, logger):
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
-            # HACk: for tiny llama
-            ignore_mismatched_sizes=True,
-            # NOTE: flash attention 2
+            torch_dtype=torch_dtype,
             attn_implementation="flash_attention_2"
             if model_args.use_flash_attention2
             else "eager",

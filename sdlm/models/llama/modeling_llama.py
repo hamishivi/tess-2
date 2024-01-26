@@ -19,11 +19,10 @@ logger = logging.get_logger(__name__)
 
 
 class LlamaForDiffusionLM(LlamaPreTrainedModel):
-    _keys_to_ignore_on_save = [r"lm_head.decoder.weight", r"lm_head.decoder.bias"]
+    _keys_to_ignore_on_save = [r"lm_head.weight", r"lm_head.bias"]
     _keys_to_ignore_on_load_missing = [
-        r"position_ids",
-        r"lm_head.decoder.weight",
-        r"lm_head.decoder.bias",
+        r"lm_head.weight",
+        r"lm_head.bias",
     ]
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
@@ -80,11 +79,12 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def post_init(self):
-        super().post_init()
-        self.vocab_to_hidden_dim_embed.weight.data = (
-            self.get_input_embeddings().weight.data.T
-        )
+    # HACK: cannot save noncontiguous tensor
+    # def post_init(self):
+    #     super().post_init()
+    #     self.vocab_to_hidden_dim_embed.weight.data = (
+    #         self.get_input_embeddings().weight.data.T
+    #     )
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -105,18 +105,8 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         return self.model
 
     # TODO: adjust for llama
-    # 50264 is hard-coded pad token for roberta
     def get_roberta_empty_tokens(self, shape, device):
-        if self.config.empty_token_be_mask:
-            empty_token_ids = (
-                torch.ones(shape, dtype=torch.int64, device=device) * 50264
-            )
-        else:
-            # Padding token in roberta-large is 1.
-            empty_token_ids = torch.ones(shape, dtype=torch.int64, device=device)
-        empty_token_ids[:, 0] = 0
-        empty_token_ids[:, -1] = 2
-        return empty_token_ids
+        raise NotImplementedError
 
     def forward(
         self,
@@ -344,7 +334,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
             attentions=outputs.attentions,
         )
 
-    # TODO: adjust for llama rotary
+    # TODO: adjust for llama
     def resize_position_embeddings(
         self, new_num_position_embeddings: int, with_alternatation=False
     ):
