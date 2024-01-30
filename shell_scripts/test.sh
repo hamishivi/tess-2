@@ -33,4 +33,5 @@ python -m sdlm.run_mlm \
         --bf16 \
         --optim adamw_torch_fused \
         --gradient_checkpointing \
-        --use_flash_attention2
+        --use_flash_attention2 \
+        --save_safetensors false

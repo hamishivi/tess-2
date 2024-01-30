@@ -79,12 +79,11 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    # HACK: cannot save noncontiguous tensor
-    # def post_init(self):
-    #     super().post_init()
-    #     self.vocab_to_hidden_dim_embed.weight.data = (
-    #         self.get_input_embeddings().weight.data.T
-    #     )
+    def post_init(self):
+        super().post_init()
+        self.vocab_to_hidden_dim_embed.weight.data = (
+            self.get_input_embeddings().weight.data.T
+        )
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
