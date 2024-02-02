@@ -17,6 +17,7 @@ class LlamaDiffusionConfig(LlamaConfig):
         self_condition_mix_before_weights=False,
         self_condition_mix_logits_before_weights=False,
         empty_token_be_mask=False,
+        is_causal: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -31,3 +32,4 @@ class LlamaDiffusionConfig(LlamaConfig):
             self_condition_mix_logits_before_weights
         )
         self.empty_token_be_mask = empty_token_be_mask
+        self.is_causal = is_causal

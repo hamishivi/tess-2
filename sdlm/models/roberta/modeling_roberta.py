@@ -287,6 +287,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         )
         sequence_output = outputs[0]
         prediction_scores = self.lm_head(sequence_output)
+        # import pdb; pdb.set_trace()
 
         masked_lm_loss = None
         # In case of classifier-free guidance, since the number of output logits and input token ids do not match

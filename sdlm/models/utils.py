@@ -61,6 +61,7 @@ def load_model(model_args, diffusion_args, training_args, logger):
         self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
         self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
         empty_token_be_mask=diffusion_args.empty_token_be_mask,
+        is_causal=model_args.is_causal,
         **config_kwargs,
     )
     tokenizer_kwargs = {

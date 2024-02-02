@@ -84,6 +84,9 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         self.vocab_to_hidden_dim_embed.weight.data = (
             self.get_input_embeddings().weight.data.T
         )
+        # (un)toggle causal attention
+        for decoder_layer in self.model.layers:
+            decoder_layer.self_attn.is_causal = self.config.is_causal
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
@@ -290,6 +293,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         )
         sequence_output = outputs[0]
         prediction_scores = self.lm_head(sequence_output)
+        # import pdb; pdb.set_trace()
 
         masked_lm_loss = None
         # In case of classifier-free guidance, since the number of output logits and input token ids do not match

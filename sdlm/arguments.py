@@ -131,6 +131,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to use flash attention 2."},
     )
+    is_causal: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use causal attention (for Llama)."},
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
