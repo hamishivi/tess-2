@@ -4,7 +4,7 @@ python -m sdlm.run_mlm \
         --per_device_eval_batch_size 16 \
         --do_train \
         --do_eval \
-        --output_dir outputs/llama/try2_noncausal \
+        --output_dir outputs/llama/try3_pad_token \
         --evaluation_strategy steps \
         --eval_steps 1000 \
         --report_to tensorboard \
@@ -35,4 +35,4 @@ python -m sdlm.run_mlm \
         --gradient_checkpointing \
         --use_flash_attention2 \
         --save_safetensors false \
-        --is_causal false
+        --is_causal true
