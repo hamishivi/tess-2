@@ -42,9 +42,9 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         # # The LM head weights require special treatment only when they are tied with the word embeddings
         # self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
 
-        self.vocab_to_hidden_dim_embed = nn.Linear(
-            config.vocab_size, config.hidden_size, bias=False
-        )
+        # self.vocab_to_hidden_dim_embed = nn.Linear(
+        #     config.vocab_size, config.hidden_size, bias=False
+        # )
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
@@ -81,9 +81,9 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
 
     def post_init(self):
         super().post_init()
-        self.vocab_to_hidden_dim_embed.weight.data = (
-            self.get_input_embeddings().weight.data.T
-        )
+        # self.vocab_to_hidden_dim_embed.weight.data = (
+        #     self.get_input_embeddings().weight.data.T
+        # )
         # (un)toggle causal attention
         for decoder_layer in self.model.layers:
             decoder_layer.self_attn.is_causal = self.config.is_causal
@@ -105,6 +105,9 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
 
     def get_decoder(self):
         return self.model
+    
+    def vocab_to_hidden_dim_embed(self, input_data):
+        return F.linear(input_data, self.get_input_embeddings().weight.data.T)
 
     # TODO: adjust for llama
     def get_roberta_empty_tokens(self, shape, device):

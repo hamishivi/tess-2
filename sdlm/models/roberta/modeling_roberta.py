@@ -43,9 +43,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # # The LM head weights require special treatment only when they are tied with the word embeddings
         # self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
 
-        self.vocab_to_hidden_dim_embed = nn.Linear(
-            config.vocab_size, config.hidden_size, bias=False
-        )
+        # self.vocab_to_hidden_dim_embed = nn.Linear(
+        #     config.vocab_size, config.hidden_size, bias=False
+        # )
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
@@ -80,11 +80,16 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def post_init(self):
-        super().post_init()
-        self.vocab_to_hidden_dim_embed.weight.data = (
-            self.get_input_embeddings().weight.data.T
-        )
+    # run embedding matrix as linear layer
+    def vocab_to_hidden_dim_embed(self, input_data):
+        return F.linear(input_data, self.roberta.embeddings.word_embeddings.weight.T)
+
+    # def post_init(self):
+    #     super().post_init()
+    #     self.vocab_to_hidden_dim_embed.weight.data = (
+    #         self.get_input_embeddings().weight.data.T
+    #     )
+    #     import pdb; pdb.set_trace()
 
     def get_output_embeddings(self):
         return self.lm_head.decoder
