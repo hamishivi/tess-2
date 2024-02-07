@@ -1,12 +1,12 @@
 python -m sdlm.run_mlm \
-        --model_name_or_path meta-llama/Llama-2-7b-hf \
+        --model_name_or_path /net/nfs.cirrascale/allennlp/yizhongw/hf_llama2_models/7B \
         --per_device_train_batch_size 16  \
         --per_device_eval_batch_size 16 \
         --do_train \
         --do_eval \
-        --output_dir outputs/llama/try2_noncausal \
+        --output_dir outputs/llama/try3_noncausal \
         --evaluation_strategy steps \
-        --eval_steps 1000 \
+        --eval_steps 100 \
         --report_to tensorboard \
         --max_seq_length 512  \
         --max_eval_samples 8 \
@@ -21,11 +21,11 @@ python -m sdlm.run_mlm \
         --top_p 0.99 \
         --max_steps 50000 \
         --gradient_accumulation_steps 4 \
-        --warmup_ratio 0.05 \
-        --logging_steps 50 \
+        --warmup_steps 100 \
+        --logging_steps 1 \
         --save_steps 1000 \
         --save_total_limit 5 \
-        --conditional_generation ul2 \
+        --conditional_generation prefix_lm \
         --self_condition "logits_mean" \
         --self_condition_mix_before_weights \
         --dataset_name c4 --streaming --dataset_config_name en \
@@ -34,5 +34,6 @@ python -m sdlm.run_mlm \
         --optim adamw_torch_fused \
         --gradient_checkpointing \
         --use_flash_attention2 \
-        --save_safetensors false \
-        --is_causal false
+        --save_safetensors true \
+        --is_causal false \
+        --line_by_line

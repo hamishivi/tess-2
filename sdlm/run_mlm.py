@@ -176,6 +176,13 @@ def main():
                     yield x
 
             eval_dataset = Dataset.from_generator(iterable_generator)
+        if data_args.eval_long_only:
+            # filter out short examples so that we prompt the model with examples
+            # that actually require generating out to a decent length.
+            # is a list at this point so
+            eval_dataset = eval_dataset.filter(
+                lambda x: len([i for i in x['input_ids'] if i != 1]) >= 300
+            )
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))

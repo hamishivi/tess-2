@@ -86,8 +86,11 @@ def load_model(model_args, diffusion_args, training_args, logger):
     if not tokenizer.pad_token_id:
         # HACK: add pad token without resizing
         # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-        tokenizer.pad_token_id = tokenizer.eos_token_id
+        tokenizer.pad_token_id = tokenizer.unk_token_id
         config.pad_token_id = tokenizer.pad_token_id
+        # HACK: force right-padding
+        tokenizer.padding_side = "right"
+    tokenizer.add_eos_token = True
 
     if model_args.model_name_or_path and not model_args.from_scratch:
         # identify dtype
