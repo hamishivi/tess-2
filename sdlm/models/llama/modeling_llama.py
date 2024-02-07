@@ -105,7 +105,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
 
     def get_decoder(self):
         return self.model
-    
+
     def vocab_to_hidden_dim_embed(self, input_data):
         return F.linear(input_data, self.get_input_embeddings().weight.data.T)
 
@@ -317,12 +317,11 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
             # also mask padding token loss....
             labels = torch.where(labels == self.config.pad_token_id, -100, labels)
             # important: shift labels to the right by one, mimicking the causal pretraining
-            # why do I have to make these contigous calls?
-            labels = labels[:, 1:].contiguous()
-            prediction_scores_for_loss = prediction_scores_for_loss[:, :-1].contiguous()
+            labels = labels[:, 1:]
+            prediction_scores_for_loss = prediction_scores_for_loss[:, :-1]
             masked_lm_loss = loss_fct(
-                prediction_scores_for_loss.view(-1, self.config.vocab_size),
-                labels.view(-1),
+                prediction_scores_for_loss.reshape(-1, self.config.vocab_size),
+                labels.reshape(-1),
             )
             if return_all_losses:
                 all_lm_losses = masked_lm_loss.view(input_ids.shape[0], -1)
@@ -340,7 +339,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         # shift our logites forward by one, so that input->output match
         prediction_scores = prediction_scores[:, :-1]
         # add back in our start tok.
-        padding_pred = torch.zeros_like(prediction_scores[:,0])[:,None]
+        padding_pred = torch.zeros_like(prediction_scores[:, 0])[:, None]
         prediction_scores = torch.cat([padding_pred, prediction_scores], dim=1)
         return MaskedLMOutput(
             loss=all_lm_losses if return_all_losses else masked_lm_loss,
