@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import time
+import warnings
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
@@ -15,7 +16,10 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from transformers import Trainer
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-from transformers.deepspeed import deepspeed_init, deepspeed_load_checkpoint
+
+with warnings.catch_warnings():
+    warnings.simplefilter(action="ignore", category=FutureWarning)
+    from transformers.deepspeed import deepspeed_init, deepspeed_load_checkpoint
 from transformers.integrations import TensorBoardCallback, hp_params
 from transformers.trainer import TRAINER_STATE_NAME
 from transformers.trainer_callback import TrainerState
