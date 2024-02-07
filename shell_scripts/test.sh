@@ -1,5 +1,5 @@
 python -m sdlm.run_mlm \
-        --model_name_or_path /net/nfs.cirrascale/allennlp/yizhongw/hf_llama2_models/7B \
+        --model_name_or_path meta-llama/Llama-2-7b-hf \
         --per_device_train_batch_size 16  \
         --per_device_eval_batch_size 16 \
         --do_train \

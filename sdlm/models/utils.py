@@ -83,14 +83,13 @@ def load_model(model_args, diffusion_args, training_args, logger):
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
-    if not tokenizer.pad_token_id:
-        # HACK: add pad token without resizing
-        # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-        tokenizer.pad_token_id = tokenizer.unk_token_id
-        config.pad_token_id = tokenizer.pad_token_id
-        # HACK: force right-padding
-        tokenizer.padding_side = "right"
-    tokenizer.add_eos_token = True
+
+    assert tokenizer.padding_side == "right"
+    try:
+        tokenizer.add_eos_token = True
+    except AttributeError:
+        # roberta does not have this
+        pass
 
     if model_args.model_name_or_path and not model_args.from_scratch:
         # identify dtype
@@ -117,10 +116,14 @@ def load_model(model_args, diffusion_args, training_args, logger):
         model = model_cls._from_config(config)
         model.init_weights()
 
+    if not tokenizer.pad_token_id:
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
     vocab_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
+        model.config.pad_token_id = tokenizer.pad_token_id
 
     return tokenizer, model
