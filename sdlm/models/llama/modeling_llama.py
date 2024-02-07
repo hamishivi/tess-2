@@ -316,6 +316,10 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
             )
             # also mask padding token loss....
             labels = torch.where(labels == self.config.pad_token_id, -100, labels)
+            # important: shift labels to the right by one, mimicking the causal pretraining
+            # why do I have to make these contigous calls?
+            labels = labels[:, 1:].contiguous()
+            prediction_scores_for_loss = prediction_scores_for_loss[:, :-1].contiguous()
             masked_lm_loss = loss_fct(
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),
@@ -333,6 +337,11 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
                 ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
             )
 
+        # shift our logites forward by one, so that input->output match
+        prediction_scores = prediction_scores[:, :-1]
+        # add back in our start tok.
+        padding_pred = torch.zeros_like(prediction_scores[:,0])[:,None]
+        prediction_scores = torch.cat([padding_pred, prediction_scores], dim=1)
         return MaskedLMOutput(
             loss=all_lm_losses if return_all_losses else masked_lm_loss,
             logits=prediction_scores,

@@ -487,6 +487,12 @@ class DataTrainingArguments:
         default=False,
         metadata={"help": "If set, we will shuffle the data before training."},
     )
+    eval_long_only: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, we will only evaluate on the long examples in the validation set."
+        },
+    )
 
     def __post_init__(self):
         if (
