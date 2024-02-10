@@ -284,19 +284,16 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         outputs = self.model(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=None,  # attention_mask,
-            # token_type_ids=token_type_ids,
             position_ids=position_ids,
-            # head_mask=head_mask,
+            past_key_values=None,
             inputs_embeds=inputs_embeds,
-            # encoder_hidden_states=encoder_hidden_states,
-            # encoder_attention_mask=encoder_attention_mask,
+            use_cache=False,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
         prediction_scores = self.lm_head(sequence_output)
-        # import pdb; pdb.set_trace()
 
         masked_lm_loss = None
         # In case of classifier-free guidance, since the number of output logits and input token ids do not match
@@ -314,8 +311,9 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
                 if span_mask is not None
                 else input_ids
             )
+            # NOTE: padding should be included in loss
             # also mask padding token loss....
-            labels = torch.where(labels == self.config.pad_token_id, -100, labels)
+            # labels = torch.where(labels == self.config.pad_token_id, -100, labels)
             # important: shift labels to the right by one, mimicking the causal pretraining
             labels = labels[:, 1:]
             prediction_scores_for_loss = prediction_scores_for_loss[:, :-1]

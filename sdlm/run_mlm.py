@@ -180,8 +180,12 @@ def main():
             # filter out short examples so that we prompt the model with examples
             # that actually require generating out to a decent length.
             # is a list at this point so
+            assert model.config.pad_token_id is not None
             eval_dataset = eval_dataset.filter(
-                lambda x: len([i for i in x['input_ids'] if i != 1]) >= 300
+                lambda x: len(
+                    [i for i in x["input_ids"] if i != model.config.pad_token_id]
+                )
+                >= 300
             )
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
