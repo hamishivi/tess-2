@@ -45,7 +45,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         # self.vocab_to_hidden_dim_embed = nn.Linear(
         #     config.vocab_size, config.hidden_size, bias=False
         # )
-        self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
+        self.timestep_embed = nn.Linear(1, config.hidden_size, bias=False)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
             # In this case, this is self-conditioning with conditional generation as done in DeepMind paper.
@@ -313,7 +313,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
             )
             # NOTE: padding should be included in loss
             # also mask padding token loss....
-            # labels = torch.where(labels == self.config.pad_token_id, -100, labels)
+            labels = torch.where(labels == self.config.pad_token_id, -100, labels)
             # important: shift labels to the right by one, mimicking the causal pretraining
             labels = labels[:, 1:]
             prediction_scores_for_loss = prediction_scores_for_loss[:, :-1]
