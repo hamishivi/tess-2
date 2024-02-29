@@ -45,26 +45,26 @@ python -m sdlm.run_summarization \
         --per_device_eval_batch_size 16 \
         --do_train \
         --do_eval \
-        --output_dir outputs/llama/test \
+        --output_dir outputs/llama/try4_cnn_dm \
         --evaluation_strategy steps \
         --eval_steps 100 \
         --report_to tensorboard \
         --max_seq_length 512  \
         --max_source_length 392 \
         --max_target_length 120 \
-        --max_eval_samples 12 \
+        --max_eval_samples 48 \
         --simplex_value 5 \
         --num_diffusion_steps 5000  \
         --num_inference_diffusion_steps 100 \
         --lr_scheduler_type cosine \
-        --learning_rate 1e-5 \
+        --learning_rate 3e-5 \
         --pad_to_max_length \
         --beta_schedule squaredcos_improved_ddpm \
         --weight_decay 0.0 \
         --top_p 0.99 \
-        --max_steps 50000 \
+        --max_steps 120000 \
         --gradient_accumulation_steps 4 \
-        --warmup_ratio 0.05 \
+        --warmup_steps 2000 \
         --logging_steps 50 \
         --save_steps 1000 \
         --save_total_limit 3 \
