@@ -23,7 +23,7 @@ class CDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
         self.cdf = LossCDF(100)
 
     def warp_timesteps(
-        self, timesteps: torch.FloatTensor, previous_hidden=None, t_min=0, t_max=1
+        self, timesteps: torch.FloatTensor, token_input=None, t_min=0, t_max=1
     ):
         # u has to be in normalized range...
         if t_max - t_min > 0:

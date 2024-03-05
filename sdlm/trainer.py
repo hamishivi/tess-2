@@ -164,18 +164,30 @@ class DiffusionTrainer(Trainer):
         bsz = simplex.shape[0]
         # Sample a random timestep for each simplex token representation.
         # testing just sampling the same place. This better matches reality.
-        timesteps = torch.randint(
-            0,
-            len(self.noise_scheduler),
-            (bsz, inputs["input_ids"].shape[1])
-            if False  # is_tokenwise_cdcd_check(self.model)
-            else (bsz,),
-            device=simplex.device,
-            dtype=torch.int64,
-        )
-        # expand out timesteps to match tokenwise setup
-        if True:  # not is_tokenwise_cdcd_check(self.model):
+        if True:  # np.random.rand(1) > 0.5:
+            timesteps = torch.randint(
+                0,
+                len(self.noise_scheduler),
+                (bsz, inputs["input_ids"].shape[1])
+                if False  # is_tokenwise_cdcd_check(self.model)
+                else (bsz,),
+                device=simplex.device,
+                dtype=torch.int64,
+            )
             timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
+        else:
+            timesteps = torch.randint(
+                0,
+                len(self.noise_scheduler),
+                (bsz, inputs["input_ids"].shape[1])
+                if True  # is_tokenwise_cdcd_check(self.model)
+                else (bsz,),
+                device=simplex.device,
+                dtype=torch.int64,
+            )
+        # expand out timesteps to match tokenwise setup
+        # if True:  # not is_tokenwise_cdcd_check(self.model):
+        #     timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
         # if we're not doing token warping, just set all relative positions to 1.
         norm_relative_position = torch.ones_like(inputs["input_ids"])
@@ -185,10 +197,12 @@ class DiffusionTrainer(Trainer):
         # we re-scale the timesteps to the correct range.
         # the -1 is due to the timestep should be in range [0, 5000)
         if is_cdcd_check(self.model):
+            input_ids = inputs["input_ids"]
+            span_mask = inputs["span_mask"]
+            token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
             timesteps = self.model.warp_timesteps(
                 timesteps,
-                token_input=inputs["input_ids"],
-                span_mask=inputs["span_mask"],
+                token_input=token_input,
                 t_max=len(self.noise_scheduler) - 1,
             )
         # Adds noise to each simplex representation (Forward diffusion process).
@@ -221,10 +235,14 @@ class DiffusionTrainer(Trainer):
                     max=len(self.noise_scheduler) - 1,
                 )
                 if is_cdcd_check(self.model):
+                    input_ids = inputs["input_ids"]
+                    span_mask = inputs["span_mask"]
+                    token_input = torch.where(
+                        (input_ids * span_mask) > 1, 50264, input_ids
+                    )
                     timesteps = self.model.warp_timesteps(
                         timesteps,
-                        inputs["input_ids"],
-                        inputs["span_mask"],
+                        token_input=token_input,
                         t_max=len(self.noise_scheduler) - 1,
                     )
                 noisy_simplex = self.noise_scheduler.add_noise(
@@ -271,11 +289,14 @@ class DiffusionTrainer(Trainer):
         )
         # re-warp based on previous hidden state
         if is_cdcd_check(self.model):
+            # replace masked tokens with <mask> token.
+            input_ids = inputs["input_ids"]
+            span_mask = inputs["span_mask"]
+            token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
             timesteps = self.model.warp_timesteps(
                 original_timesteps,
                 t_max=len(self.noise_scheduler) - 1,
-                token_input=inputs["input_ids"],
-                span_mask=inputs["span_mask"],
+                token_input=token_input,
             )
             noisy_simplex = self.noise_scheduler.add_noise(
                 simplex, noise, timesteps, norm_relative_position
@@ -290,9 +311,6 @@ class DiffusionTrainer(Trainer):
             )
         with self.compute_loss_context_manager():
             loss = self.compute_loss(model, inputs)
-            import pdb
-
-            pdb.set_trace()
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -328,18 +346,29 @@ class DiffusionTrainer(Trainer):
             bsz = simplex.shape[0]
             # Sample a random timestep for each simplex token representation.
             # we use the train timesteps to be consistent with the training process.
-            timesteps = torch.randint(
-                0,
-                len(self.noise_scheduler),
-                (bsz, inputs["input_ids"].shape[1])
-                if False  # is_tokenwise_cdcd_check(self.model)
-                else (bsz,),
-                device=simplex.device,
-                dtype=torch.int64,
-            )
-            # original_timesteps = timesteps
-            if True:  # not is_tokenwise_cdcd_check(self.model):
+            # randomly flip between random batchwise and tokenwise timesteps.
+            if True:
+                timesteps = torch.randint(
+                    0,
+                    len(self.noise_scheduler),
+                    (bsz, inputs["input_ids"].shape[1])
+                    if False  # is_tokenwise_cdcd_check(self.model)
+                    else (bsz,),
+                    device=simplex.device,
+                    dtype=torch.int64,
+                )
                 timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
+            else:
+                timesteps = torch.randint(
+                    0,
+                    len(self.noise_scheduler),
+                    (bsz, inputs["input_ids"].shape[1])
+                    if True  # is_tokenwise_cdcd_check(self.model)
+                    else (bsz,),
+                    device=simplex.device,
+                    dtype=torch.int64,
+                )
+            # original_timesteps = timesteps
 
             # if we're not doing token warping, just set all relative positions to 1.
             norm_relative_position = torch.ones_like(inputs["input_ids"])
@@ -347,11 +376,13 @@ class DiffusionTrainer(Trainer):
             # if cdcd, we need to wrap the timesteps in a cdf.
             # make sure we scale the timesteps to the correct range!
             if is_cdcd_check(self.model):
+                input_ids = inputs["input_ids"]
+                span_mask = inputs["span_mask"]
+                token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
                 timesteps = self.model.warp_timesteps(
                     timesteps,
                     t_max=len(self.noise_scheduler) - 1,
-                    token_input=inputs["input_ids"],
-                    span_mask=inputs["span_mask"],
+                    token_input=token_input,
                 )
 
             # Adds noise to each simplex representation (Forward diffusion process).

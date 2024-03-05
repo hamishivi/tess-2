@@ -38,14 +38,13 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
         self.start_lt = torch.zeros([100]) - float(np.log(100))
         self.start_lu = torch.zeros([100]) - float(np.log(100))
         # small starting a
-        self.linear_lu_start_a = torch.nn.Parameter(torch.zeros([1]) + 0.001)
-        self.linear_lt_start_a = torch.nn.Parameter(torch.zeros([1]) + 0.001)
+        self.linear_lu_start_a = torch.nn.Parameter(torch.zeros([1]) + 1)
+        self.linear_lt_start_a = torch.nn.Parameter(torch.zeros([1]) + 1)
 
     def warp_timesteps(
         self,
         timesteps: torch.FloatTensor,
         token_input: Optional[torch.LongTensor] = None,
-        span_mask: Optional[torch.FloatTensor] = None,
         t_min=0,
         t_max=1,
     ):
@@ -143,7 +142,9 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             with torch.enable_grad():
                 # grab the predictions for the loss values - note at this point timesteps
                 # are normalised to [0, 1]
-                token_input = torch.where(input_ids == 1, 50264, input_ids)
+                # at train time: we want to predict the tokens not in the span mask,
+                # replace with <mask>
+                token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
                 previous_hidden = self.base_lm.roberta(
                     input_ids=token_input, output_hidden_states=True
                 ).hidden_states[-1]
@@ -156,7 +157,7 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
                         torch.cat([previous_hidden], dim=-1)
                     )
                     lt = self.start_lt.to(
-                        self.linear_lu_start_a.device
+                        self.linear_lt_start_a.device
                     ) + self.linear_lt_start_a * self.linear_lt(
                         torch.cat([previous_hidden], dim=-1)
                     )
@@ -175,8 +176,12 @@ class TokenwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
                 - loss.detach()
             ).pow(2)
             # mask regular input part of loss, since we don't warp this anyway.
-            cdf_loss = (cdf_loss * span_mask).mean()
-            loss = loss.mean() + cdf_loss  # upweight cdf loss as its too small :(
+            # also mask out padding at the end.
+            cdf_loss = cdf_loss * span_mask * (input_ids != 1)
+            import pdb
+
+            pdb.set_trace()
+            loss = loss.mean() + cdf_loss.mean()
         else:
             loss = loss.mean()
         return MaskedLMOutput(

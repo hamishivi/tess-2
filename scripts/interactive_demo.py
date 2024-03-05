@@ -12,7 +12,10 @@ from transformers import (
 )
 
 from sdlm.arguments import DiffusionArguments, ModelArguments
-from sdlm.models import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+from sdlm.models.confidence_tracker.confidence_tracker_model import (
+    ConfidenceTrackerRobertaDiffusionLM,
+)
+from sdlm.models.roberta.configuration_roberta import RobertaDiffusionConfig
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -39,7 +42,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    config = CDCDRobertaConfig.from_pretrained(
+    config = RobertaDiffusionConfig.from_pretrained(
         model_args.model_name_or_path,
         self_condition=diffusion_args.self_condition,
         self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
@@ -73,7 +76,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        model = CDCDRobertaForDiffusionLM.from_pretrained(
+        model = ConfidenceTrackerRobertaDiffusionLM.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -164,7 +167,6 @@ def main():
         )
         # pipeline.progress_bar = progress.tqdm
         pipeline_args = {
-            "batch_size": 1,
             "seq_length": generated_sequence_length,
             "batch": inputs,
             "guidance_scale": guidance_scale,

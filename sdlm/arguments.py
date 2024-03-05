@@ -55,7 +55,7 @@ class ModelArguments:
     use_model: str = field(
         default="",
         metadata={
-            "help": "Choose whether to use a cdcd or tokenwise model. Options: cdcd, tokenwise_cdcd."
+            "help": "Choose whether to use a cdcd or tokenwise model. Options: cdcd, tokenwise_cdcd, confidence."
         },
     )
     config_overrides: Optional[str] = field(
@@ -478,6 +478,12 @@ class DataTrainingArguments:
     shuffle: bool = field(
         default=False,
         metadata={"help": "If set, we will shuffle the data before training."},
+    )
+    eval_long_only: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, we will only evaluate on the long examples in the validation set."
+        },
     )
 
     def __post_init__(self):

@@ -130,12 +130,15 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
+                # we are in inference mode, anything in span_mask is to gen.
+                token_inputs = torch.where(
+                    batch["span_mask"], 50264, batch["input_ids"]
+                )
                 t = self.model.warp_timesteps(
                     original_t,
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
-                    token_input=batch["input_ids"],
-                    span_mask=batch["span_mask"],
+                    token_input=token_inputs,
                 )
             else:
                 t = original_t
@@ -211,12 +214,14 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
+                token_inputs = torch.where(
+                    batch["span_mask"], 50264, batch["input_ids"]
+                )
                 prev_t = self.model.warp_timesteps(
                     original_t - 1,
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
-                    token_input=batch["input_ids"],
-                    span_mask=batch["span_mask"],
+                    token_input=token_inputs,
                 ).long()
                 # since the tokenwise can do some wild stuff.
                 prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)
@@ -241,6 +246,12 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
         # we take the mean loss over all timesteps
         loss = torch.stack(losses, dim=0)
+        # from matplotlib import pyplot as plt
+        # warped_steps = torch.stack(warped_steps, dim=0)
+        # for i in range(warped_steps.shape[1]):
+        #     plt.plot(warped_steps[:, i, 256:].cpu())
+        #     plt.savefig(f"warps_prefix_tokenwise/warped_{i}.png")
+        #     plt.clf()
         return SimplexDiffusionPipelineOutput(
             simplex=simplex, logits=model_output_logits, loss=loss
         )

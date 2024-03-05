@@ -1,11 +1,15 @@
 from transformers import AutoTokenizer
 
+from .ar_warp.ar_warper import GARDiffusionLM
 from .cdcd.positionwise_warper_model import (
     PositionwiseCDCDRobertaConfig,
     PositionwiseCDCDRobertaForDiffusionLM,
 )
 from .cdcd.tokenwise_warper_model import TokenwiseCDCDRobertaForDiffusionLM
 from .cdcd.warper_model import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
+from .confidence_tracker.confidence_tracker_model import (
+    ConfidenceTrackerRobertaDiffusionLM,
+)
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 
@@ -17,7 +21,17 @@ def model_config_helper(model_name_or_path, use_model="cdcd"):
         return CDCDRobertaConfig, TokenwiseCDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "positionwise_cdcd":
         return PositionwiseCDCDRobertaConfig, PositionwiseCDCDRobertaForDiffusionLM
-    elif "roberta" in model_name_or_path:
+    elif "roberta" in model_name_or_path and use_model == "confidence":
+        return RobertaDiffusionConfig, ConfidenceTrackerRobertaDiffusionLM
+    elif "roberta" in model_name_or_path and use_model == "gar":
+        print(
+            f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
+        )
+        return RobertaDiffusionConfig, GARDiffusionLM
+    else:  # "roberta" in model_name_or_path:
+        print(
+            f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
+        )
         return RobertaDiffusionConfig, RobertaForDiffusionLM
     raise ValueError
 
@@ -27,6 +41,7 @@ def is_cdcd_check(model):
         isinstance(model, CDCDRobertaForDiffusionLM)
         or isinstance(model, TokenwiseCDCDRobertaForDiffusionLM)
         or isinstance(model, PositionwiseCDCDRobertaForDiffusionLM)
+        or isinstance(model, GARDiffusionLM)
     )
 
 
