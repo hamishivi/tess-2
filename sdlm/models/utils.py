@@ -1,6 +1,7 @@
 from transformers import AutoTokenizer
 
 from .ar_warp.ar_warper import GARDiffusionLM
+from .cdcd.ar_warper import CDCDGARRobertaForDiffusionLM
 from .cdcd.positionwise_warper_model import (
     PositionwiseCDCDRobertaConfig,
     PositionwiseCDCDRobertaForDiffusionLM,
@@ -28,6 +29,8 @@ def model_config_helper(model_name_or_path, use_model="cdcd"):
             f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
         )
         return RobertaDiffusionConfig, GARDiffusionLM
+    elif "roberta" in model_name_or_path and use_model == "cdcdgar":
+        return CDCDRobertaConfig, CDCDGARRobertaForDiffusionLM
     else:  # "roberta" in model_name_or_path:
         print(
             f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
