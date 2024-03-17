@@ -313,7 +313,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
             )
             # NOTE: padding should be included in loss
             # also mask padding token loss....
-            labels = torch.where(labels == self.config.pad_token_id, -100, labels)
+            # labels = torch.where(labels == self.config.pad_token_id, -100, labels)
             # important: shift labels to the right by one, mimicking the causal pretraining
             labels = labels[:, 1:]
             prediction_scores_for_loss = prediction_scores_for_loss[:, :-1]
@@ -334,7 +334,7 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
                 ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
             )
 
-        # shift our logites forward by one, so that input->output match
+        # shift our logits forward by one, so that input->output match
         prediction_scores = prediction_scores[:, :-1]
         # add back in our start tok.
         padding_pred = torch.zeros_like(prediction_scores[:, 0])[:, None]
