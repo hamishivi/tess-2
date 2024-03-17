@@ -4,31 +4,25 @@ Fine-tuning the library models for sequence to sequence.
 
 import logging
 import os
-import pdb
 import sys
 
 import datasets
 import evaluate
-import nltk
 import transformers
-from arguments import (
-    DataTrainingArguments,
-    DiffusionArguments,
-    ModelArguments,
-    Seq2SeqTrainingArguments,
-)
-from data.data_collator import DataCollatorForSeq2Seq
-from data.data_utils import load_data
-from data.postprocessors import postprocess_text_for_metric
-from inference.inference_utils import process_text
-from models import RobertaDiffusionConfig, RobertaForDiffusionLM
-from schedulers import SimplexDDPMScheduler
-from trainer import DiffusionTrainer
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers import set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, send_example_telemetry
+from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
+
+from .arguments import get_args
+from .data.data_collator import DataCollatorForSeq2Seq
+from .data.data_utils import load_data
+from .data.postprocessors import postprocess_text_for_metric
+from .inference.inference_utils import process_text
+from .models import load_model
+from .schedulers import TokenWiseSimplexDDPMScheduler
+from .trainer import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -52,34 +46,12 @@ summarization_name_mapping = {
 
 
 def main():
-    parser = HfArgumentParser(
-        (
-            ModelArguments,
-            DataTrainingArguments,
-            Seq2SeqTrainingArguments,
-            DiffusionArguments,
-        )
-    )
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        model_args, data_args, training_args, diffusion_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1])
-        )
-    else:
-        (
-            model_args,
-            data_args,
-            training_args,
-            diffusion_args,
-        ) = parser.parse_args_into_dataclasses()
-
+    # parse args
+    model_args, data_args, training_args, diffusion_args = get_args()
     assert (
         data_args.max_target_length + data_args.max_source_length
         <= data_args.max_seq_length
     )
-
-    # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
-    # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_summarization", model_args, data_args)
 
     # Setup logging
     logging.basicConfig(
@@ -125,44 +97,11 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
+    # load data
     raw_datasets = load_data(data_args, model_args)
 
-    config = RobertaDiffusionConfig.from_pretrained(
-        model_args.model_name_or_path,
-        self_condition=diffusion_args.self_condition,
-        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
-        deepmind_conditional=diffusion_args.deepmind_conditional,
-        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
-        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
-        self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
-        self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
-        self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
-        empty_token_be_mask=diffusion_args.empty_token_be_mask,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_args.tokenizer_name
-        if model_args.tokenizer_name
-        else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        use_fast=model_args.use_fast_tokenizer,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    if model_args.model_name_or_path:
-        model = RobertaForDiffusionLM.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-    else:
-        logger.info("Training new model from scratch")
-        model = RobertaForDiffusionLM.from_config(config)
+    # load model
+    tokenizer, model = load_model(model_args, diffusion_args, training_args, logger)
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
@@ -318,27 +257,33 @@ def main():
     # TODO: we may want to add predict back.
 
     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForSeq2Seq(
+    data_collator = lambda mode: DataCollatorForSeq2Seq(  # noqa: E731
         tokenizer,
         # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
         max_length=data_args.max_seq_length,
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
-    noise_scheduler = SimplexDDPMScheduler(
+
+    noise_scheduler = TokenWiseSimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
+        multiply_factor=diffusion_args.multiply_factor,
     )
-    inference_noise_scheduler = SimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-    )
+    inference_noise_schedulers = [
+        TokenWiseSimplexDDPMScheduler(
+            num_train_timesteps=timesteps,
+            beta_schedule=diffusion_args.beta_schedule,
+            simplex_value=diffusion_args.simplex_value,
+            clip_sample=diffusion_args.clip_sample,
+            device=training_args.device,
+            multiply_factor=diffusion_args.multiply_factor,
+        )
+        for timesteps in diffusion_args.num_inference_diffusion_steps
+    ]
 
     # Metric
     metric = evaluate.load("rouge")
@@ -387,7 +332,7 @@ def main():
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
-        inference_noise_scheduler=inference_noise_scheduler,
+        inference_noise_schedulers=inference_noise_schedulers,
     )
 
     # Training
@@ -429,16 +374,16 @@ def main():
 
     # Evaluation
     results = {}
-    max_length = (
-        training_args.generation_max_length
-        if training_args.generation_max_length is not None
-        else data_args.val_max_target_length
-    )
-    num_beams = (
-        data_args.num_beams
-        if data_args.num_beams is not None
-        else training_args.generation_num_beams
-    )
+    # max_length = (
+    #     training_args.generation_max_length
+    #     if training_args.generation_max_length is not None
+    #     else data_args.val_max_target_length
+    # )
+    # num_beams = (
+    #     data_args.num_beams
+    #     if data_args.num_beams is not None
+    #     else training_args.generation_num_beams
+    # )
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         # TODO: num_beans should be added for ours as well.
