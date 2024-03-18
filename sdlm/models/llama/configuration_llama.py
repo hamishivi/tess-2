@@ -18,6 +18,7 @@ class LlamaDiffusionConfig(LlamaConfig):
         self_condition_mix_logits_before_weights=False,
         empty_token_be_mask=False,
         is_causal: bool = False,
+        mask_padding_in_loss: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -33,3 +34,4 @@ class LlamaDiffusionConfig(LlamaConfig):
         )
         self.empty_token_be_mask = empty_token_be_mask
         self.is_causal = is_causal
+        self.mask_padding_in_loss = mask_padding_in_loss

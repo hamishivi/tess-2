@@ -210,6 +210,10 @@ class TrainingArguments(HFTrainingArguments):
     optim: str = field(default="adamw_torch")
     # just for beaker training, to allow auto-resume easier.
     beaker: bool = field(default=False)
+    mask_padding_in_loss: bool = field(
+        default=False,
+        metadata={"help": "Whether to mask padding token in loss computation."},
+    )
 
 
 @dataclass

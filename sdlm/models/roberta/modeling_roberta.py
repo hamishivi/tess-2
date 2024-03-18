@@ -310,8 +310,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 if span_mask is not None
                 else input_ids
             )
-            # also mask padding token loss....
-            labels = torch.where(labels == self.config.pad_token_id, -100, labels)
+            if self.config.mask_padding_in_loss:
+                # also mask padding token loss....
+                labels = torch.where(labels == self.config.pad_token_id, -100, labels)
             masked_lm_loss = loss_fct(
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),

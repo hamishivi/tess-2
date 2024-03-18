@@ -311,9 +311,9 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
                 if span_mask is not None
                 else input_ids
             )
-            # NOTE: padding should be included in loss
-            # also mask padding token loss....
-            # labels = torch.where(labels == self.config.pad_token_id, -100, labels)
+            if self.config.mask_padding_in_loss:
+                # also mask padding token loss....
+                labels = torch.where(labels == self.config.pad_token_id, -100, labels)
             # important: shift labels to the right by one, mimicking the causal pretraining
             labels = labels[:, 1:]
             prediction_scores_for_loss = prediction_scores_for_loss[:, :-1]
