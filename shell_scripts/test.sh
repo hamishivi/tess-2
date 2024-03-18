@@ -88,7 +88,7 @@ python -m sdlm.run_summarization \
         --do_eval \
         --dataset_name "cnn_dailymail" \
         --dataset_config "3.0.0" \
-        --output_dir "outputs/roberta/test" \
+        --output_dir "outputs/roberta/try6" \
         --per_device_train_batch_size 24 \
         --per_device_eval_batch_size 48 \
         --overwrite_output_dir \
@@ -116,5 +116,4 @@ python -m sdlm.run_summarization \
         --self_condition "logits_mean" \
         --self_condition_mix_before_weights true \
         --gradient_accumulation_steps 2 \
-        --line_by_line false \
-        --eval_long_only true \
+        --mask_padding_in_loss false
