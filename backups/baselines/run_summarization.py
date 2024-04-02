@@ -30,11 +30,10 @@ import evaluate
 import nltk  # Here to have a nice missing dependency error message early on
 import numpy as np
 import transformers
-from arguments import BaselineSeq2SeqTrainingArguments
-from data.postprocessors import postprocess_text_for_metric
+
+# from .data.postprocessors import postprocess_text_for_metric
 from datasets import load_dataset
 from filelock import FileLock
-from trainer_seq2seq import BaselineSeq2SeqTrainer
 from transformers import (
     AutoConfig,
     AutoModelForSeq2SeqLM,
@@ -55,6 +54,9 @@ from transformers.utils import (
     send_example_telemetry,
 )
 from transformers.utils.versions import require_version
+
+from .arguments import BaselineSeq2SeqTrainingArguments
+from .trainer_seq2seq import BaselineSeq2SeqTrainer
 
 GENERATION_RESULTS = "generations"
 
@@ -85,6 +87,35 @@ MULTILINGUAL_TOKENIZERS = [
     MBart50Tokenizer,
     MBart50TokenizerFast,
 ]
+
+
+def postprocess_text_for_metric(metric, preds, labels=None, sources=None):
+    if metric == "sari":
+        assert sources is not None
+        preds = [pred.strip() for pred in preds]
+        labels = [label.strip() for label in labels]
+        sources = [source.strip() for source in sources]
+        return preds, labels, sources
+    elif metric == "rouge":
+        preds = [pred.strip() for pred in preds]
+        labels = [label.strip() for label in labels]
+        # rougeLSum expects newline after each sentence
+        preds = ["\n".join(nltk.sent_tokenize(pred)) for pred in preds]
+        labels = ["\n".join(nltk.sent_tokenize(label)) for label in labels]
+        return preds, labels
+    elif metric == "bleu":
+        preds = [pred.strip() for pred in preds]
+        labels = [[label.strip()] for label in labels]
+        return preds, labels
+    elif metric in ["bertscore", "bertscore_them"]:
+        preds = [pred.strip() for pred in preds]
+        labels = [label.strip() for label in labels]
+        return preds, labels
+    elif metric in ["dist"]:
+        preds = [pred.strip() for pred in preds]
+        return preds
+    else:
+        raise NotImplementedError
 
 
 @dataclass
