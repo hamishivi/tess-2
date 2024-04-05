@@ -123,8 +123,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         warped_steps = []
         prev_t = 0
         for t in self.progress_bar(self.scheduler.timesteps):
-            norm_relative_position = torch.ones_like(batch["input_ids"])
-
             original_t = torch.tensor([t], device=self.device).expand(
                 batch_size, seq_length
             )
@@ -164,7 +162,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 else None,
                 simplex=simplex,
                 timesteps=t_scaled,
-                token_rel_positions=norm_relative_position,
                 previous_pred=previous_pred
                 if self.model.config.self_condition
                 else None,
@@ -231,7 +228,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 projected_logits,
                 t,
                 prev_t,
-                norm_relative_position,
                 noise,
                 generator=generator,
             ).prev_sample

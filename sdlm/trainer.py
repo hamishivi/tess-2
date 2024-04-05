@@ -189,8 +189,6 @@ class DiffusionTrainer(Trainer):
         # if True:  # not is_tokenwise_cdcd_check(self.model):
         #     timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
-        # if we're not doing token warping, just set all relative positions to 1.
-        norm_relative_position = torch.ones_like(inputs["input_ids"])
         # save original timesteps for warping
         original_timesteps = timesteps
         # warp timesteps according to cdf
@@ -206,9 +204,7 @@ class DiffusionTrainer(Trainer):
                 t_max=len(self.noise_scheduler) - 1,
             )
         # Adds noise to each simplex representation (Forward diffusion process).
-        noisy_simplex = self.noise_scheduler.add_noise(
-            simplex, noise, timesteps, norm_relative_position
-        )
+        noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
         # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
         # original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
@@ -220,7 +216,6 @@ class DiffusionTrainer(Trainer):
             {
                 "timesteps": timesteps,
                 "simplex": noisy_simplex,
-                "token_rel_positions": norm_relative_position,
             }
         )
         inputs.update({"max_timestep": len(self.noise_scheduler)})
@@ -246,7 +241,7 @@ class DiffusionTrainer(Trainer):
                         t_max=len(self.noise_scheduler) - 1,
                     )
                 noisy_simplex = self.noise_scheduler.add_noise(
-                    simplex, noise, timesteps, norm_relative_position
+                    simplex, noise, timesteps
                 )
                 timesteps = scale(timesteps, len(self.noise_scheduler))
                 inputs.update(
@@ -298,15 +293,12 @@ class DiffusionTrainer(Trainer):
                 t_max=len(self.noise_scheduler) - 1,
                 token_input=token_input,
             )
-            noisy_simplex = self.noise_scheduler.add_noise(
-                simplex, noise, timesteps, norm_relative_position
-            )
+            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
             timesteps = scale(timesteps, len(self.noise_scheduler))
             inputs.update(
                 {
                     "timesteps": timesteps,
                     "simplex": noisy_simplex,
-                    "token_rel_positions": norm_relative_position,
                 }
             )
         with self.compute_loss_context_manager():
@@ -370,9 +362,6 @@ class DiffusionTrainer(Trainer):
                 )
             # original_timesteps = timesteps
 
-            # if we're not doing token warping, just set all relative positions to 1.
-            norm_relative_position = torch.ones_like(inputs["input_ids"])
-
             # if cdcd, we need to wrap the timesteps in a cdf.
             # make sure we scale the timesteps to the correct range!
             if is_cdcd_check(self.model):
@@ -386,9 +375,7 @@ class DiffusionTrainer(Trainer):
                 )
 
             # Adds noise to each simplex representation (Forward diffusion process).
-            noisy_simplex = self.noise_scheduler.add_noise(
-                simplex, noise, timesteps, norm_relative_position
-            )
+            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
 
             timesteps = scale(timesteps, len(self.noise_scheduler))
             # original_timesteps_scaled = scale(
@@ -400,7 +387,6 @@ class DiffusionTrainer(Trainer):
                 {
                     "timesteps": timesteps,
                     "simplex": noisy_simplex,
-                    "token_rel_positions": norm_relative_position,
                 }
             )
             inputs.update({"max_timestep": len(self.noise_scheduler)})
@@ -1639,66 +1625,66 @@ class DiffusionTrainer(Trainer):
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
-    def create_optimizer(self):
-        from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-        from transformers.trainer_pt_utils import get_parameter_names
+    # def create_optimizer(self):
+    #     from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+    #     from transformers.trainer_pt_utils import get_parameter_names
 
-        # overriden
-        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+    #     # overriden
+    #     opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
 
-        if self.optimizer is None:
-            decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
-            decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-                self.args
-            )
+    #     if self.optimizer is None:
+    #         decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
+    #         decay_parameters = [name for name in decay_parameters if "bias" not in name]
+    #         optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+    #             self.args
+    #         )
 
-            # only training warping parameters...
-            optimizer_grouped_parameters = [
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            n in decay_parameters
-                            and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-                        )
-                    ],
-                    "weight_decay": self.args.weight_decay,
-                    "lr": optimizer_kwargs["lr"],
-                },
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            n not in decay_parameters
-                            and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-                        )
-                    ],
-                    "weight_decay": 0.0,
-                    "lr": optimizer_kwargs["lr"],
-                },
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            ("cdf" in n or "linear_l" in n or "position_l" in n)
-                            and p.requires_grad
-                        )
-                    ],
-                    "weight_decay": 0.0,
-                    "lr": 1e-3,
-                },
-            ]
+    #         # only training warping parameters...
+    #         optimizer_grouped_parameters = [
+    #             {
+    #                 "params": [
+    #                     p
+    #                     for n, p in opt_model.named_parameters()
+    #                     if (
+    #                         n in decay_parameters
+    #                         and p.requires_grad
+    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
+    #                     )
+    #                 ],
+    #                 "weight_decay": self.args.weight_decay,
+    #                 "lr": optimizer_kwargs["lr"],
+    #             },
+    #             {
+    #                 "params": [
+    #                     p
+    #                     for n, p in opt_model.named_parameters()
+    #                     if (
+    #                         n not in decay_parameters
+    #                         and p.requires_grad
+    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
+    #                     )
+    #                 ],
+    #                 "weight_decay": 0.0,
+    #                 "lr": optimizer_kwargs["lr"],
+    #             },
+    #             {
+    #                 "params": [
+    #                     p
+    #                     for n, p in opt_model.named_parameters()
+    #                     if (
+    #                         ("cdf" in n or "linear_l" in n or "position_l" in n)
+    #                         and p.requires_grad
+    #                     )
+    #                 ],
+    #                 "weight_decay": 0.0,
+    #                 "lr": 1e-3,
+    #             },
+    #         ]
 
-            optimizer_kwargs.pop("lr")
+    #         optimizer_kwargs.pop("lr")
 
-            self.optimizer = optimizer_cls(
-                optimizer_grouped_parameters, **optimizer_kwargs
-            )
+    #         self.optimizer = optimizer_cls(
+    #             optimizer_grouped_parameters, **optimizer_kwargs
+    #         )
 
-        return self.optimizer
+    #     return self.optimizer

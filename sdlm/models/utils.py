@@ -45,6 +45,7 @@ def is_cdcd_check(model):
         or isinstance(model, TokenwiseCDCDRobertaForDiffusionLM)
         or isinstance(model, PositionwiseCDCDRobertaForDiffusionLM)
         or isinstance(model, GARDiffusionLM)
+        or isinstance(model, CDCDGARRobertaForDiffusionLM)
     )
 
 
