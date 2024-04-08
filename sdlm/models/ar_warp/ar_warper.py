@@ -8,7 +8,7 @@ class GARDiffusionLM(RobertaForDiffusionLM):
     def __init__(self, config):
         super().__init__(config)
 
-    def warp_timesteps(
+    def tmp_warp_timesteps(
         self, timesteps: torch.FloatTensor, token_input=None, t_min=0, t_max=1
     ):
         # Ensure timesteps is a floating point tensor for computations
@@ -55,6 +55,29 @@ class GARDiffusionLM(RobertaForDiffusionLM):
         slope = -t_max / torch.clip(t_max * composed_normalized - t_max, max=1e-8)
         adjusted_timesteps = slope * (timesteps - t_max) + t_max
         adjusted_timesteps = torch.clip(adjusted_timesteps, min=t_min, max=t_max)
+        return adjusted_timesteps.long()
+
+    # warp following AR-diffusion paper
+    def warp_timesteps(
+        self, timesteps: torch.FloatTensor, token_input=None, t_min=0, t_max=1
+    ):
+        # Ensure timesteps is a floating point tensor for computations
+        timesteps = timesteps.float()
+
+        # Create a tensor representing each position in the sequence [0, 1, ..., seq_len-1]
+        seq_len = token_input.size(1)
+        positions = torch.arange(seq_len, device=token_input.device).float().view(1, -1)
+
+        # calculatute the starting points
+        N = 512
+        T = t_max
+        ne = 2 * N
+        te = T
+        ns = torch.clip(N - timesteps, 0, N)
+        ts = torch.clip(timesteps - N, 0, T)
+        adjusted_timesteps = torch.clip(
+            ((te - ts) / (ne - ns)) * (positions - ns) + ts, 0, T
+        )
         return adjusted_timesteps.long()
 
 
