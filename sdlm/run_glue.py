@@ -26,7 +26,7 @@ from .inference.inference_utils import process_text
 from .metrics.metrics import get_glue_metrics
 from .models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer import DiffusionTrainer
+from .trainer_diffusion import DiffusionTrainer
 from .utils import lmap
 
 # This is computed with scripts/compute_max_tokens_of_labels.py

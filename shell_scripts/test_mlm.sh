@@ -1,10 +1,10 @@
 python -m sdlm.run_mlm \
-        --model_name_or_path meta-llama/Llama-2-7b-hf \
+        --model_name_or_path outputs/llama/c4/try6_no_mask_pad_yes_lbl/checkpoint-5000 \
         --per_device_train_batch_size 16  \
         --per_device_eval_batch_size 16 \
         --do_train \
         --do_eval \
-        --output_dir outputs/llama/try5_no_mask_pad_yes_lbl \
+        --output_dir outputs/llama/c4/try6_no_mask_pad_yes_lbl \
         --evaluation_strategy steps \
         --eval_steps 100 \
         --report_to tensorboard \
@@ -29,7 +29,6 @@ python -m sdlm.run_mlm \
         --self_condition "logits_mean" \
         --self_condition_mix_before_weights \
         --dataset_name c4 --streaming --dataset_config_name en \
-        --overwrite_output_dir \
         --bf16 \
         --optim adamw_torch_fused \
         --gradient_checkpointing \
@@ -38,3 +37,11 @@ python -m sdlm.run_mlm \
         --line_by_line true \
         --eval_long_only true \
         --mask_padding_in_loss false
+
+
+"""
+1. causal = true baseline
+2. simplex = 3/4?
+3. ar baseline (run_clm.py)
+4. inference with 1000/100
+"""

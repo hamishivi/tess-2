@@ -1,11 +1,11 @@
-# NOTE: llama finetune w/o adaptation
+# NOTE: llama finetune w/o adaptation (causal)
 python -m sdlm.run_summarization \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
         --per_device_train_batch_size 16  \
         --per_device_eval_batch_size 16 \
         --do_train \
         --do_eval \
-        --output_dir outputs/llama/cnn_dm/no_adapt \
+        --output_dir outputs/llama/cnn_dm/test \
         --evaluation_strategy steps \
         --eval_steps 100 \
         --report_to tensorboard \
@@ -38,7 +38,7 @@ python -m sdlm.run_summarization \
         --gradient_checkpointing \
         --use_flash_attention2 \
         --save_safetensors true \
-        --is_causal false \
+        --is_causal true \
         --mask_padding_in_loss false
 
 # NOTE: attempted baseline

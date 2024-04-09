@@ -107,11 +107,10 @@ def load_model(model_args, diffusion_args, training_args, logger):
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
             torch_dtype=torch_dtype,
-            device_map="auto",
             attn_implementation="flash_attention_2"
             if model_args.use_flash_attention2
             else "eager",
-        )
+        ).to("cuda")
     else:
         logger.warning("Training new model from scratch")
         model = model_cls._from_config(config)
