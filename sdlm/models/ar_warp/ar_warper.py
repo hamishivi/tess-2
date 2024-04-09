@@ -61,23 +61,28 @@ class GARDiffusionLM(RobertaForDiffusionLM):
     def warp_timesteps(
         self, timesteps: torch.FloatTensor, token_input=None, t_min=0, t_max=1
     ):
+        N = 512
+        T = t_max
+        ne = 2 * N
+        te = T
         # Ensure timesteps is a floating point tensor for computations
         timesteps = timesteps.float()
+        # rescale timesteps to 0, 1
+        timesteps = (timesteps - t_min) / (t_max - t_min)
+        # scale up to 0, N+T (for ar-diffusion)
+        timesteps = timesteps * (N + T)
 
         # Create a tensor representing each position in the sequence [0, 1, ..., seq_len-1]
         seq_len = token_input.size(1)
         positions = torch.arange(seq_len, device=token_input.device).float().view(1, -1)
 
         # calculatute the starting points
-        N = 512
-        T = t_max
-        ne = 2 * N
-        te = T
         ns = torch.clip(N - timesteps, 0, N)
         ts = torch.clip(timesteps - N, 0, T)
         adjusted_timesteps = torch.clip(
             ((te - ts) / (ne - ns)) * (positions - ns) + ts, 0, T
         )
+        # it has been implicitly rescaled to 0, T, so we are done!
         return adjusted_timesteps.long()
 
 
