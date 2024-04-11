@@ -5,8 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
+from torch.nn.utils.rnn import pad_sequence
 from transformers.activations import ACT2FN
-from transformers.modeling_outputs import CausalLMOutputWithPast, MaskedLMOutput
+from transformers.modeling_outputs import MaskedLMOutput
 from transformers.models.llama.modeling_llama import (  # RobertaLMHead,
     LlamaForCausalLM,
     LlamaModel,
@@ -14,6 +15,7 @@ from transformers.models.llama.modeling_llama import (  # RobertaLMHead,
 )
 from transformers.utils import logging
 
+from sdlm.data.data_collator import LLAMA_SEQ2SEQ_SEP
 from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
@@ -354,76 +356,31 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         raise NotImplementedError
 
 
+def get_sep_index(input_id, target):
+    # TODO: improve sliding window to e.g., rolling hash
+    target_length = len(target)
+    for i in range(len(input_id) - len(target) + 1):
+        if torch.equal(input_id[i : i + target_length], target):
+            return i + target_length - 1
+    raise ValueError("This is not supposed to happen")
+
+
 class LlamaForSeq2SeqLM(LlamaForCausalLM):
-    def forward(
-        self,
-        input_ids: torch.LongTensor,
-        span_mask: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        reduce_loss: str = "mean",  # passed to 'reduction' in F.cross_entropy
-        return_all_losses: bool = False,  # return per-token loss for all items in batch
-        previous_hidden: Optional[torch.FloatTensor] = None,  # for CDCD predictions...
-    ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
-        output_attentions = (
-            output_attentions
-            if output_attentions is not None
-            else self.config.output_attentions
-        )
-        output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
-        )
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
-
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=None,
-            position_ids=None,
-            past_key_values=None,
-            inputs_embeds=None,
-            use_cache=False,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
-
-        loss = None
-        if labels is None:
-            labels = input_ids
-        # span mask
-        labels = torch.where(span_mask, labels, -100)
-        # Shift so that tokens < n predict n
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        # Flatten the tokens
-        loss_fct = CrossEntropyLoss(reduction=reduce_loss)
-        shift_logits = shift_logits.view(-1, self.config.vocab_size)
-        shift_labels = shift_labels.view(-1)
-        loss = loss_fct(shift_logits, shift_labels)
-
-        if not return_dict:
-            output = (logits,) + outputs[1:]
-            return (loss,) + output if loss is not None else output
-
-        # NOTE: copied from above
-        logits = logits[:, :-1]
-        # add back in our start tok.
-        padding_pred = torch.zeros_like(logits[:, 0])[:, None]
-        logits = torch.cat([padding_pred, logits], dim=1)
-
-        return CausalLMOutputWithPast(
-            loss=loss,
-            logits=logits,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
+    @torch.inference_mode()
+    def generate(self, *args, **kwargs):
+        context_tokens = []
+        input_ids = kwargs.pop("input_ids")
+        SEP = torch.tensor(LLAMA_SEQ2SEQ_SEP, device=input_ids.device)
+        for input_id in input_ids:
+            # index = list(input_id).index(self.config.eos_token_id)
+            end_of_sep_idx = get_sep_index(input_id, SEP)
+            context_tokens.append(input_id[: end_of_sep_idx + 1])
+        input_ids = pad_sequence(
+            context_tokens, padding_value=self.config.pad_token_id
+        ).T
+        kwargs["input_ids"] = input_ids.to(self.device)
+        kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
+        outputs = super().generate(*args, **kwargs)
+        seq_len = input_ids.size(1)
+        output_ids = outputs[:, seq_len:]
+        return output_ids.to(self.device)

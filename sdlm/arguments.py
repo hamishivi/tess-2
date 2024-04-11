@@ -13,7 +13,12 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 def get_args():
     parser = HfArgumentParser(
-        (ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments)
+        (
+            ModelArguments,
+            DataTrainingArguments,
+            Seq2SeqTrainingArguments,
+            DiffusionArguments,
+        )
     )
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -214,6 +219,7 @@ class TrainingArguments(HFTrainingArguments):
         default=False,
         metadata={"help": "Whether to mask padding token in loss computation."},
     )
+    generation_config: str = field(default=None)
 
 
 @dataclass
@@ -254,6 +260,7 @@ class Seq2SeqTrainingArguments(TrainingArguments):
             )
         },
     )
+    predict_with_generate: Optional[bool] = field(default=True)
 
 
 @dataclass

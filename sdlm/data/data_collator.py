@@ -299,3 +299,49 @@ class DataCollatorForSeq2Seq:
         if "attention_mask" in features:
             features.pop("attention_mask")
         return features
+
+
+LLAMA_SEQ2SEQ_SEP = [13, 7727, 29901]
+
+
+@dataclass
+class DataCollatorForLlamaSeq2Seq:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        if "attention_mask" in features:
+            features.pop("attention_mask")
+        # remove eos from input_ids
+        input_ids = [feature["input_ids"][:-1] for feature in features]
+        # remove sos from labels
+        labels = [feature["labels"][1:] for feature in features]
+        # tokenizer.encode('\nsummary: )
+
+        input_target = [
+            input + LLAMA_SEQ2SEQ_SEP + target
+            for input, target in zip(input_ids, labels)
+        ]
+        features = self.tokenizer.pad(
+            {"input_ids": input_target},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+        )
+        batch_length = features["input_ids"].shape[1]
+        masks = []
+        for input in input_ids:
+            context_length = len(input) + len(LLAMA_SEQ2SEQ_SEP)
+            mask = context_length * [False] + (batch_length - context_length) * [True]
+            masks.append(mask)
+        # masks = [
+        #     (len(input) - 1 + SEP_LEN) * [False] + (batch_length - len(input)) * [True]
+        #     for input in input_ids
+        # ]
+        features["labels"] = torch.where(
+            torch.tensor(masks), features["input_ids"], -100
+        )
+        return features
