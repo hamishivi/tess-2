@@ -201,6 +201,7 @@ class DiffusionTrainer(Trainer):
             timesteps = self.model.warp_timesteps(
                 timesteps,
                 token_input=token_input,
+                span_mask=span_mask,
                 t_max=len(self.noise_scheduler) - 1,
             )
         # Adds noise to each simplex representation (Forward diffusion process).
@@ -238,6 +239,7 @@ class DiffusionTrainer(Trainer):
                     timesteps = self.model.warp_timesteps(
                         timesteps,
                         token_input=token_input,
+                        span_mask=span_mask,
                         t_max=len(self.noise_scheduler) - 1,
                     )
                 noisy_simplex = self.noise_scheduler.add_noise(
@@ -292,6 +294,7 @@ class DiffusionTrainer(Trainer):
                 original_timesteps,
                 t_max=len(self.noise_scheduler) - 1,
                 token_input=token_input,
+                span_mask=span_mask,
             )
             noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
             timesteps = scale(timesteps, len(self.noise_scheduler))
@@ -372,6 +375,7 @@ class DiffusionTrainer(Trainer):
                     timesteps,
                     t_max=len(self.noise_scheduler) - 1,
                     token_input=token_input,
+                    span_mask=span_mask,
                 )
 
             # Adds noise to each simplex representation (Forward diffusion process).

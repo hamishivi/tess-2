@@ -137,6 +137,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
                     token_input=token_inputs,
+                    span_mask=batch["span_mask"],
                 )
             else:
                 t = original_t
@@ -219,6 +220,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
                     token_input=token_inputs,
+                    span_mask=batch["span_mask"],
                 ).long()
                 # since the tokenwise can do some wild stuff.
                 prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)
@@ -239,7 +241,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             yield SimplexDiffusionPipelineOutput(
                 simplex=old_simplex, logits=model_output_logits, loss=losses[-1]
             )
-
         # we take the mean loss over all timesteps
         loss = torch.stack(losses, dim=0)
         # from matplotlib import pyplot as plt
