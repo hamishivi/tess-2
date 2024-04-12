@@ -168,6 +168,8 @@ def predict_conditional_generated(
     pred_unmasked_texts = [
         tokenizer.batch_decode(x, skip_special_tokens=True) for x in unmasked
     ]
+    pred_masked_texts = [x if len(x) > 0 else "a" for x in pred_masked_texts]
+    pred_unmasked_texts = [x if len(x) > 0 else "a" for x in pred_unmasked_texts]
     # assert tokenizer.eos_token == "</s>"  # guard against model changes in future.
     # # stop text at the first occurrence of </s> token.
     # pred_masked_texts = [
