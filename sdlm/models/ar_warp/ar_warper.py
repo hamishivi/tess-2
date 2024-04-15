@@ -9,7 +9,7 @@ class GARDiffusionLM(RobertaForDiffusionLM):
         super().__init__(config)
         # if true, use my gar warp.
         self.use_gar_warp = True
-        self.gar_aggression = 0.7  # [0, 1] range. The higher, the more aggressive the warping (i.e. earlier tokens sent to 0 faster)
+        self.gar_aggression = 0.5  # [0, 1] range. The higher, the more aggressive the warping (i.e. earlier tokens sent to 0 faster)
 
     def warp_timesteps(
         self,
