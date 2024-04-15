@@ -24,7 +24,7 @@ from .data.postprocessors import get_post_processor
 from .data.sni.sni_collator import DataCollatorForNI
 from .inference.inference_utils import process_text
 from .metrics.metrics import get_glue_metrics
-from .models import RobertaDiffusionConfig, RobertaForDiffusionLM
+from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainer import DiffusionTrainer
 from .utils import lmap
@@ -232,34 +232,8 @@ def main():
     # shuffle our datasets with the split_seed (split glue does this but otherwise not.)
     raw_datasets = raw_datasets.shuffle(data_args.glue_split_seed)
 
-    # Labels
-    config = RobertaDiffusionConfig.from_pretrained(
-        model_args.model_name_or_path,
-        self_condition=diffusion_args.self_condition,
-        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
-        deepmind_conditional=diffusion_args.deepmind_conditional,
-        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
-        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
-        self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
-        self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
-        empty_token_be_mask=diffusion_args.empty_token_be_mask,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-
-    if model_args.model_name_or_path:
-        model = RobertaForDiffusionLM.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-    else:
-        logger.info("Training new model from scratch")
-        model = RobertaForDiffusionLM.from_config(config)
+    # load model
+    tokenizer, model = load_model(model_args, diffusion_args, logger)
 
     # Preprocessing the raw_datasets
     sentence1_key, sentence2_key = task_to_keys[data_args.dataset_name]
@@ -310,6 +284,7 @@ def main():
             preprocess_function,
             batched=True,
             load_from_cache_file=not data_args.overwrite_cache,
+            num_proc=data_args.preprocessing_num_workers,
             desc="Running tokenizer on dataset",
         )
     if training_args.do_train:
