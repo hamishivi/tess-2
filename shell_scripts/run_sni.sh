@@ -2,17 +2,17 @@
 EXP_NAME="sni_rbase"
 checkpoint_mount="01H4KVBDMMN284JQ6G2N6GS2EV:checkpoint-10000"
 
-gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
+gantry run -y -n sni_tess_self_conf -t sni_tess_self_conf --allow-dirty \
     --workspace ai2/tess2 \
     --nfs \
     --gpus 1 \
     --priority normal \
+    --budget ai2/allennlp \
     --cluster ai2/allennlp-cirrascale \
     --env 'HF_HOME=/net/nfs.cirrascale/allennlp/hamishi/.hf' \
     --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
     --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
     --venv 'base' \
-    --dataset "${checkpoint_mount}:/model" \
     --pip requirements.txt \
     -- python -m sdlm.run_glue \
         --model_name_or_path roberta-base \
@@ -43,4 +43,7 @@ gantry run -y -n $EXP_NAME -t $EXP_NAME --allow-dirty \
         --warmup_ratio 0.03 \
         --logging_steps 50 \
         --save_total_limit 1 \
-        --max_eval_samples 1000
+        --max_eval_samples 1000 \
+        --preprocessing_num_workers 16 \
+        --self_condition "logits_mean" \
+        --self_condition_mix_before_weights
