@@ -30,12 +30,13 @@ def mauve(
         max_text_length=length,
         featurize_model_name=featurize_model_name,
         verbose=False,
+        device_id=0,
         # These are the tricks to make `mauve` run faster if #examples > 5K.
         # See https://github.com/krishnap25/mauve#best-practices-for-mauve
         # num_buckets=500 if len(predictions) > 5000 else "auto",
         # kmeans_num_redo=1,
     )
-    return {"muave": results.mauve}
+    return {"mauve": results.mauve}
 
 
 def distinct_n_grams(texts):

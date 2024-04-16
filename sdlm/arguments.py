@@ -60,7 +60,7 @@ class ModelArguments:
     use_model: str = field(
         default="",
         metadata={
-            "help": "Choose whether to use a cdcd or tokenwise model. Options: cdcd, tokenwise_cdcd."
+            "help": "Choose whether to use a cdcd or tokenwise model. Options: cdcd, tokenwise_cdcd, confidence."
         },
     )
     config_overrides: Optional[str] = field(

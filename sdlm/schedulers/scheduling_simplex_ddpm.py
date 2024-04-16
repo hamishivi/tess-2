@@ -149,6 +149,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         self,
         projected_logits: torch.FloatTensor,
         timestep: int,
+        t_prev: int,  # previous timestep. recall we are in backward process, so this is the next timestep.
         noise: torch.FloatTensor,
         generator=None,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
@@ -163,7 +164,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         Returns:
             [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] resulted values.
         """
-        t = timestep
+        t = timestep[0, 0].item()
 
         # 1. compute alphas, betas
         alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
@@ -189,6 +190,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
+        timesteps = timesteps.long()
         # if same shape, we have per-token timesteps
         if timesteps.shape == noise.shape[:2]:
             alphas_cumprod_timesteps = self.alphas_cumprod[timesteps][:, :, None]
@@ -283,7 +285,6 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         projected_logits: torch.FloatTensor,
         timestep: int,
         t_prev: int,  # previous timestep. recall we are in backward process, so this is the next timestep.
-        position_percent: float,
         noise: torch.FloatTensor,
         generator=None,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
@@ -336,7 +337,6 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
-        position_percent: torch.FloatTensor,
     ) -> torch.FloatTensor:
         # if same shape, we have per-token timesteps
         if timesteps.shape == noise.shape[:2]:

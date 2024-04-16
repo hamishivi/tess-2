@@ -67,7 +67,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        batch_size: int = 1,
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
         batch: Optional[torch.FloatTensor] = None,
@@ -105,6 +104,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # TODO(rabeeh): is giving the length cheating for this setting?
             # Adapts the sequence length to the given `span_mask`'s length.
             seq_length = batch["input_ids"].shape[1]
+        # idk why i have the bsz argument.
+        batch_size = batch["input_ids"].shape[0]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(
             simplex_shape, generator=generator, device=self.device
@@ -122,18 +123,21 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         warped_steps = []
         prev_t = 0
         for t in self.progress_bar(self.scheduler.timesteps):
-            norm_relative_position = torch.ones_like(batch["input_ids"])
-
             original_t = torch.tensor([t], device=self.device).expand(
                 batch_size, seq_length
             )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
+                # we are in inference mode, anything in span_mask is to gen.
+                token_inputs = torch.where(
+                    batch["span_mask"], 50264, batch["input_ids"]
+                )
                 t = self.model.warp_timesteps(
                     original_t,
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
-                    previous_hidden=previous_hidden,
+                    token_input=token_inputs,
+                    span_mask=batch["span_mask"],
                 )
             else:
                 t = original_t
@@ -159,7 +163,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 else None,
                 simplex=simplex,
                 timesteps=t_scaled,
-                token_rel_positions=norm_relative_position,
                 previous_pred=previous_pred
                 if self.model.config.self_condition
                 else None,
@@ -209,11 +212,15 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
+                token_inputs = torch.where(
+                    batch["span_mask"], 50264, batch["input_ids"]
+                )
                 prev_t = self.model.warp_timesteps(
                     original_t - 1,
                     t_min=0,
                     t_max=len(self.scheduler) - 1,
-                    previous_hidden=previous_hidden,
+                    token_input=token_inputs,
+                    span_mask=batch["span_mask"],
                 ).long()
                 # since the tokenwise can do some wild stuff.
                 prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)
@@ -223,7 +230,6 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 projected_logits,
                 t,
                 prev_t,
-                norm_relative_position,
                 noise,
                 generator=generator,
             ).prev_sample
@@ -235,9 +241,14 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             yield SimplexDiffusionPipelineOutput(
                 simplex=old_simplex, logits=model_output_logits, loss=losses[-1]
             )
-
         # we take the mean loss over all timesteps
         loss = torch.stack(losses, dim=0)
+        # from matplotlib import pyplot as plt
+        # warped_steps = torch.stack(warped_steps, dim=0)
+        # for i in range(warped_steps.shape[1]):
+        #     plt.plot(warped_steps[:, i, 256:].cpu())
+        #     plt.savefig(f"warps_prefix_tokenwise/warped_{i}.png")
+        #     plt.clf()
         return SimplexDiffusionPipelineOutput(
             simplex=simplex, logits=model_output_logits, loss=loss
         )

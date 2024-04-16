@@ -49,7 +49,7 @@ from transformers.utils import (
 )
 
 from .inference.inference_utils import logits_projection, predict_conditional_generated
-from .models.utils import is_cdcd_check, is_tokenwise_cdcd_check
+from .models.utils import is_cdcd_check
 from .pipelines.simplex_ddpm import SimplexDDPMPipeline
 from .utils import convert_to_simplex, pad_data, scale, self_condition_preds
 
@@ -166,34 +166,49 @@ class DiffusionTrainer(Trainer):
         )
         bsz = simplex.shape[0]
         # Sample a random timestep for each simplex token representation.
-        timesteps = torch.randint(
-            0,
-            len(self.noise_scheduler),
-            (bsz, inputs["input_ids"].shape[1])
-            if is_tokenwise_cdcd_check(self.model)
-            else (bsz,),
-            device=simplex.device,
-            dtype=torch.int64,
-        )
-        # expand out timesteps to match tokenwise setup
-        if not is_tokenwise_cdcd_check(self.model):
+        # testing just sampling the same place. This better matches reality.
+        if True:  # np.random.rand(1) > 0.5:
+            timesteps = torch.randint(
+                0,
+                len(self.noise_scheduler),
+                (bsz, inputs["input_ids"].shape[1])
+                if False  # is_tokenwise_cdcd_check(self.model)
+                else (bsz,),
+                device=simplex.device,
+                dtype=torch.int64,
+            )
             timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
+        else:
+            timesteps = torch.randint(
+                0,
+                len(self.noise_scheduler),
+                (bsz, inputs["input_ids"].shape[1])
+                if True  # is_tokenwise_cdcd_check(self.model)
+                else (bsz,),
+                device=simplex.device,
+                dtype=torch.int64,
+            )
+        # expand out timesteps to match tokenwise setup
+        # if True:  # not is_tokenwise_cdcd_check(self.model):
+        #     timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
 
-        # if we're not doing token warping, just set all relative positions to 1.
-        norm_relative_position = torch.ones_like(inputs["input_ids"])
         # save original timesteps for warping
         original_timesteps = timesteps
         # warp timesteps according to cdf
         # we re-scale the timesteps to the correct range.
         # the -1 is due to the timestep should be in range [0, 5000)
-        if is_tokenwise_cdcd_check(self.model):
+        if is_cdcd_check(self.model):
+            input_ids = inputs["input_ids"]
+            span_mask = inputs["span_mask"]
+            token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
             timesteps = self.model.warp_timesteps(
-                timesteps, t_max=len(self.noise_scheduler) - 1
+                timesteps,
+                token_input=token_input,
+                span_mask=span_mask,
+                t_max=len(self.noise_scheduler) - 1,
             )
         # Adds noise to each simplex representation (Forward diffusion process).
-        noisy_simplex = self.noise_scheduler.add_noise(
-            simplex, noise, timesteps, norm_relative_position
-        )
+        noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
         # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
         # original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
@@ -205,7 +220,6 @@ class DiffusionTrainer(Trainer):
             {
                 "timesteps": timesteps,
                 "simplex": noisy_simplex,
-                "token_rel_positions": norm_relative_position,
             }
         )
         inputs.update({"max_timestep": len(self.noise_scheduler)})
@@ -219,12 +233,20 @@ class DiffusionTrainer(Trainer):
                     (next_timestep * len(self.noise_scheduler)) + 1,
                     max=len(self.noise_scheduler) - 1,
                 )
-                if is_tokenwise_cdcd_check(self.model):
+                if is_cdcd_check(self.model):
+                    input_ids = inputs["input_ids"]
+                    span_mask = inputs["span_mask"]
+                    token_input = torch.where(
+                        (input_ids * span_mask) > 1, 50264, input_ids
+                    )
                     timesteps = self.model.warp_timesteps(
-                        timesteps, t_max=len(self.noise_scheduler) - 1
+                        timesteps,
+                        token_input=token_input,
+                        span_mask=span_mask,
+                        t_max=len(self.noise_scheduler) - 1,
                     )
                 noisy_simplex = self.noise_scheduler.add_noise(
-                    simplex, noise, timesteps, norm_relative_position
+                    simplex, noise, timesteps
                 )
                 timesteps = scale(timesteps, len(self.noise_scheduler))
                 inputs.update(
@@ -267,20 +289,22 @@ class DiffusionTrainer(Trainer):
         )
         # re-warp based on previous hidden state
         if is_cdcd_check(self.model):
+            # replace masked tokens with <mask> token.
+            input_ids = inputs["input_ids"]
+            span_mask = inputs["span_mask"]
+            token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
             timesteps = self.model.warp_timesteps(
                 original_timesteps,
                 t_max=len(self.noise_scheduler) - 1,
-                previous_hidden=previous_hidden,
+                token_input=token_input,
+                span_mask=span_mask,
             )
-            noisy_simplex = self.noise_scheduler.add_noise(
-                simplex, noise, timesteps, norm_relative_position
-            )
+            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
             timesteps = scale(timesteps, len(self.noise_scheduler))
             inputs.update(
                 {
                     "timesteps": timesteps,
                     "simplex": noisy_simplex,
-                    "token_rel_positions": norm_relative_position,
                 }
             )
         with self.compute_loss_context_manager():
@@ -321,33 +345,45 @@ class DiffusionTrainer(Trainer):
             bsz = simplex.shape[0]
             # Sample a random timestep for each simplex token representation.
             # we use the train timesteps to be consistent with the training process.
-            timesteps = torch.randint(
-                0,
-                len(self.noise_scheduler),
-                (bsz, inputs["input_ids"].shape[1])
-                if is_tokenwise_cdcd_check(self.model)
-                else (bsz,),
-                device=simplex.device,
-                dtype=torch.int64,
-            )
-            # original_timesteps = timesteps
-            if not is_tokenwise_cdcd_check(self.model):
+            # randomly flip between random batchwise and tokenwise timesteps.
+            if True:
+                timesteps = torch.randint(
+                    0,
+                    len(self.noise_scheduler),
+                    (bsz, inputs["input_ids"].shape[1])
+                    if False  # is_tokenwise_cdcd_check(self.model)
+                    else (bsz,),
+                    device=simplex.device,
+                    dtype=torch.int64,
+                )
                 timesteps = timesteps[:, None].expand(-1, inputs["input_ids"].shape[1])
-
-            # if we're not doing token warping, just set all relative positions to 1.
-            norm_relative_position = torch.ones_like(inputs["input_ids"])
+            else:
+                timesteps = torch.randint(
+                    0,
+                    len(self.noise_scheduler),
+                    (bsz, inputs["input_ids"].shape[1])
+                    if True  # is_tokenwise_cdcd_check(self.model)
+                    else (bsz,),
+                    device=simplex.device,
+                    dtype=torch.int64,
+                )
+            # original_timesteps = timesteps
 
             # if cdcd, we need to wrap the timesteps in a cdf.
             # make sure we scale the timesteps to the correct range!
             if is_cdcd_check(self.model):
+                input_ids = inputs["input_ids"]
+                span_mask = inputs["span_mask"]
+                token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
                 timesteps = self.model.warp_timesteps(
-                    timesteps, t_max=len(self.noise_scheduler) - 1
+                    timesteps,
+                    t_max=len(self.noise_scheduler) - 1,
+                    token_input=token_input,
+                    span_mask=span_mask,
                 )
 
             # Adds noise to each simplex representation (Forward diffusion process).
-            noisy_simplex = self.noise_scheduler.add_noise(
-                simplex, noise, timesteps, norm_relative_position
-            )
+            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
 
             timesteps = scale(timesteps, len(self.noise_scheduler))
             # original_timesteps_scaled = scale(
@@ -359,7 +395,6 @@ class DiffusionTrainer(Trainer):
                 {
                     "timesteps": timesteps,
                     "simplex": noisy_simplex,
-                    "token_rel_positions": norm_relative_position,
                 }
             )
             inputs.update({"max_timestep": len(self.noise_scheduler)})
@@ -409,15 +444,11 @@ class DiffusionTrainer(Trainer):
         pipeline: List[SimplexDDPMPipeline],
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         inputs = self._prepare_inputs(inputs)
-        is_conditional_generation = True if "span_mask" in inputs else False
         # full inference.
         with torch.no_grad():
             with self.compute_loss_context_manager():
                 for i, x in enumerate(
                     pipeline(
-                        batch_size=inputs["input_ids"].shape[0]
-                        if is_conditional_generation
-                        else self.args.per_device_eval_batch_size,
                         seq_length=self.data_args.max_seq_length
                         - self.data_args.truncation_length,
                         batch=inputs,
@@ -1615,66 +1646,66 @@ class DiffusionTrainer(Trainer):
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
-    def create_optimizer(self):
-        from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-        from transformers.trainer_pt_utils import get_parameter_names
+    # def create_optimizer(self):
+    #     from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+    #     from transformers.trainer_pt_utils import get_parameter_names
 
-        # overriden
-        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+    #     # overriden
+    #     opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
 
-        if self.optimizer is None:
-            decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
-            decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-                self.args
-            )
+    #     if self.optimizer is None:
+    #         decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
+    #         decay_parameters = [name for name in decay_parameters if "bias" not in name]
+    #         optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+    #             self.args
+    #         )
 
-            # only training warping parameters...
-            optimizer_grouped_parameters = [
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            n in decay_parameters
-                            and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-                        )
-                    ],
-                    "weight_decay": self.args.weight_decay,
-                    "lr": optimizer_kwargs["lr"],
-                },
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            n not in decay_parameters
-                            and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-                        )
-                    ],
-                    "weight_decay": 0.0,
-                    "lr": optimizer_kwargs["lr"],
-                },
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            ("cdf" in n or "linear_l" in n or "position_l" in n)
-                            and p.requires_grad
-                        )
-                    ],
-                    "weight_decay": 0.0,
-                    "lr": 1e-3,
-                },
-            ]
+    #         # only training warping parameters...
+    #         optimizer_grouped_parameters = [
+    #             {
+    #                 "params": [
+    #                     p
+    #                     for n, p in opt_model.named_parameters()
+    #                     if (
+    #                         n in decay_parameters
+    #                         and p.requires_grad
+    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
+    #                     )
+    #                 ],
+    #                 "weight_decay": self.args.weight_decay,
+    #                 "lr": optimizer_kwargs["lr"],
+    #             },
+    #             {
+    #                 "params": [
+    #                     p
+    #                     for n, p in opt_model.named_parameters()
+    #                     if (
+    #                         n not in decay_parameters
+    #                         and p.requires_grad
+    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
+    #                     )
+    #                 ],
+    #                 "weight_decay": 0.0,
+    #                 "lr": optimizer_kwargs["lr"],
+    #             },
+    #             {
+    #                 "params": [
+    #                     p
+    #                     for n, p in opt_model.named_parameters()
+    #                     if (
+    #                         ("cdf" in n or "linear_l" in n or "position_l" in n)
+    #                         and p.requires_grad
+    #                     )
+    #                 ],
+    #                 "weight_decay": 0.0,
+    #                 "lr": 1e-3,
+    #             },
+    #         ]
 
-            optimizer_kwargs.pop("lr")
+    #         optimizer_kwargs.pop("lr")
 
-            self.optimizer = optimizer_cls(
-                optimizer_grouped_parameters, **optimizer_kwargs
-            )
+    #         self.optimizer = optimizer_cls(
+    #             optimizer_grouped_parameters, **optimizer_kwargs
+    #         )
 
-        return self.optimizer
+    #     return self.optimizer
