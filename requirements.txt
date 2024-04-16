@@ -1,4 +1,4 @@
-accelerate==0.20.3
+accelerate==0.26.1
 bert-score==0.3.12
 diffusers==0.17.1
 einops==0.6.1
@@ -10,4 +10,4 @@ sacremoses==0.0.53
 sentencepiece==0.1.99
 tensorboard==2.13.0
 gradio==3.35.2
-transformers==4.30.2
+transformers==4.37.1
