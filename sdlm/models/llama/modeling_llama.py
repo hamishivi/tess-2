@@ -133,7 +133,6 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
         return_dict: Optional[bool] = None,
         previous_pred: Optional[torch.FloatTensor] = None,
         classifier_free_guidance: bool = False,
-        token_rel_positions: Optional[torch.LongTensor] = None,
         classifier_free_guidance_in_train: bool = False,
         max_timestep: int = 5000,
         reduce_loss: str = "mean",  # passed to 'reduction' in F.cross_entropy
@@ -263,13 +262,6 @@ class LlamaForDiffusionLM(LlamaPreTrainedModel):
                 )
             )
 
-        # TODO: remove conversion.
-        if len(timesteps.shape) != len(token_rel_positions.shape):
-            timesteps = timesteps[:, None]
-        # apply token rel pos to transformer timesteps
-        timesteps = token_rel_positions * timesteps
-        # where we have conditional input we are effectively at the final timesteps
-        # we set to 0, since inside everything is scaled to [0,1] (0 = no noise)
         timesteps = torch.where(span_mask, timesteps, torch.zeros_like(timesteps))
         timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
         inputs_embeds = inputs_embeds + timesteps_embed

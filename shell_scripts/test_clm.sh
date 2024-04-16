@@ -34,4 +34,5 @@ python -m sdlm.run_clm \
         --is_causal true \
         --mask_padding_in_loss false \
         --generation_max_length 512 \
-        --generation_num_beams 1
+        --generation_num_beams 1 \
+        --num_diffusion_steps 0 \

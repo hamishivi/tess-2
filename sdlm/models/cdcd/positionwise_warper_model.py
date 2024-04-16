@@ -80,7 +80,6 @@ class PositionwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
         return_dict: Optional[bool] = None,
         previous_pred: Optional[torch.FloatTensor] = None,
         classifier_free_guidance: bool = False,
-        token_rel_positions: Optional[torch.LongTensor] = None,
         classifier_free_guidance_in_train: bool = False,
         max_timestep: int = 5000,
         reduce_loss: str = "mean",  # passed to 'reduction' in F.cross_entropy
@@ -105,7 +104,6 @@ class PositionwiseCDCDRobertaForDiffusionLM(RobertaForDiffusionLM):
             return_dict,
             previous_pred,
             classifier_free_guidance,
-            token_rel_positions,
             classifier_free_guidance_in_train,
             max_timestep,
             reduce_loss="none",

@@ -8,15 +8,8 @@ import sys
 
 import datasets
 import evaluate
-import torch
 import transformers
-from transformers import (
-    CONFIG_MAPPING,
-    AutoConfig,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    set_seed,
-)
+from transformers import set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 
@@ -25,7 +18,7 @@ from .data.data_collator import DataCollatorForLlamaSeq2Seq
 from .data.data_utils import load_data
 from .data.postprocessors import postprocess_text_for_metric
 from .inference.inference_utils import process_text
-from .models.llama.modeling_llama import LlamaForSeq2SeqLM
+from .models.utils import load_model
 from .trainer_ar import ARTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -51,7 +44,7 @@ summarization_name_mapping = {
 
 
 def main():
-    model_args, data_args, training_args, _ = get_args()
+    model_args, data_args, training_args, diffusion_args = get_args()
 
     # Setup logging
     logging.basicConfig(
@@ -105,90 +98,10 @@ def main():
     # load data
     raw_datasets = load_data(data_args, model_args)
 
-    # TODO: add flash attention
-    config_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "revision": model_args.model_revision,
-        # "token": model_args.token,
-        # "trust_remote_code": model_args.trust_remote_code,
-    }
-    # if model_args.config_name:
-    #     config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
-    if model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(
-            model_args.model_name_or_path, **config_kwargs
-        )
-    else:
-        config = CONFIG_MAPPING[model_args.model_type]()
-        logger.warning("You are instantiating a new config instance from scratch.")
-        if model_args.config_overrides is not None:
-            logger.info(f"Overriding config: {model_args.config_overrides}")
-            config.update_from_string(model_args.config_overrides)
-            logger.info(f"New config: {config}")
-
-    tokenizer_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "use_fast": model_args.use_fast_tokenizer,
-        "revision": model_args.model_revision,
-        # "token": model_args.token,
-        # "trust_remote_code": model_args.trust_remote_code,
-    }
-    if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, **tokenizer_kwargs
-        )
-    elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, **tokenizer_kwargs
-        )
-    else:
-        raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
-        )
-
-    assert tokenizer.padding_side == "right"
-    try:
-        tokenizer.add_eos_token = True
-    except AttributeError:
-        # roberta does not have this
-        pass
-    if not tokenizer.pad_token_id:
-        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-
-    if model_args.model_name_or_path:
-        # identify dtype
-        torch_dtype = torch.float32
-        if training_args.bf16:
-            torch_dtype = torch.bfloat16
-        elif training_args.fp16:
-            torch_dtype = torch.float16
-        model = LlamaForSeq2SeqLM.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            # token=model_args.token,
-            # trust_remote_code=model_args.trust_remote_code,
-            torch_dtype=torch_dtype,
-            # low_cpu_mem_usage=model_args.low_cpu_mem_usage,
-        )
-    else:
-        model = AutoModelForCausalLM.from_config(
-            config, trust_remote_code=model_args.trust_remote_code
-        )
-        n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
-        logger.info(
-            f"Training new model from scratch - Total size={n_params/2**20:.2f}M params"
-        )
-
-    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    vocab_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > vocab_size:
-        model.resize_token_embeddings(len(tokenizer))
-        model.config.pad_token_id = tokenizer.pad_token_id
+    # load model
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     total_seq2seq_length = data_args.max_source_length + data_args.max_target_length
     if (

@@ -24,7 +24,9 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 def main():
     model_args, data_args, training_args, diffusion_args = get_args()
-    tokenizer, model = load_model(model_args, diffusion_args, training_args, logger)
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     # for some insane reason some of the model is not correctly loaded using from_pretrained...
     # state_dict = torch.load(

@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from transformers import AutoTokenizer
 
@@ -13,13 +15,20 @@ from .confidence_tracker.confidence_tracker_model import (
     ConfidenceTrackerRobertaDiffusionLM,
 )
 from .llama.configuration_llama import LlamaDiffusionConfig
-from .llama.modeling_llama import LlamaForDiffusionLM
+from .llama.modeling_llama import LlamaForDiffusionLM, LlamaForSeq2SeqLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
-def model_config_helper(model_name_or_path, use_model="cdcd"):
+def model_config_helper(
+    model_name_or_path: str,
+    use_model: str = "cdcd",
+    is_diffusion: bool = True,
+    conditional_generation: Optional[str] = None,
+):
     if "llama" in model_name_or_path.lower():
+        if conditional_generation == "seq2seq" and not is_diffusion:
+            return LlamaDiffusionConfig, LlamaForSeq2SeqLM
         return LlamaDiffusionConfig, LlamaForDiffusionLM
     if "roberta" in model_name_or_path and use_model == "cdcd":
         return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
@@ -60,14 +69,17 @@ def is_tokenwise_cdcd_check(model):
     )
 
 
-def load_model(model_args, diffusion_args, training_args, logger):
+def load_model(model_args, data_args, training_args, diffusion_args, logger):
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     cfg_cls, model_cls = model_config_helper(
-        model_args.model_name_or_path, use_model=model_args.use_model
+        model_args.model_name_or_path,
+        use_model=model_args.use_model,
+        is_diffusion=diffusion_args.num_diffusion_steps > 0,
+        conditional_generation=data_args.conditional_generation,
     )
     config = cfg_cls.from_pretrained(
         model_args.model_name_or_path,

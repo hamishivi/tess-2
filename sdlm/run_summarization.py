@@ -101,13 +101,9 @@ def main():
     raw_datasets = load_data(data_args, model_args)
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, training_args, logger)
-
-    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    vocab_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > vocab_size:
-        model.resize_token_embeddings(len(tokenizer))
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     total_seq2seq_length = data_args.max_source_length + data_args.max_target_length
     if (

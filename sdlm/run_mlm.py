@@ -125,7 +125,9 @@ def main():
     set_seed(training_args.seed)
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, training_args, logger)
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     # init schedulers
     noise_scheduler = TokenWiseSimplexDDPMScheduler(
