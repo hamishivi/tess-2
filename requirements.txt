@@ -10,3 +10,4 @@ sacremoses==0.0.53
 tensorboard==2.13.0
 gradio==3.35.2
 transformers==4.37.1
+flash-attn
