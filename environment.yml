@@ -1,0 +1,16 @@
+name: simplex
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8
+  - faiss-gpu
+  - cuda-libraries-dev=11.8
+  - cuda-nvcc=11.8
+  - libgcc
+prefix: simplex
