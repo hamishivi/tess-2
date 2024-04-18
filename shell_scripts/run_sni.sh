@@ -1,7 +1,4 @@
 # experimenting over sni
-EXP_NAME="sni_rbase"
-checkpoint_mount="01H4KVBDMMN284JQ6G2N6GS2EV:checkpoint-10000"
-
 gantry run -y -n sni_tess_self_conf -t sni_tess_self_conf --allow-dirty \
     --workspace ai2/tess2 \
     --nfs \
@@ -21,11 +18,11 @@ gantry run -y -n sni_tess_self_conf -t sni_tess_self_conf --allow-dirty \
         --do_train \
         --do_eval \
         --max_seq_length 512 \
-        --per_device_train_batch_size 32 \
-        --skip_special_tokens False \
-        --per_device_eval_batch_size 32 \
+        --per_device_train_batch_size 16 \
+        --skip_special_tokens True \
+        --per_device_eval_batch_size 16\
         --evaluation_strategy steps \
-        --eval_steps 2000 \
+        --eval_steps 100 \
         --save_strategy steps \
         --report_to tensorboard \
         --overwrite_output_dir \
@@ -36,7 +33,7 @@ gantry run -y -n sni_tess_self_conf -t sni_tess_self_conf --allow-dirty \
         --num_inference_diffusion_steps 100 \
         --conditional_generation seq2seq \
         --learning_rate 3e-5 \
-        --gradient_accumulation_steps 1 \
+        --gradient_accumulation_steps 8 \
         --lr_scheduler_type cosine \
         --beta_schedule squaredcos_improved_ddpm \
         --top_p 0.99 \
