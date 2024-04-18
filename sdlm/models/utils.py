@@ -1,3 +1,6 @@
+from typing import Optional
+
+import torch
 from transformers import AutoTokenizer
 
 from .ar_warp.ar_warper import GARDiffusionLM
@@ -11,11 +14,22 @@ from .cdcd.warper_model import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
 from .confidence_tracker.confidence_tracker_model import (
     ConfidenceTrackerRobertaDiffusionLM,
 )
+from .llama.configuration_llama import LlamaDiffusionConfig
+from .llama.modeling_llama import LlamaForDiffusionLM, LlamaForSeq2SeqLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
-def model_config_helper(model_name_or_path, use_model="cdcd"):
+def model_config_helper(
+    model_name_or_path: str,
+    use_model: str = "cdcd",
+    is_diffusion: bool = True,
+    conditional_generation: Optional[str] = None,
+):
+    if "llama" in model_name_or_path.lower():
+        if conditional_generation == "seq2seq" and not is_diffusion:
+            return LlamaDiffusionConfig, LlamaForSeq2SeqLM
+        return LlamaDiffusionConfig, LlamaForDiffusionLM
     if "roberta" in model_name_or_path and use_model == "cdcd":
         return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "tokenwise_cdcd":
@@ -36,7 +50,7 @@ def model_config_helper(model_name_or_path, use_model="cdcd"):
             f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
         )
         return RobertaDiffusionConfig, RobertaForDiffusionLM
-    raise ValueError
+    raise ValueError("Unsupported model.")
 
 
 def is_cdcd_check(model):
@@ -55,14 +69,17 @@ def is_tokenwise_cdcd_check(model):
     )
 
 
-def load_model(model_args, diffusion_args, logger):
+def load_model(model_args, data_args, training_args, diffusion_args, logger):
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     cfg_cls, model_cls = model_config_helper(
-        model_args.model_name_or_path, use_model=model_args.use_model
+        model_args.model_name_or_path,
+        use_model=model_args.use_model,
+        is_diffusion=diffusion_args.num_diffusion_steps > 0,
+        conditional_generation=data_args.conditional_generation,
     )
     config = cfg_cls.from_pretrained(
         model_args.model_name_or_path,
@@ -75,6 +92,8 @@ def load_model(model_args, diffusion_args, logger):
         self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
         self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
         empty_token_be_mask=diffusion_args.empty_token_be_mask,
+        is_causal=model_args.is_causal,
+        mask_padding_in_loss=training_args.mask_padding_in_loss,
         **config_kwargs,
     )
     tokenizer_kwargs = {
@@ -96,10 +115,21 @@ def load_model(model_args, diffusion_args, logger):
             "You are instantiating a new tokenizer from scratch. This is not supported by this script."
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
-    if not tokenizer.pad_token_id:
-        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+
+    assert tokenizer.padding_side == "right"
+    try:
+        tokenizer.add_eos_token = True
+    except AttributeError:
+        # roberta does not have this
+        pass
 
     if model_args.model_name_or_path and not model_args.from_scratch:
+        # identify dtype
+        torch_dtype = torch.float32
+        if training_args.bf16:
+            torch_dtype = torch.bfloat16
+        elif training_args.fp16:
+            torch_dtype = torch.float16
         model = model_cls.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -107,16 +137,24 @@ def load_model(model_args, diffusion_args, logger):
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
-        )
+            torch_dtype=torch_dtype,
+            attn_implementation="flash_attention_2"
+            if model_args.use_flash_attention2
+            else "eager",
+        ).to("cuda")
     else:
         logger.warning("Training new model from scratch")
         model = model_cls._from_config(config)
         model.init_weights()
+
+    if not tokenizer.pad_token_id:
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
     # on a small vocab and want a smaller embedding size, remove this test.
     vocab_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
+        model.config.pad_token_id = tokenizer.pad_token_id
 
     return tokenizer, model

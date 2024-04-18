@@ -22,7 +22,7 @@ from .data.postprocessors import postprocess_text_for_metric
 from .inference.inference_utils import process_text
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer import DiffusionTrainer
+from .trainer_diffusion import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -101,13 +101,9 @@ def main():
     raw_datasets = load_data(data_args, model_args)
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, logger)
-
-    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    vocab_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > vocab_size:
-        model.resize_token_embeddings(len(tokenizer))
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     total_seq2seq_length = data_args.max_source_length + data_args.max_target_length
     if (
@@ -271,7 +267,7 @@ def main():
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
-        # multiply_factor=diffusion_args.multiply_factor,
+        multiply_factor=diffusion_args.multiply_factor,
     )
     inference_noise_schedulers = [
         TokenWiseSimplexDDPMScheduler(
@@ -280,7 +276,7 @@ def main():
             simplex_value=diffusion_args.simplex_value,
             clip_sample=diffusion_args.clip_sample,
             device=training_args.device,
-            # multiply_factor=diffusion_args.multiply_factor,
+            multiply_factor=diffusion_args.multiply_factor,
         )
         for timesteps in diffusion_args.num_inference_diffusion_steps
     ]

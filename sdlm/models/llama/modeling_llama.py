@@ -5,26 +5,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
+from torch.nn.utils.rnn import pad_sequence
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import MaskedLMOutput
-from transformers.models.roberta.modeling_roberta import (
-    RobertaLMHead,
-    RobertaModel,
-    RobertaPreTrainedModel,
+from transformers.models.llama.modeling_llama import (  # RobertaLMHead,
+    LlamaForCausalLM,
+    LlamaModel,
+    LlamaPreTrainedModel,
 )
 from transformers.utils import logging
 
+from sdlm.data.data_collator import LLAMA_SEQ2SEQ_SEP
 from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
 
 
-class RobertaForDiffusionLM(RobertaPreTrainedModel):
-    _keys_to_ignore_on_save = [r"lm_head.decoder.weight", r"lm_head.decoder.bias"]
+class LlamaForDiffusionLM(LlamaPreTrainedModel):
+    _keys_to_ignore_on_save = [r"lm_head.weight", r"lm_head.bias"]
     _keys_to_ignore_on_load_missing = [
-        r"position_ids",
-        r"lm_head.decoder.weight",
-        r"lm_head.decoder.bias",
+        r"lm_head.weight",
+        r"lm_head.bias",
     ]
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
@@ -37,8 +38,9 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 "bi-directional self-attention."
             )
 
-        self.roberta = RobertaModel(config, add_pooling_layer=False)
-        self.lm_head = RobertaLMHead(config)
+        self.model = LlamaModel(config)
+        self.vocab_size = config.vocab_size
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # # The LM head weights require special treatment only when they are tied with the word embeddings
         # self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
@@ -46,7 +48,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # self.vocab_to_hidden_dim_embed = nn.Linear(
         #     config.vocab_size, config.hidden_size, bias=False
         # )
-        self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
+        self.timestep_embed = nn.Linear(1, config.hidden_size, bias=False)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
             # In this case, this is self-conditioning with conditional generation as done in DeepMind paper.
@@ -80,34 +82,39 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    # run embedding matrix as linear layer
-    def vocab_to_hidden_dim_embed(self, input_data):
-        return F.linear(input_data, self.roberta.embeddings.word_embeddings.weight.T)
+    def post_init(self):
+        super().post_init()
+        # self.vocab_to_hidden_dim_embed.weight.data = (
+        #     self.get_input_embeddings().weight.data.T
+        # )
+        # (un)toggle causal attention
+        for decoder_layer in self.model.layers:
+            decoder_layer.self_attn.is_causal = self.config.is_causal
 
-    # def post_init(self):
-    #     super().post_init()
-    #     self.vocab_to_hidden_dim_embed.weight.data = (
-    #         self.get_input_embeddings().weight.data.T
-    #     )
-    #     import pdb; pdb.set_trace()
+    def get_input_embeddings(self):
+        return self.model.embed_tokens
+
+    def set_input_embeddings(self, value):
+        self.model.embed_tokens = value
 
     def get_output_embeddings(self):
-        return self.lm_head.decoder
+        return self.lm_head
 
     def set_output_embeddings(self, new_embeddings):
-        self.lm_head.decoder = new_embeddings
+        self.lm_head = new_embeddings
 
+    def set_decoder(self, decoder):
+        self.model = decoder
+
+    def get_decoder(self):
+        return self.model
+
+    def vocab_to_hidden_dim_embed(self, input_data):
+        return F.linear(input_data, self.get_input_embeddings().weight.data.T)
+
+    # TODO: adjust for llama
     def get_roberta_empty_tokens(self, shape, device):
-        if self.config.empty_token_be_mask:
-            empty_token_ids = (
-                torch.ones(shape, dtype=torch.int64, device=device) * 50264
-            )
-        else:
-            # Padding token in roberta-large is 1.
-            empty_token_ids = torch.ones(shape, dtype=torch.int64, device=device)
-        empty_token_ids[:, 0] = 0
-        empty_token_ids[:, -1] = 2
-        return empty_token_ids
+        raise NotImplementedError
 
     def forward(
         self,
@@ -255,10 +262,8 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 )
             )
 
-        bsz = input_ids.shape[0]
-        timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float()).view(
-            bsz, -1, self.config.hidden_size
-        )
+        timesteps = torch.where(span_mask, timesteps, torch.zeros_like(timesteps))
+        timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
         inputs_embeds = inputs_embeds + timesteps_embed
 
         if span_mask is not None and not self.config.deepmind_conditional:
@@ -271,22 +276,19 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             # TODO: we need to fix classifier-free guidance for the case of deepmind_conditional.
             if classifier_free_guidance:
                 inputs_embeds = torch.cat([uncond_inputs_embeds, inputs_embeds])
-        outputs = self.roberta(
+        outputs = self.model(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
             attention_mask=None,  # attention_mask,
-            token_type_ids=token_type_ids,
             position_ids=position_ids,
-            head_mask=head_mask,
+            past_key_values=None,
             inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
+            use_cache=False,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
         prediction_scores = self.lm_head(sequence_output)
-        # import pdb; pdb.set_trace()
 
         masked_lm_loss = None
         # In case of classifier-free guidance, since the number of output logits and input token ids do not match
@@ -307,9 +309,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             if self.config.mask_padding_in_loss:
                 # also mask padding token loss....
                 labels = torch.where(labels == self.config.pad_token_id, -100, labels)
+            # important: shift labels to the right by one, mimicking the causal pretraining
+            labels = labels[:, 1:]
+            prediction_scores_for_loss = prediction_scores_for_loss[:, :-1]
             masked_lm_loss = loss_fct(
-                prediction_scores_for_loss.view(-1, self.config.vocab_size),
-                labels.view(-1),
+                prediction_scores_for_loss.reshape(-1, self.config.vocab_size),
+                labels.reshape(-1),
             )
             if return_all_losses:
                 all_lm_losses = masked_lm_loss.view(input_ids.shape[0], -1)
@@ -324,6 +329,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
             )
 
+        # shift our logits forward by one, so that input->output match
+        prediction_scores = prediction_scores[:, :-1]
+        # add back in our start tok.
+        padding_pred = torch.zeros_like(prediction_scores[:, 0])[:, None]
+        prediction_scores = torch.cat([padding_pred, prediction_scores], dim=1)
         return MaskedLMOutput(
             loss=all_lm_losses if return_all_losses else masked_lm_loss,
             logits=prediction_scores,
@@ -331,97 +341,38 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             attentions=outputs.attentions,
         )
 
+    # TODO: adjust for llama
     def resize_position_embeddings(
         self, new_num_position_embeddings: int, with_alternatation=False
     ):
-        """
-        Resizes position embeddings of the model if `new_num_position_embeddings != config.max_position_embeddings`.
-        Arguments:
-            new_num_position_embeddings (`int`):
-                The number of new position embedding matrix. If position embeddings are learned, increasing the size
-                will add newly initialized vectors at the end, whereas reducing the size will remove vectors from the
-                end. If position embeddings are not learned (*e.g.* sinusoidal position embeddings), increasing the
-                size will add correct vectors at the end following the position encoding algorithm, whereas reducing
-                the size will remove vectors from the end.
-        """
-        num_position_embeds_diff = (
-            new_num_position_embeddings - self.config.max_position_embeddings
-        )
+        raise NotImplementedError
 
-        # no resizing needs to be done if the length stays the same
-        if num_position_embeds_diff == 0:
-            return
 
-        logger.info(
-            f"Setting `config.max_position_embeddings={new_num_position_embeddings}`..."
-        )
-        self.config.max_position_embeddings = new_num_position_embeddings
-        old_position_embeddings_weight = (
-            self.roberta.embeddings.position_embeddings.weight.clone()
-        )
+def get_sep_index(input_id, target):
+    # TODO: improve sliding window to e.g., rolling hash
+    target_length = len(target)
+    for i in range(len(input_id) - len(target) + 1):
+        if torch.equal(input_id[i : i + target_length], target):
+            return i + target_length - 1
+    raise ValueError("This is not supposed to happen")
 
-        padding_idx = self.config.pad_token_id
-        self.roberta.embeddings.position_embeddings = nn.Embedding(
-            self.config.max_position_embeddings,
-            self.config.hidden_size,
-            padding_idx=padding_idx,
-        )
-        with torch.no_grad():
-            if num_position_embeds_diff > 0:
-                self.roberta.embeddings.position_embeddings.weight[
-                    :-num_position_embeds_diff
-                ] = nn.Parameter(old_position_embeddings_weight)
-                if with_alternatation:
-                    self.roberta.embeddings.position_embeddings.weight[
-                        -num_position_embeds_diff:
-                    ] = nn.Parameter(
-                        old_position_embeddings_weight[:num_position_embeds_diff]
-                    )
-            else:
-                self.roberta.embeddings.position_embeddings.weight = nn.Parameter(
-                    old_position_embeddings_weight[:num_position_embeds_diff]
-                )
-        # move position_embeddings to correct device
-        self.roberta.embeddings.position_embeddings.to(self.device)
-        # Update other needed parameters.
-        self.roberta.embeddings.position_ids = (
-            torch.arange(self.config.max_position_embeddings)
-            .expand((1, -1))
-            .type_as(self.roberta.embeddings.position_ids)
-        )
-        self.roberta.embeddings.token_type_ids = torch.zeros(
-            self.roberta.embeddings.position_ids.size(), dtype=torch.long
-        ).type_as(self.roberta.embeddings.token_type_ids)
 
-        # resize the distance embeddings.
-        for i in range(self.config.num_hidden_layers):
-            if (
-                self.config.position_embedding_type == "relative_key"
-                or self.config.position_embedding_type == "relative_key_query"
-            ):
-                self.roberta.encoder.layer[
-                    i
-                ].attention.self.distance_embedding = nn.Embedding(
-                    2 * self.config.max_position_embeddings - 1,
-                    self.attention_head_size,
-                )
-                old_distance_embedding_weight = self.layer[
-                    i
-                ].attention.self.distance_embedding.weight.clone()
-                with torch.no_grad():
-                    if num_position_embeds_diff > 0:
-                        self.roberta.encoder.layer[
-                            i
-                        ].attention.self.distance_embedding.weight[
-                            : -2 * num_position_embeds_diff
-                        ] = nn.Parameter(
-                            old_distance_embedding_weight
-                        )
-                    else:
-                        self.roberta.encoder.layer[
-                            i
-                        ].attention.self.distance_embedding.weight = nn.Parameter(
-                            old_distance_embedding_weight[
-                                : 2 * num_position_embeds_diff
-                            ]
-                        )
+class LlamaForSeq2SeqLM(LlamaForCausalLM):
+    @torch.inference_mode()
+    def generate(self, *args, **kwargs):
+        context_tokens = []
+        input_ids = kwargs.pop("input_ids")
+        SEP = torch.tensor(LLAMA_SEQ2SEQ_SEP, device=input_ids.device)
+        for input_id in input_ids:
+            # index = list(input_id).index(self.config.eos_token_id)
+            end_of_sep_idx = get_sep_index(input_id, SEP)
+            context_tokens.append(input_id[: end_of_sep_idx + 1])
+        input_ids = pad_sequence(
+            context_tokens, padding_value=self.config.pad_token_id
+        ).T
+        kwargs["input_ids"] = input_ids.to(self.device)
+        kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
+        outputs = super().generate(*args, **kwargs)
+        seq_len = input_ids.size(1)
+        output_ids = outputs[:, seq_len:]
+        return output_ids.to(self.device)

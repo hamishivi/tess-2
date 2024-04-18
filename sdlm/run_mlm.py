@@ -17,7 +17,7 @@ from .data.data_utils import load_data, tokenize_data_new
 from .inference.inference_utils import evaluate_generation
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer import DiffusionTrainer
+from .trainer_diffusion import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -28,6 +28,8 @@ require_version(
 )
 
 logger = logging.getLogger(__name__)
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def get_compute_metrics(data_args, training_args, model_args):
@@ -123,7 +125,9 @@ def main():
     set_seed(training_args.seed)
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, logger)
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     # init schedulers
     noise_scheduler = TokenWiseSimplexDDPMScheduler(
@@ -178,8 +182,12 @@ def main():
             # filter out short examples so that we prompt the model with examples
             # that actually require generating out to a decent length.
             # is a list at this point so
+            assert model.config.pad_token_id is not None
             eval_dataset = eval_dataset.filter(
-                lambda x: len([i for i in x["input_ids"] if i != 1]) >= 300
+                lambda x: len(
+                    [i for i in x["input_ids"] if i != model.config.pad_token_id]
+                )
+                >= 300
             )
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)

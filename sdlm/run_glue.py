@@ -4,20 +4,18 @@ import logging
 import os
 import random
 import sys
-from dataclasses import dataclass
 
 import datasets
 import numpy as np
 import transformers
 from datasets import load_dataset
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers import AutoTokenizer, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
-from .arguments import DataTrainingArguments as BaseDataTrainingArguments
-from .arguments import DiffusionArguments, ModelArguments, TrainingArguments
+from .arguments import get_args
 from .data.data_collator import DataCollatorForSeq2Seq
 from .data.data_utils import split_glue
 from .data.postprocessors import get_post_processor
@@ -26,7 +24,7 @@ from .inference.inference_utils import process_text
 from .metrics.metrics import get_glue_metrics
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer import DiffusionTrainer
+from .trainer_diffusion import DiffusionTrainer
 from .utils import lmap
 
 # This is computed with scripts/compute_max_tokens_of_labels.py
@@ -64,38 +62,15 @@ task_to_metric = {
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DataTrainingArguments(BaseDataTrainingArguments):
-    """
-    Arguments pertaining to what data we are going to input our model for training and eval.
-    """
-
-    def __post_init__(self):
-        assert self.dataset_name is not None
-        self.dataset_name = self.dataset_name.lower()
-        if self.dataset_name not in task_to_keys.keys():
-            raise ValueError(
-                "Unknown task, you should pick one in " + ",".join(task_to_keys.keys())
-            )
-
-
 def main():
-    parser = HfArgumentParser(
-        (ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments)
-    )
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
-        model_args, data_args, training_args, diffusion_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1])
+    # parse args
+    model_args, data_args, training_args, diffusion_args = get_args()
+    assert data_args.dataset_name is not None
+    data_args.dataset_name = data_args.dataset_name.lower()
+    if data_args.dataset_name not in task_to_keys.keys():
+        raise ValueError(
+            "Unknown task, you should pick one in " + ",".join(task_to_keys.keys())
         )
-    else:
-        (
-            model_args,
-            data_args,
-            training_args,
-            diffusion_args,
-        ) = parser.parse_args_into_dataclasses()
 
     if training_args.checkpoint_best_model:
         # TODO: ask which one they report and use the one needed here.
@@ -233,7 +208,9 @@ def main():
     raw_datasets = raw_datasets.shuffle(data_args.glue_split_seed)
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, logger)
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     # Preprocessing the raw_datasets
     sentence1_key, sentence2_key = task_to_keys[data_args.dataset_name]

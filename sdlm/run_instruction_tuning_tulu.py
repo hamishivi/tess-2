@@ -29,7 +29,7 @@ from .data.data_utils import load_data
 # from .inference.inference_utils import process_text
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer import DiffusionTrainer
+from .trainer_diffusion import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -210,7 +210,9 @@ def main():
     eval_dataset = load_dataset("tatsu-lab/alpaca_eval")["eval"]
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, logger)
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
     tokenizer.add_eos_token = False  # since the chat template adds it
 
     # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch

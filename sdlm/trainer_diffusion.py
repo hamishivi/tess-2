@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import time
+import warnings
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
@@ -15,7 +16,10 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from transformers import Trainer
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
-from transformers.deepspeed import deepspeed_init, deepspeed_load_checkpoint
+
+with warnings.catch_warnings():
+    warnings.simplefilter(action="ignore", category=FutureWarning)
+    from transformers.deepspeed import deepspeed_init, deepspeed_load_checkpoint
 from transformers.integrations import TensorBoardCallback, hp_params
 from transformers.trainer import TRAINER_STATE_NAME
 from transformers.trainer_callback import TrainerState
@@ -26,9 +30,8 @@ from transformers.trainer_pt_utils import (
     nested_detach,
     nested_numpify,
 )
-from transformers.trainer_utils import (
+from transformers.trainer_utils import (  # ShardedDDPOption,
     HPSearchBackend,
-    ShardedDDPOption,
     TrainOutput,
     denumpify_detensorize,
     has_length,
@@ -309,8 +312,9 @@ class DiffusionTrainer(Trainer):
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
-        if self.do_grad_scaling:
-            self.scaler.scale(loss).backward()
+        # HACK: transformer update
+        # if self.do_grad_scaling:
+        #     self.scaler.scale(loss).backward()
         elif self.use_apex:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
@@ -1187,14 +1191,6 @@ class DiffusionTrainer(Trainer):
                 f" {args.max_steps}"
             )
 
-        # Compute absolute values for logging, eval, and save if given as ratio
-        if args.logging_steps and args.logging_steps < 1:
-            args.logging_steps = math.ceil(max_steps * args.logging_steps)
-        if args.eval_steps and args.eval_steps < 1:
-            args.eval_steps = math.ceil(max_steps * args.eval_steps)
-        if args.save_steps and args.save_steps < 1:
-            args.save_steps = math.ceil(max_steps * args.save_steps)
-
         if DebugOption.UNDERFLOW_OVERFLOW in self.args.debug:
             if self.args.n_gpu > 1:
                 # nn.DataParallel(model) replicates the model, creating new variables and module
@@ -1206,12 +1202,14 @@ class DiffusionTrainer(Trainer):
             else:
                 debug_overflow = DebugUnderflowOverflow(self.model)  # noqa
 
-        delay_optimizer_creation = (
-            self.sharded_ddp is not None
-            and self.sharded_ddp != ShardedDDPOption.SIMPLE
-            or is_sagemaker_mp_enabled()
-            or self.fsdp is not None
-        )
+        # delay_optimizer_creation = (
+        #     self.sharded_ddp is not None
+        #     and self.sharded_ddp != ShardedDDPOption.SIMPLE
+        #     or is_sagemaker_mp_enabled()
+        #     or self.fsdp is not None
+        # )
+        # HACK: transformer version update
+        delay_optimizer_creation = False
 
         if self.is_deepspeed_enabled:
             self.optimizer, self.lr_scheduler = deepspeed_init(
@@ -1223,6 +1221,23 @@ class DiffusionTrainer(Trainer):
 
         self.state = TrainerState()
         self.state.is_hyper_param_search = trial is not None
+
+        # Compute absolute values for logging, eval, and save if given as ratio
+        if args.logging_steps is not None:
+            if args.logging_steps < 1:
+                self.state.logging_steps = math.ceil(max_steps * args.logging_steps)
+            else:
+                self.state.logging_steps = args.logging_steps
+        if args.eval_steps is not None:
+            if args.eval_steps < 1:
+                self.state.eval_steps = math.ceil(max_steps * args.eval_steps)
+            else:
+                self.state.eval_steps = args.eval_steps
+        if args.save_steps is not None:
+            if args.save_steps < 1:
+                self.state.save_steps = math.ceil(max_steps * args.save_steps)
+            else:
+                self.state.save_steps = args.save_steps
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
@@ -1464,16 +1479,17 @@ class DiffusionTrainer(Trainer):
                 ):
                     # Gradient clipping
                     if args.max_grad_norm is not None and args.max_grad_norm > 0:
+                        # HACK: transformer update
                         # deepspeed does its own clipping
-                        if self.do_grad_scaling:
-                            # Reduce gradients first for XLA
-                            if is_torch_tpu_available():
-                                gradients = xm._fetch_gradients(self.optimizer)
-                                xm.all_reduce(
-                                    "sum", gradients, scale=1.0 / xm.xrt_world_size()
-                                )
-                            # AMP: gradients need unscaling
-                            self.scaler.unscale_(self.optimizer)
+                        # if self.do_grad_scaling:
+                        #     # Reduce gradients first for XLA
+                        #     if is_torch_tpu_available():
+                        #         gradients = xm._fetch_gradients(self.optimizer)
+                        #         xm.all_reduce(
+                        #             "sum", gradients, scale=1.0 / xm.xrt_world_size()
+                        #         )
+                        #     # AMP: gradients need unscaling
+                        #     self.scaler.unscale_(self.optimizer)
 
                         if is_sagemaker_mp_enabled() and args.fp16:
                             self.optimizer.clip_master_grads(args.max_grad_norm)
@@ -1503,12 +1519,13 @@ class DiffusionTrainer(Trainer):
                             self.scaler.update()
                         else:
                             xm.optimizer_step(self.optimizer)
-                    elif self.do_grad_scaling:
-                        scale_before = self.scaler.get_scale()
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                        scale_after = self.scaler.get_scale()
-                        optimizer_was_run = scale_before <= scale_after
+                    # HACK: transformer update
+                    # elif self.do_grad_scaling:
+                    #     scale_before = self.scaler.get_scale()
+                    #     self.scaler.step(self.optimizer)
+                    #     self.scaler.update()
+                    #     scale_after = self.scaler.get_scale()
+                    #     optimizer_was_run = scale_before <= scale_after
                     else:
                         self.optimizer.step()
                         optimizer_was_run = (

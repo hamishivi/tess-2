@@ -1,11 +1,11 @@
-"""Adapted Roberta configuration for diffusion models."""
+"""Adapted Llama configuration for diffusion models."""
 
 from typing import Optional
 
-from transformers.models.roberta.configuration_roberta import RobertaConfig
+from transformers.models.llama.configuration_llama import LlamaConfig
 
 
-class RobertaDiffusionConfig(RobertaConfig):
+class LlamaDiffusionConfig(LlamaConfig):
     def __init__(
         self,
         self_condition: Optional[str] = None,
@@ -17,6 +17,7 @@ class RobertaDiffusionConfig(RobertaConfig):
         self_condition_mix_before_weights=False,
         self_condition_mix_logits_before_weights=False,
         empty_token_be_mask=False,
+        is_causal: bool = False,
         mask_padding_in_loss: bool = False,
         **kwargs,
     ):
@@ -32,4 +33,5 @@ class RobertaDiffusionConfig(RobertaConfig):
             self_condition_mix_logits_before_weights
         )
         self.empty_token_be_mask = empty_token_be_mask
+        self.is_causal = is_causal
         self.mask_padding_in_loss = mask_padding_in_loss

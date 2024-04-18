@@ -13,7 +13,12 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 def get_args():
     parser = HfArgumentParser(
-        (ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments)
+        (
+            ModelArguments,
+            DataTrainingArguments,
+            Seq2SeqTrainingArguments,
+            DiffusionArguments,
+        )
     )
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -127,6 +132,14 @@ class ModelArguments:
             "help": "Whether to train the model from scratch or not. Default to false."
         },
     )
+    use_flash_attention2: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use flash attention 2."},
+    )
+    is_causal: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use causal attention (for Llama)."},
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
@@ -202,6 +215,11 @@ class TrainingArguments(HFTrainingArguments):
     optim: str = field(default="adamw_torch")
     # just for beaker training, to allow auto-resume easier.
     beaker: bool = field(default=False)
+    mask_padding_in_loss: bool = field(
+        default=False,
+        metadata={"help": "Whether to mask padding token in loss computation."},
+    )
+    generation_config: str = field(default=None)
 
 
 @dataclass
@@ -242,6 +260,7 @@ class Seq2SeqTrainingArguments(TrainingArguments):
             )
         },
     )
+    predict_with_generate: Optional[bool] = field(default=True)
 
 
 @dataclass
