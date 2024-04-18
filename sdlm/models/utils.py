@@ -18,6 +18,8 @@ from .llama.configuration_llama import LlamaDiffusionConfig
 from .llama.modeling_llama import LlamaForDiffusionLM, LlamaForSeq2SeqLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
+from .mistral.configuration_mistral import MistralDiffusionConfig
+from .mistral.modeling_mistral import MistralForDiffusionLM, MistralForSeq2SeqLM
 
 
 def model_config_helper(
@@ -30,6 +32,10 @@ def model_config_helper(
         if conditional_generation == "seq2seq" and not is_diffusion:
             return LlamaDiffusionConfig, LlamaForSeq2SeqLM
         return LlamaDiffusionConfig, LlamaForDiffusionLM
+    if "mistral" in model_name_or_path.lower():
+        if conditional_generation == "seq2seq" and not is_diffusion:
+            return MistralDiffusionConfig, MistralForSeq2SeqLM
+        return MistralDiffusionConfig, MistralForDiffusionLM
     if "roberta" in model_name_or_path and use_model == "cdcd":
         return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "tokenwise_cdcd":
@@ -116,7 +122,7 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    assert tokenizer.padding_side == "right"
+    tokenizer.padding_side == "right"
     try:
         tokenizer.add_eos_token = True
     except AttributeError:

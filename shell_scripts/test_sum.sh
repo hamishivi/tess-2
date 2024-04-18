@@ -1,11 +1,22 @@
 # NOTE: llama finetune w/o adaptation (causal)
-python -m sdlm.run_summarization \
-        --model_name_or_path meta-llama/Llama-2-7b-hf \
+gantry run -y -n mistral-cnn-dm -t mistral-cnn-dm --budget ai2/allennlp --allow-dirty \
+    --workspace ai2/tess2 \
+    --nfs \
+    --gpus 1 \
+    --priority high \
+    --cluster ai2/allennlp-cirrascale \
+    --env 'HF_HOME=/net/nfs.cirrascale/allennlp/hamishi/.hf' \
+    --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+    --beaker-image 'ai2/cuda11.8-cudnn8-dev-ubuntu20.04' \
+    --venv 'base' \
+    --pip requirements.txt \
+    -- python -m sdlm.run_summarization \
+        --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --per_device_train_batch_size 16  \
         --per_device_eval_batch_size 16 \
         --do_train \
         --do_eval \
-        --output_dir outputs/llama/cnn_dm/test \
+        --output_dir tmp \
         --evaluation_strategy steps \
         --eval_steps 100 \
         --report_to tensorboard \
@@ -17,7 +28,7 @@ python -m sdlm.run_summarization \
         --num_diffusion_steps 5000  \
         --num_inference_diffusion_steps 100 \
         --lr_scheduler_type cosine \
-        --learning_rate 3e-5 \
+        --learning_rate 5e-6 \
         --pad_to_max_length \
         --beta_schedule squaredcos_improved_ddpm \
         --weight_decay 0.0 \
@@ -38,7 +49,7 @@ python -m sdlm.run_summarization \
         --gradient_checkpointing \
         --use_flash_attention2 \
         --save_safetensors true \
-        --is_causal true \
+        --is_causal false \
         --mask_padding_in_loss false
 
 # NOTE: attempted baseline
