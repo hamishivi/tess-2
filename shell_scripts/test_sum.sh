@@ -7,7 +7,6 @@ gantry run -y -n mistral-cnn-dm -t mistral-cnn-dm --budget ai2/allennlp --allow-
     --cluster ai2/allennlp-cirrascale \
     --env 'HF_HOME=/net/nfs.cirrascale/allennlp/hamishi/.hf' \
     --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
-    --beaker-image 'ai2/cuda11.8-cudnn8-dev-ubuntu20.04' \
     --venv 'base' \
     --pip requirements.txt \
     -- python -m sdlm.run_summarization \
@@ -16,7 +15,7 @@ gantry run -y -n mistral-cnn-dm -t mistral-cnn-dm --budget ai2/allennlp --allow-
         --per_device_eval_batch_size 16 \
         --do_train \
         --do_eval \
-        --output_dir tmp \
+        --output_dir /results \
         --evaluation_strategy steps \
         --eval_steps 100 \
         --report_to tensorboard \
