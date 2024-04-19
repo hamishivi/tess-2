@@ -1,4 +1,4 @@
-name: venv
+name: base
 channels:
   - pytorch
   - nvidia
