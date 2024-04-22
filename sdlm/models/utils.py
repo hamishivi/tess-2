@@ -16,10 +16,10 @@ from .confidence_tracker.confidence_tracker_model import (
 )
 from .llama.configuration_llama import LlamaDiffusionConfig
 from .llama.modeling_llama import LlamaForDiffusionLM, LlamaForSeq2SeqLM
-from .roberta.configuration_roberta import RobertaDiffusionConfig
-from .roberta.modeling_roberta import RobertaForDiffusionLM
 from .mistral.configuration_mistral import MistralDiffusionConfig
 from .mistral.modeling_mistral import MistralForDiffusionLM, MistralForSeq2SeqLM
+from .roberta.configuration_roberta import RobertaDiffusionConfig
+from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
 def model_config_helper(
@@ -122,7 +122,8 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    tokenizer.padding_side == "right"
+    # set padding side
+    tokenizer.padding_side = "right"
     try:
         tokenizer.add_eos_token = True
     except AttributeError:
