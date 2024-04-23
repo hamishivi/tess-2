@@ -1,5 +1,5 @@
 # NOTE: llama finetune w/o adaptation (causal)
-gantry run -y -n mistral-cnn-dm -t mistral-cnn-dm --budget ai2/allennlp --allow-dirty \
+gantry run -y -n mistral-cnn-dm-lora -t mistral-cnn-dm-lora --budget ai2/allennlp --allow-dirty \
     --workspace ai2/tess2 \
     --nfs \
     --gpus 1 \
