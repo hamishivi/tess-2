@@ -2,6 +2,7 @@ from typing import Optional
 
 import torch
 from transformers import AutoTokenizer
+from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 
 from .ar_warp.ar_warper import GARDiffusionLM
 from .cdcd.ar_warper import CDCDGARRobertaForDiffusionLM
@@ -163,5 +164,15 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
         model.config.pad_token_id = tokenizer.pad_token_id
+
+    # if peft, apply it here
+    if model_args.use_lora:
+        peft_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM, inference_mode=False, r=16, lora_alpha=32, lora_dropout=0.1
+        )
+        # we just peft the internal model.
+        # a little hacky, remove the task type wrapper class
+        # TODO: does this cook anything?
+        model.model = get_peft_model(model.model, peft_config).base_model
 
     return tokenizer, model

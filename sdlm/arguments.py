@@ -140,6 +140,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to use causal attention (for Llama)."},
     )
+    use_lora: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use LORA. todo: customise lora params"},
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
