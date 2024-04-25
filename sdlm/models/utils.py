@@ -1,9 +1,9 @@
-from typing import Optional
 import os
+from typing import Optional
 
 import torch
+from peft import LoraConfig, TaskType, get_peft_model
 from transformers import AutoTokenizer
-from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 
 from .ar_warp.ar_warper import GARDiffusionLM
 from .cdcd.ar_warper import CDCDGARRobertaForDiffusionLM
@@ -113,11 +113,15 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, token=os.environ.get("HF_TOKEN", None), **tokenizer_kwargs
+            model_args.tokenizer_name,
+            token=os.environ.get("HF_TOKEN", None),
+            **tokenizer_kwargs,
         )
     elif model_args.model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, token=os.environ.get("HF_TOKEN", None), **tokenizer_kwargs
+            model_args.model_name_or_path,
+            token=os.environ.get("HF_TOKEN", None),
+            **tokenizer_kwargs,
         )
     else:
         raise ValueError(
@@ -171,7 +175,11 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
     # if peft, apply it here
     if model_args.use_lora:
         peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM, inference_mode=False, r=16, lora_alpha=32, lora_dropout=0.1
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False,
+            r=model_args.lora_rank,
+            lora_alpha=model_args.lora_alpha,
+            lora_dropout=model_args.lora_dropout,
         )
         # we just peft the internal model.
         # a little hacky, remove the task type wrapper class

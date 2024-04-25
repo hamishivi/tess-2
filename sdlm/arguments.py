@@ -142,7 +142,19 @@ class ModelArguments:
     )
     use_lora: Optional[bool] = field(
         default=False,
-        metadata={"help": "Whether to use LORA. todo: customise lora params"},
+        metadata={"help": "Whether to use LoRA."},
+    )
+    lora_rank: Optional[int] = field(
+        default=16,
+        metadata={"help": "LoRA rank."},
+    )
+    lora_alpha: Optional[int] = field(
+        default=32,
+        metadata={"help": "LoRA alpha."},
+    )
+    lora_dropout: Optional[float] = field(
+        default=0.1,
+        metadata={"help": "LoRA dropout."},
     )
 
     def __post_init__(self):
