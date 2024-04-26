@@ -301,15 +301,14 @@ class DataCollatorForSeq2Seq:
         return features
 
 
-LLAMA_SEQ2SEQ_SEP = [13, 7727, 29901]
-MISTRAL_SEQ2SEQ_SEP = [13, 3499, 28747]
-
 @dataclass
-class DataCollatorForLlamaSeq2Seq:
+class DataCollatorForCausalLMSeq2Seq:
     tokenizer: PreTrainedTokenizerBase
     padding: Union[bool, str, PaddingStrategy] = True
     max_length: Optional[int] = None
     pad_to_multiple_of: Optional[int] = None
+    LLAMA_SEP: List[int] = [13, 7727, 29901]
+    MISTRAL_SEP: List[int] = [13, 3499, 28747]
 
     def __call__(self, features):
         if "attention_mask" in features:
@@ -320,9 +319,17 @@ class DataCollatorForLlamaSeq2Seq:
         labels = [feature["labels"][1:] for feature in features]
         # tokenizer.encode('\nsummary: )
 
+        SEP = None
+        tokenizer_name = self.tokenizer.name_or_path.lower()
+        if "mistral" in tokenizer_name:
+            SEP = self.MISTRAL_SEP
+        elif "llama" in tokenizer_name:
+            SEP = self.LLAMA_SEP
+        else:
+            raise ValueError("Unrecognized tokenizer.name_or_path")
+
         input_target = [
-            input + LLAMA_SEQ2SEQ_SEP + target
-            for input, target in zip(input_ids, labels)
+            input + SEP + target for input, target in zip(input_ids, labels)
         ]
         features = self.tokenizer.pad(
             {"input_ids": input_target},
@@ -334,13 +341,9 @@ class DataCollatorForLlamaSeq2Seq:
         batch_length = features["input_ids"].shape[1]
         masks = []
         for input in input_ids:
-            context_length = len(input) + len(MISTRAL_SEQ2SEQ_SEP)
+            context_length = len(input) + len(SEP)
             mask = context_length * [False] + (batch_length - context_length) * [True]
             masks.append(mask)
-        # masks = [
-        #     (len(input) - 1 + SEP_LEN) * [False] + (batch_length - len(input)) * [True]
-        #     for input in input_ids
-        # ]
         features["labels"] = torch.where(
             torch.tensor(masks), features["input_ids"], -100
         )

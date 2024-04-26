@@ -15,7 +15,7 @@ from transformers.models.llama.modeling_llama import (  # RobertaLMHead,
 )
 from transformers.utils import logging
 
-from sdlm.data.data_collator import LLAMA_SEQ2SEQ_SEP
+from sdlm.data.data_collator import DataCollatorForCausalLMSeq2Seq
 from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
@@ -362,7 +362,9 @@ class LlamaForSeq2SeqLM(LlamaForCausalLM):
     def generate(self, *args, **kwargs):
         context_tokens = []
         input_ids = kwargs.pop("input_ids")
-        SEP = torch.tensor(LLAMA_SEQ2SEQ_SEP, device=input_ids.device)
+        SEP = torch.tensor(
+            DataCollatorForCausalLMSeq2Seq.LLAMA_SEP, device=input_ids.device
+        )
         for input_id in input_ids:
             # index = list(input_id).index(self.config.eos_token_id)
             end_of_sep_idx = get_sep_index(input_id, SEP)

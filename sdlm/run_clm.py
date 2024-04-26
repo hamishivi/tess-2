@@ -14,10 +14,9 @@ from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 
 from .arguments import get_args
-from .data.data_collator import DataCollatorForLlamaSeq2Seq
+from .data.data_collator import DataCollatorForCausalLMSeq2Seq
 from .data.data_utils import load_data
 from .data.postprocessors import postprocess_text_for_metric
-from .inference.inference_utils import process_text
 from .models.utils import load_model
 from .trainer_ar import ARTrainer
 
@@ -216,9 +215,6 @@ def main():
                 desc="Running tokenizer on validation dataset",
             )
 
-    def preprocess_logits_for_metrics(logits):
-        return logits.argmax(dim=-1)
-
     if training_args.do_predict:
         max_target_length = data_args.val_max_target_length
         if "test" not in raw_datasets:
@@ -240,7 +236,7 @@ def main():
             )
 
     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForLlamaSeq2Seq(  # noqa: E731
+    data_collator = lambda mode: DataCollatorForCausalLMSeq2Seq(  # noqa: E731
         tokenizer,
         # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
@@ -250,33 +246,6 @@ def main():
 
     # Metric
     metric = evaluate.load("rouge")
-
-    def compute_metrics_original(results):
-        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
-        metrics = {}
-        for key in keys:
-            decoded_preds = (
-                process_text(results[key])
-                if not data_args.skip_special_tokens
-                else results[key]
-            )
-            # Note that since decoded_labels is getting updated after post-process, we
-            # need to compute it here for each key.
-            decoded_labels = (
-                process_text(results["gold_texts_masked"])
-                if not data_args.skip_special_tokens
-                else results["gold_texts_masked"]
-            )
-            decoded_preds, decoded_labels = postprocess_text_for_metric(
-                "rouge", decoded_preds, decoded_labels
-            )
-            key_metrics = metric.compute(
-                predictions=decoded_preds, references=decoded_labels, use_stemmer=True
-            )
-            key_metrics = {k: round(v * 100, 4) for k, v in key_metrics.items()}
-            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
-            metrics.update(key_metrics)
-        return metrics
 
     def compute_metrics(eval_preds):
         import numpy as np
