@@ -1,6 +1,8 @@
+import os
 from typing import Optional
 
 import torch
+from peft import LoraConfig, TaskType, get_peft_model
 from transformers import AutoTokenizer
 
 from .ar_warp.ar_warper import GARDiffusionLM
@@ -100,6 +102,7 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         empty_token_be_mask=diffusion_args.empty_token_be_mask,
         is_causal=model_args.is_causal,
         mask_padding_in_loss=training_args.mask_padding_in_loss,
+        token=os.environ.get("HF_TOKEN", None),
         **config_kwargs,
     )
     tokenizer_kwargs = {
@@ -110,11 +113,15 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
     }
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, **tokenizer_kwargs
+            model_args.tokenizer_name,
+            token=os.environ.get("HF_TOKEN", None),
+            **tokenizer_kwargs,
         )
     elif model_args.model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, **tokenizer_kwargs
+            model_args.model_name_or_path,
+            token=os.environ.get("HF_TOKEN", None),
+            **tokenizer_kwargs,
         )
     else:
         raise ValueError(
@@ -145,6 +152,7 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
             torch_dtype=torch_dtype,
+            token=os.environ.get("HF_TOKEN", None),
             attn_implementation="flash_attention_2"
             if model_args.use_flash_attention2
             else "eager",
@@ -163,5 +171,19 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
         model.config.pad_token_id = tokenizer.pad_token_id
+
+    # if peft, apply it here
+    if model_args.use_lora:
+        peft_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False,
+            r=model_args.lora_rank,
+            lora_alpha=model_args.lora_alpha,
+            lora_dropout=model_args.lora_dropout,
+        )
+        # we just peft the internal model.
+        # a little hacky, remove the task type wrapper class
+        # TODO: does this cook anything?
+        model.model = get_peft_model(model.model, peft_config).base_model
 
     return tokenizer, model
