@@ -21,11 +21,10 @@ gantry run -y -n tess_self_cond_tulu2_test -t tess_self_cond_tulu2_test --allow-
     --do_train \
     --do_eval \
     --max_seq_length 512 \
-    --per_device_train_batch_size 32 \
+    --per_device_train_batch_size 16 \
     --skip_special_tokens False \
-    --per_device_eval_batch_size 32 \
-    --evaluation_strategy steps \
-    --eval_steps 2000 \
+    --per_device_eval_batch_size 16 \
+    --evaluation_strategy epoch \
     --save_strategy steps \
     --report_to tensorboard \
     --overwrite_output_dir \
@@ -36,7 +35,7 @@ gantry run -y -n tess_self_cond_tulu2_test -t tess_self_cond_tulu2_test --allow-
     --num_inference_diffusion_steps 100 \
     --conditional_generation seq2seq \
     --learning_rate 3e-5 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 4 \
     --lr_scheduler_type cosine \
     --beta_schedule squaredcos_improved_ddpm \
     --top_p 0.99 \
