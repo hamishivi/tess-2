@@ -290,6 +290,11 @@ def main():
                     [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
                 )
             eval_dataset = eval_dataset.add_column("labels", labels)
+            # filter out samples without any space for generations.
+            # for roberta (512), should just be one.
+            eval_dataset = eval_dataset.filter(
+                lambda x: any([y != -100 for y in x["labels"]])
+            )
 
     def preprocess_logits_for_metrics(logits):
         return logits.argmax(dim=-1)
