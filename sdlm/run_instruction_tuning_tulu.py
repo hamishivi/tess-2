@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional, Union
 
-# import alpaca_eval
+import alpaca_eval
 import datasets
 import torch
 import transformers
@@ -23,7 +23,6 @@ from transformers.utils.versions import require_version
 
 from .arguments import get_args
 
-from .data.data_collator import DataCollatorForSeq2Seq
 from .data.data_utils import load_data
 
 from .inference.inference_utils import process_text
