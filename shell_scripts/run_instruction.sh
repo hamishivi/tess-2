@@ -11,6 +11,7 @@ gantry run -y -n tess_self_cond_tulu2_test -t tess_self_cond_tulu2_test --allow-
     --cluster ai2/allennlp-cirrascale \
     --env 'HF_HOME=/net/nfs.cirrascale/allennlp/hamishi/.hf' \
     --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+    --env 'IS_ALPACA_EVAL_2=False' \
     --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
     --venv 'base' \
     --pip requirements.txt \
