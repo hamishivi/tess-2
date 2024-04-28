@@ -45,7 +45,8 @@ def encode_with_messages_format(
     Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
     We concatenate all messages with the roles as delimiters and tokenize them together.
     """
-    messages = example["messages"]
+    # we only take the first two messages, since multi-turn is a little more complex
+    messages = example["messages"][:2]
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
 
@@ -282,9 +283,12 @@ def main():
             )
             eval_dataset = datasets.Dataset.from_dict(data)
             labels = []
+            # we dont assume a length on the response.
+            # so labels are -100 for for inputs, and 1 everywhere else.
+            # eval loss is meaningless here.
             for sample in eval_dataset["input_ids"]:
                 labels.append(
-                    [-100 if x == tokenizer.pad_token_id else x for x in sample]
+                    [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
                 )
             eval_dataset = eval_dataset.add_column("labels", labels)
 
