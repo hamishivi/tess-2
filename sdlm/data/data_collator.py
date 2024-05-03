@@ -2,7 +2,7 @@ import random
 from dataclasses import dataclass
 from enum import Enum
 from random import choices
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -307,8 +307,8 @@ class DataCollatorForCausalLMSeq2Seq:
     padding: Union[bool, str, PaddingStrategy] = True
     max_length: Optional[int] = None
     pad_to_multiple_of: Optional[int] = None
-    LLAMA_SEP: List[int] = [13, 7727, 29901]
-    MISTRAL_SEP: List[int] = [13, 3499, 28747]
+    LLAMA_SEP: Tuple[int] = (13, 7727, 29901)
+    MISTRAL_SEP: Tuple[int] = (13, 3499, 28747)
 
     def __call__(self, features):
         if "attention_mask" in features:

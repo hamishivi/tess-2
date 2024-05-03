@@ -53,8 +53,8 @@ class NIConfig(datasets.BuilderConfig):
         self,
         split_subdir="splits/default/",
         task_subdir="tasks/",
-        max_num_instances_per_task=None,
-        max_num_instances_per_eval_task=None,
+        max_num_instances_per_task: int = 100,
+        max_num_instances_per_eval_task: int = 100,
         seed=42,
         *args,
         **kwargs,
@@ -76,7 +76,8 @@ class NaturalInstructions(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIG_CLASS = NIConfig
     BUILDER_CONFIGS = [
         NIConfig(
-            name="default", description="Default config for NaturalInstructions V2"
+            name="default",
+            description="Default config for NaturalInstructions V2",
         )
     ]
     DEFAULT_CONFIG_NAME = "default"
