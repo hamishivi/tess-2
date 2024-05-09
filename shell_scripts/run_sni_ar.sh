@@ -1,37 +1,43 @@
-python -m sdlm.run_clm_glue \
+gantry run -y -n sni_mistral_ar -t sni_mistral_ar --allow-dirty \
+    --workspace ai2/tess2 \
+    --nfs \
+    --gpus 1 \
+    --priority normal \
+    --budget ai2/allennlp \
+    --cluster ai2/allennlp-cirrascale \
+    --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
+    --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+    --venv 'base' \
+    --pip requirements.txt \
+    -- python -m sdlm.run_clm_glu \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
-        --per_device_train_batch_size 16  \
-        --per_device_eval_batch_size 16 \
-        --skip_special_tokens true \
+        --dataset_name sni \
+        --output_dir /results \
         --do_train \
         --do_eval \
-        --output_dir outputs/mistral/sni/ar_baseline \
+        --max_seq_length 509 \
+        --skip_special_tokens true \
+        --per_device_train_batch_size 16 \
+        --per_device_eval_batch_size 16 \
         --evaluation_strategy steps \
-        --eval_steps 100 \
+        --eval_steps 512 \
+        --save_strategy steps \
         --report_to tensorboard \
-        --max_seq_length 509  \
-        --max_eval_samples 96 \
-        --lr_scheduler_type cosine \
-        --learning_rate 1e-5 \
+        --overwrite_output_dir \
         --pad_to_max_length \
-        --weight_decay 0.0 \
-        --top_p 0.99 \
-        --max_steps 120000 \
+        --num_train_epochs 5 \
+        --conditional_generation seq2seq \
+        --learning_rate 1e-5 \
         --gradient_accumulation_steps 4 \
+        --lr_scheduler_type cosine \
         --warmup_ratio 0.03 \
         --logging_steps 50 \
-        --save_steps 1000 \
-        --save_total_limit 2 \
-        --conditional_generation "seq2seq" \
-        --dataset_name sni \
-        --overwrite_output_dir \
+        --save_total_limit 1 \
+        --max_eval_samples 512 \
+        --preprocessing_num_workers 16 \
         --bf16 \
         --optim adamw_torch_fused \
         --gradient_checkpointing \
         --use_flash_attention2 \
-        --save_safetensors true \
         --is_causal true \
-        --mask_padding_in_loss false \
-        --generation_max_length 512 \
-        --generation_num_beams 1 \
-        --num_diffusion_steps 0 \
+        --mask_padding_in_loss false

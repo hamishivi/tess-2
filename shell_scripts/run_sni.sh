@@ -63,8 +63,8 @@ gantry run -y -n sni_100_mistral -t sni_100_mistral --allow-dirty \
         --do_train \
         --do_eval \
         --max_seq_length 512 \
-        --per_device_train_batch_size 16 \
         --skip_special_tokens true \
+        --per_device_train_batch_size 16 \
         --per_device_eval_batch_size 16 \
         --evaluation_strategy steps \
         --eval_steps 2048 \
