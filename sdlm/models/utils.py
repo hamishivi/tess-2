@@ -77,6 +77,11 @@ def is_tokenwise_cdcd_check(model):
     )
 
 
+def freeze(module):
+    for param in module.parameters():
+        param.requires_grad = False
+
+
 def load_model(model_args, data_args, training_args, diffusion_args, logger):
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -159,6 +164,8 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         ).to("cuda")
         if model_args.freeze_embedding:
             model.get_input_embeddings().requires_grad = False
+        if model_args.freeze_model:
+            freeze(model)
     else:
         logger.warning("Training new model from scratch")
         model = model_cls._from_config(config)

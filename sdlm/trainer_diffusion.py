@@ -1646,66 +1646,62 @@ class DiffusionTrainer(Trainer):
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
-    # def create_optimizer(self):
-    #     from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-    #     from transformers.trainer_pt_utils import get_parameter_names
+    def create_optimizer(self):
+        from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+        from transformers.trainer_pt_utils import get_parameter_names
 
-    #     # overriden
-    #     opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
 
-    #     if self.optimizer is None:
-    #         decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
-    #         decay_parameters = [name for name in decay_parameters if "bias" not in name]
-    #         optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-    #             self.args
-    #         )
+        if self.optimizer is not None:
+            return self.optimizer
 
-    #         # only training warping parameters...
-    #         optimizer_grouped_parameters = [
-    #             {
-    #                 "params": [
-    #                     p
-    #                     for n, p in opt_model.named_parameters()
-    #                     if (
-    #                         n in decay_parameters
-    #                         and p.requires_grad
-    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-    #                     )
-    #                 ],
-    #                 "weight_decay": self.args.weight_decay,
-    #                 "lr": optimizer_kwargs["lr"],
-    #             },
-    #             {
-    #                 "params": [
-    #                     p
-    #                     for n, p in opt_model.named_parameters()
-    #                     if (
-    #                         n not in decay_parameters
-    #                         and p.requires_grad
-    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-    #                     )
-    #                 ],
-    #                 "weight_decay": 0.0,
-    #                 "lr": optimizer_kwargs["lr"],
-    #             },
-    #             {
-    #                 "params": [
-    #                     p
-    #                     for n, p in opt_model.named_parameters()
-    #                     if (
-    #                         ("cdf" in n or "linear_l" in n or "position_l" in n)
-    #                         and p.requires_grad
-    #                     )
-    #                 ],
-    #                 "weight_decay": 0.0,
-    #                 "lr": 1e-3,
-    #             },
-    #         ]
+        decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
+        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+        optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+            self.args
+        )
 
-    #         optimizer_kwargs.pop("lr")
+        # override to apply higher lr to timestep_embed
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (
+                        n in decay_parameters
+                        and p.requires_grad
+                        and not ("timestep_embed" in n)
+                    )
+                ],
+                "weight_decay": self.args.weight_decay,
+                "lr": optimizer_kwargs["lr"],
+            },
+            {
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (
+                        n not in decay_parameters
+                        and p.requires_grad
+                        and not ("timestep_embed" in n)
+                    )
+                ],
+                "weight_decay": 0.0,
+                "lr": optimizer_kwargs["lr"],
+            },
+            {
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (("timestep_embed" in n) and p.requires_grad)
+                ],
+                "weight_decay": 0.0,
+                "lr": self.args.timestep_embed_lr,
+            },
+        ]
 
-    #         self.optimizer = optimizer_cls(
-    #             optimizer_grouped_parameters, **optimizer_kwargs
-    #         )
+        optimizer_kwargs.pop("lr")
 
-    #     return self.optimizer
+        self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+
+        return self.optimizer

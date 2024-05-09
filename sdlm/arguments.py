@@ -160,6 +160,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to freeze vocab embedding (and tied LM head)."},
     )
+    freeze_model: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to freeze the entire model."},
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):
@@ -240,6 +244,9 @@ class TrainingArguments(HFTrainingArguments):
         metadata={"help": "Whether to mask padding token in loss computation."},
     )
     generation_config: str = field(default=None)
+    timestep_embed_lr: float = field(
+        default=1e-3, metadata={"help": "LR for timestep embedding."}
+    )
 
 
 @dataclass
