@@ -157,6 +157,8 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             if model_args.use_flash_attention2
             else "eager",
         ).to("cuda")
+        if model_args.freeze_embedding:
+            model.get_input_embeddings().requires_grad = False
     else:
         logger.warning("Training new model from scratch")
         model = model_cls._from_config(config)

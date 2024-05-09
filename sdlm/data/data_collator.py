@@ -348,3 +348,12 @@ class DataCollatorForCausalLMSeq2Seq:
             torch.tensor(masks), features["input_ids"], -100
         )
         return features
+
+
+def get_sep_index(input_id, target):
+    # TODO: improve sliding window to e.g., rolling hash
+    target_length = len(target)
+    for i in range(len(input_id) - len(target) + 1):
+        if torch.equal(input_id[i : i + target_length], target):
+            return i + target_length - 1
+    raise ValueError("This is not supposed to happen")

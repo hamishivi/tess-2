@@ -156,6 +156,10 @@ class ModelArguments:
         default=0.1,
         metadata={"help": "LoRA dropout."},
     )
+    freeze_embedding: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to freeze vocab embedding (and tied LM head)."},
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.model_name_or_path is not None):

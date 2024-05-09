@@ -168,16 +168,19 @@ def main():
 
     if training_args.do_eval:
         if "validation" not in tokenized_datasets:
-            # raise ValueError("--do_eval requires a validation dataset")
-            # fallback to c4 eval
-            c4_raw_dataset = datasets.load_dataset(
-                "c4",
-                "en",
-                model_args.cache_dir,
-                use_auth_token=True if model_args.use_auth_token else None,
-                streaming=data_args.streaming,
+            # default to c4
+            c4_raw_dataset = datasets.IterableDatasetDict(
+                {
+                    "validation": datasets.load_dataset(
+                        "allenai/c4",
+                        "en",
+                        model_args.cache_dir,
+                        split="validation",
+                        use_auth_token=True if model_args.use_auth_token else None,
+                        streaming=data_args.streaming,
+                    )
+                }
             )
-            del c4_raw_dataset["train"]
             c4_tokenized_datasets = tokenize_data_new(
                 data_args, tokenizer, c4_raw_dataset, training_args
             )
