@@ -307,8 +307,12 @@ class DataCollatorForCausalLMSeq2Seq:
     padding: Union[bool, str, PaddingStrategy] = True
     max_length: Optional[int] = None
     pad_to_multiple_of: Optional[int] = None
-    LLAMA_SEP: Tuple[int] = (13, 7727, 29901)
-    MISTRAL_SEP: Tuple[int] = (13, 3499, 28747)
+    # \nsummary:
+    # LLAMA_SEP: Tuple[int] = (13, 7727, 29901)
+    # MISTRAL_SEP: Tuple[int] = (13, 3499, 28747)
+    # <sep>
+    LLAMA_SEP: Tuple[int] = (529, 19570, 29958)
+    MISTRAL_SEP: Tuple[int] = (523, 21571, 28767)
 
     def __call__(self, features):
         if "attention_mask" in features:
@@ -317,7 +321,6 @@ class DataCollatorForCausalLMSeq2Seq:
         input_ids = [feature["input_ids"][:-1] for feature in features]
         # remove sos from labels
         labels = [feature["labels"][1:] for feature in features]
-        # tokenizer.encode('\nsummary: )
 
         SEP = None
         tokenizer_name = self.tokenizer.name_or_path.lower()
