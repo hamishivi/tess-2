@@ -308,6 +308,7 @@ def main():
         tokenizer,
         # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
+        # HACK (jake): max_seq_len is 509, 3 sep tokens -> 512
         max_length=512,
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
