@@ -322,9 +322,9 @@ class DataCollatorForCausalLMSeq2Seq:
         SEP = None
         tokenizer_name = self.tokenizer.name_or_path.lower()
         if "mistral" in tokenizer_name:
-            SEP = self.MISTRAL_SEP
+            SEP = list(self.MISTRAL_SEP)
         elif "llama" in tokenizer_name:
-            SEP = self.LLAMA_SEP
+            SEP = list(self.LLAMA_SEP)
         else:
             raise ValueError("Unrecognized tokenizer.name_or_path")
 
