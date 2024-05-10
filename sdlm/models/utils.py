@@ -108,12 +108,14 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         is_causal=model_args.is_causal,
         mask_padding_in_loss=training_args.mask_padding_in_loss,
         token=os.environ.get("HF_TOKEN", None),
+        padding_side=model_args.tokenizer_padding_side,
         **config_kwargs,
     )
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
+        "padding_side": model_args.tokenizer_padding_side,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.tokenizer_name:
@@ -134,8 +136,6 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    # set padding side
-    tokenizer.padding_side = "right"
     try:
         tokenizer.add_eos_token = True
     except AttributeError:
