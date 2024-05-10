@@ -78,6 +78,10 @@ class ModelArguments:
             "help": "Pretrained tokenizer name or path if not the same as model_name"
         },
     )
+    tokenizer_padding_side: Optional[str] = field(
+        default="right",
+        metadata={"help": "Tokenizer padding side"},
+    )
     cache_dir: Optional[str] = field(
         default=None,
         metadata={
