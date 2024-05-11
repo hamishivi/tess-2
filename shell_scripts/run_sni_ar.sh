@@ -9,7 +9,7 @@ gantry run -y -n sni_mistral_ar -t sni_mistral_ar --allow-dirty \
     --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
     --venv 'base' \
     --pip requirements.txt \
-    -- python -m sdlm.run_clm_glue \
+    -- python -m sdlm.run_sni_ar \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --dataset_name sni \
         --output_dir /results \
@@ -48,7 +48,7 @@ gantry run -y -n sni_mistral_ar -t sni_mistral_ar --allow-dirty \
         --num_diffusion_steps 0 \
         --tokenizer_padding_side "left"
 
-# python -m sdlm.run_clm_glue \
+# python -m sdlm.run_sni_ar \
 #         --model_name_or_path mistralai/Mistral-7B-v0.1 \
 #         --dataset_name sni \
 #         --output_dir outputs/mistral/test \

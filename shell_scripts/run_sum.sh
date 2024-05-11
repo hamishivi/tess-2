@@ -9,7 +9,7 @@ gantry run -y -n mistral-cnn-dm-lora -t mistral-cnn-dm-lora --budget ai2/allennl
     --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
     --venv 'base' \
     --pip requirements.txt \
-    -- python -m sdlm.run_summarization \
+    -- python -m sdlm.run_sum \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --per_device_train_batch_size 16  \
         --per_device_eval_batch_size 16 \
@@ -53,7 +53,7 @@ gantry run -y -n mistral-cnn-dm-lora -t mistral-cnn-dm-lora --budget ai2/allennl
         --use_lora true
 
 # NOTE: attempted baseline
-# python -m backups.baselines.run_summarization \
+# python -m backups.baselines.run_sum \
 #         --model_name_or_path meta-llama/Llama-2-7b-hf \
 #         --per_device_train_batch_size 16  \
 #         --per_device_eval_batch_size 16 \
@@ -85,7 +85,7 @@ gantry run -y -n mistral-cnn-dm-lora -t mistral-cnn-dm-lora --budget ai2/allennl
 #         --save_safetensors true
 
 # NOTE: tess v1 repro
-# python -m sdlm.run_summarization \
+# python -m sdlm.run_sum \
 #         --model_name_or_path roberta-base \
 #         --do_train \
 #         --do_eval \

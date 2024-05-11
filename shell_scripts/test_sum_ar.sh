@@ -1,4 +1,4 @@
-python -m sdlm.run_clm \
+python -m sdlm.run_sum_ar \
         --model_name_or_path meta-llama/Llama-2-7b-hf \
         --per_device_train_batch_size 16  \
         --per_device_eval_batch_size 16 \
