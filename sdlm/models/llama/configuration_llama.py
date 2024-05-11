@@ -19,6 +19,7 @@ class LlamaDiffusionConfig(LlamaConfig):
         empty_token_be_mask=False,
         is_causal: bool = False,
         mask_padding_in_loss: bool = False,
+        padding_side: str = "right",
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -35,3 +36,4 @@ class LlamaDiffusionConfig(LlamaConfig):
         self.empty_token_be_mask = empty_token_be_mask
         self.is_causal = is_causal
         self.mask_padding_in_loss = mask_padding_in_loss
+        self.padding_side = padding_side

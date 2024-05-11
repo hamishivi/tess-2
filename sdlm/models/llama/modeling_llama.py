@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
-from torch.nn.utils.rnn import pad_sequence
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import MaskedLMOutput
 from transformers.models.llama.modeling_llama import (  # RobertaLMHead,
@@ -16,6 +15,7 @@ from transformers.models.llama.modeling_llama import (  # RobertaLMHead,
 from transformers.utils import logging
 
 from sdlm.data.data_collator import DataCollatorForCausalLMSeq2Seq
+from sdlm.data.data_utils import pad_sequence
 from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
@@ -370,8 +370,11 @@ class LlamaForSeq2SeqLM(LlamaForCausalLM):
             end_of_sep_idx = get_sep_index(input_id, SEP)
             context_tokens.append(input_id[: end_of_sep_idx + 1])
         input_ids = pad_sequence(
-            context_tokens, padding_value=self.config.pad_token_id
-        ).T
+            context_tokens,
+            padding_value=self.config.pad_token_id,
+            batch_first=True,
+            padding_side=self.config.padding_side,
+        )
         kwargs["input_ids"] = input_ids.to(self.device)
         kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
         outputs = super().generate(*args, **kwargs)

@@ -3,6 +3,7 @@ from itertools import chain
 
 import torch
 from datasets import DatasetDict, load_dataset
+from torch.nn.utils.rnn import pad_sequence as torch_pad_sequence
 
 SMALL_GLUE_DATA = ["cola", "wnli", "rte", "mrpc", "stsb"]
 LARGE_GLUE_DATA = ["qnli", "qqp", "sst2"]
@@ -350,3 +351,15 @@ def split_glue(raw_datasets, dataset_name, seed):
     else:
         raise NotImplementedError
     return raw_datasets
+
+
+def pad_sequence(sequences, padding_value, batch_first, padding_side):
+    if padding_side == "right":
+        return torch_pad_sequence(
+            sequences, padding_value=padding_value, batch_first=batch_first
+        )
+    return torch_pad_sequence(
+        [sequence.flip(0) for sequence in sequences],
+        padding_value=padding_value,
+        batch_first=batch_first,
+    ).flip(1)

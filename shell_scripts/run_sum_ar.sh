@@ -7,7 +7,7 @@ python -m sdlm.run_sum_ar \
     --do_eval \
     --evaluation_strategy steps \
     --report_to tensorboard \
-    --max_seq_length 1166 \
+    --max_seq_length 1167 \
     --max_source_length 1024 \
     --max_target_length 142 \
     --lr_scheduler_type cosine \
@@ -29,7 +29,7 @@ python -m sdlm.run_sum_ar \
     --save_safetensors true \
     --is_causal true \
     --mask_padding_in_loss false \
-    --generation_max_length 1166 \
+    --generation_max_length 1167 \
     --generation_num_beams 1 \
     --num_diffusion_steps 0 \
     --tokenizer_padding_side "left" \
@@ -57,7 +57,7 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --eval_steps 1 \
-        --save_steps 1 \
+        --save_steps 5 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --output_dir outputs/test

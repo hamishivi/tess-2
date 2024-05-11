@@ -4,7 +4,7 @@ python -m sdlm.run_sni_ar \
     --dataset_name sni \
     --do_train \
     --do_eval \
-    --max_seq_length 1152 \
+    --max_seq_length 1153 \
     --max_source_length 1024 \
     --max_target_length 128 \
     --skip_special_tokens true \
@@ -29,7 +29,7 @@ python -m sdlm.run_sni_ar \
     --use_flash_attention2 \
     --is_causal true \
     --mask_padding_in_loss false \
-    --generation_max_length 1152 \
+    --generation_max_length 1153 \
     --generation_num_beams 1 \
     --num_diffusion_steps 0 \
     --tokenizer_padding_side "left" \
@@ -57,7 +57,7 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --eval_steps 1 \
-        --save_steps 1 \
+        --save_steps 5 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --output_dir outputs/test

@@ -107,8 +107,8 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         empty_token_be_mask=diffusion_args.empty_token_be_mask,
         is_causal=model_args.is_causal,
         mask_padding_in_loss=training_args.mask_padding_in_loss,
-        token=os.environ.get("HF_TOKEN", None),
         padding_side=model_args.tokenizer_padding_side,
+        token=os.environ.get("HF_TOKEN", None),
         **config_kwargs,
     )
     tokenizer_kwargs = {

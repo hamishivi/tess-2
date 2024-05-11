@@ -58,7 +58,7 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --eval_steps 1 \
-        --save_steps 1 \
+        --save_steps 5 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --output_dir outputs/test
