@@ -16,7 +16,6 @@ python -m sdlm.run_glue \
     --simplex_value 5 \
     --num_train_epochs 2 \
     --num_diffusion_steps 5000 \
-    --num_inference_diffusion_steps 100 500 1000 \
     --conditional_generation seq2seq \
     --learning_rate 1e-5 \
     --lr_scheduler_type cosine \
@@ -53,6 +52,7 @@ if [ ! -z "${BEAKER}" ]; then
         --save_steps 400 \
         --max_eval_samples 512 \
         --gradient_accumulation_steps 4 \
+        --num_inference_diffusion_steps 50 100 200 \
         --beaker \
         --output_dir /results
 else
@@ -61,5 +61,6 @@ else
         --save_steps 5 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
+        --num_inference_diffusion_steps 10 \
         --output_dir outputs/test
 fi
