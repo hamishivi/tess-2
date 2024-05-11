@@ -14,7 +14,7 @@ gantry run -y -n tess_self_cond_tulu2_test -t tess_self_cond_tulu2_test --allow-
     --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
     --venv 'base' \
     --pip requirements.txt \
-    -- python -m sdlm.run_instruction_tuning_tulu \
+    -- python -m sdlm.run_instruct \
     --model_name_or_path roberta-base \
     --dataset_name allenai/tulu-v2-sft-mixture \
     --output_dir /results \
