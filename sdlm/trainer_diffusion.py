@@ -1696,7 +1696,7 @@ class DiffusionTrainer(Trainer):
                     if (("timestep_embed" in n) and p.requires_grad)
                 ],
                 "weight_decay": 0.0,
-                "lr": self.args.timestep_embed_lr,
+                "lr": self.args.timestep_embed_lr or self.args.learning_rate,
             },
         ]
 

@@ -248,8 +248,8 @@ class TrainingArguments(HFTrainingArguments):
         metadata={"help": "Whether to mask padding token in loss computation."},
     )
     generation_config: str = field(default=None)
-    timestep_embed_lr: float = field(
-        default=1e-3, metadata={"help": "LR for timestep embedding."}
+    timestep_embed_lr: Optional[float] = field(
+        default=None, metadata={"help": "LR for timestep embedding."}
     )
 
 
