@@ -125,6 +125,7 @@ def main():
         use_fast=model_args.use_fast_tokenizer,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
+        padding_side=model_args.tokenizer_padding_side,
     )
 
     # Downloading and loading a dataset from the hub.
@@ -142,8 +143,8 @@ def main():
             tokenizer,
             text_only=True,
             num_pos_examples=0,
-            max_source_length=data_args.max_seq_length,
-            max_target_length=data_args.max_seq_length,
+            max_source_length=data_args.max_source_length,
+            max_target_length=data_args.max_target_length,
         )
         raw_datasets = raw_datasets.map(
             collator,
@@ -276,7 +277,7 @@ def main():
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # Get the metric function
-    metric = get_glue_metrics(data_args.dataset_name)
+    metric = get_glue_metrics(data_args.dataset_name)[0]
 
     def compute_metrics(eval_preds):
         import numpy as np
@@ -293,9 +294,7 @@ def main():
         decoded_preds, decoded_labels = postprocess_text_for_metric(
             "rouge", decoded_preds, decoded_labels
         )
-        result = metric.compute(
-            predictions=decoded_preds, references=decoded_labels, use_stemmer=True
-        )
+        result = metric(predictions=decoded_preds, targets=decoded_labels)
         result = {k: round(v * 100, 4) for k, v in result.items()}
         prediction_lens = [
             np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds
@@ -308,8 +307,7 @@ def main():
         tokenizer,
         # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
-        # HACK (jake): max_seq_len is 509, 3 sep tokens -> 512
-        max_length=512,
+        max_length=data_args.max_seq_length,
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
 

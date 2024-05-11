@@ -243,6 +243,7 @@ class SpanInfillingDataCollator:
             max_length=self.max_length,
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors=self.return_tensors,
+            return_attention_mask=False,
         )
         if "attention_mask" in batch:
             del batch["attention_mask"]
@@ -288,6 +289,7 @@ class DataCollatorForSeq2Seq:
             max_length=self.max_length,
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors="pt",
+            return_attention_mask=False,
         )
         batch_length = features["input_ids"].shape[1]
 
@@ -337,15 +339,20 @@ class DataCollatorForCausalLMSeq2Seq:
         features = self.tokenizer.pad(
             {"input_ids": input_target},
             padding=self.padding,
-            max_length=self.max_length,
+            max_length=self.max_length + len(SEP),
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors="pt",
+            return_attention_mask=True,
         )
         batch_length = features["input_ids"].shape[1]
         masks = []
-        for input in input_ids:
+        for input, label in zip(input_ids, labels):
             context_length = len(input) + len(SEP)
-            mask = context_length * [False] + (batch_length - context_length) * [True]
+            label_length = len(label)
+            pad_length = batch_length - context_length - label_length
+            if self.tokenizer.padding_side == "right":
+                raise NotImplementedError
+            mask = (context_length + pad_length) * [False] + label_length * [True]
             masks.append(mask)
         features["labels"] = torch.where(
             torch.tensor(masks), features["input_ids"], -100

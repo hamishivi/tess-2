@@ -183,6 +183,7 @@ class MistralForSeq2SeqLM(MistralForCausalLM):
         ).T
         kwargs["input_ids"] = input_ids.to(self.device)
         kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
+        kwargs["use_cache"] = False
         outputs = super().generate(*args, **kwargs)
         seq_len = input_ids.size(1)
         output_ids = outputs[:, seq_len:]
