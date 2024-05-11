@@ -7,6 +7,7 @@ python -m sdlm.run_mlm \
     --do_eval \
     --evaluation_strategy steps \
     --report_to tensorboard \
+    --overwrite_output_dir \
     --max_seq_length 512  \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
