@@ -144,6 +144,7 @@ def main():
         raw_datasets = load_dataset(
             "sdlm/data/sni/sni_dataset.py",
             cache_dir=model_args.cache_dir,
+            trust_remote_code=True,
             use_auth_token=True if model_args.use_auth_token else None,
         )
         # sni has validation / test
