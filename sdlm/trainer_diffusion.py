@@ -325,7 +325,7 @@ class DiffusionTrainer(Trainer):
     def light_prediction_step(
         self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        with torch.no_grad():
+        with torch.inference_mode():
             inputs = self._prepare_inputs(inputs)
             # Truncate the length if needed.
             if self.data_args.truncation_length > 0:
@@ -445,7 +445,7 @@ class DiffusionTrainer(Trainer):
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         inputs = self._prepare_inputs(inputs)
         # full inference.
-        with torch.no_grad():
+        with torch.inference_mode():
             with self.compute_loss_context_manager():
                 for i, x in enumerate(
                     pipeline(
