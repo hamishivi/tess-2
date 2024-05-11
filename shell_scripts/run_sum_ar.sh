@@ -5,24 +5,19 @@ python -m sdlm.run_sum_ar \
     --per_device_eval_batch_size 16 \
     --do_train \
     --do_eval \
-    --output_dir /results \
     --evaluation_strategy steps \
-    --eval_steps 1 \
     --report_to tensorboard \
     --max_seq_length 1166 \
     --max_source_length 1024 \
     --max_target_length 142 \
-    --max_eval_samples 96 \
     --lr_scheduler_type cosine \
     --learning_rate 1e-5 \
     --pad_to_max_length \
     --weight_decay 0.0 \
     --top_p 0.99 \
     --max_steps 120000 \
-    --gradient_accumulation_steps 4 \
     --warmup_steps 2000 \
     --logging_steps 50 \
-    --save_steps 1000 \
     --save_total_limit 1 \
     --conditional_generation "seq2seq" \
     --dataset_name cnn_dailymail --dataset_config "3.0.0" \
@@ -37,22 +32,33 @@ python -m sdlm.run_sum_ar \
     --generation_max_length 1166 \
     --generation_num_beams 1 \
     --num_diffusion_steps 0 \
-    --tokenizer_padding_side "left"
+    --tokenizer_padding_side "left" \
 "
 
-if [ -z "${BEAKER_EXP}" ]; then
-        gantry run -y -n cnndm_mistral_ar -t cnndm_mistral_ar --allow-dirty \
-                --workspace ai2/tess2 \
-                --nfs \
-                --gpus 1 \
-                --priority normal \
-                --budget ai2/allennlp \
-                --cluster ai2/allennlp-cirrascale \
-                --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
-                --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
-                --venv 'base' \
-                --pip requirements.txt \
-                -- ${CMD}
+if [ ! -z "${BEAKER}" ]; then
+    gantry run -y -n cnndm_mistral_ar -t cnndm_mistral_ar --allow-dirty \
+        --workspace ai2/tess2 \
+        --nfs \
+        --gpus 1 \
+        --priority normal \
+        --budget ai2/allennlp \
+        --cluster ai2/allennlp-cirrascale \
+        --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
+        --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+        --venv 'base' \
+        --pip requirements.txt \
+        -- ${CMD} \
+        --eval_steps 500 \
+        --save_steps 1000 \
+        --max_eval_samples 96 \
+        --gradient_accumulation_steps 4 \
+        --beaker \
+        --output_dir /results
 else
-        ${CMD}
+    ${CMD} \
+        --eval_steps 1 \
+        --save_steps 1 \
+        --max_eval_samples 16 \
+        --gradient_accumulation_steps 1 \
+        --output_dir outputs/test
 fi

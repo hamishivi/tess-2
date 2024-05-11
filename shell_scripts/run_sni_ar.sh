@@ -2,7 +2,6 @@ CMD="
 python -m sdlm.run_sni_ar \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
     --dataset_name sni \
-    --output_dir /results \
     --do_train \
     --do_eval \
     --max_seq_length 1152 \
@@ -12,7 +11,6 @@ python -m sdlm.run_sni_ar \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 16 \
     --evaluation_strategy steps \
-    --eval_steps 256 \
     --save_strategy steps \
     --report_to tensorboard \
     --overwrite_output_dir \
@@ -20,12 +18,10 @@ python -m sdlm.run_sni_ar \
     --num_train_epochs 4 \
     --conditional_generation seq2seq \
     --learning_rate 1e-5 \
-    --gradient_accumulation_steps 4 \
     --lr_scheduler_type cosine \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
     --save_total_limit 1 \
-    --max_eval_samples 512 \
     --preprocessing_num_workers 16 \
     --bf16 \
     --optim adamw_torch_fused \
@@ -36,10 +32,10 @@ python -m sdlm.run_sni_ar \
     --generation_max_length 1152 \
     --generation_num_beams 1 \
     --num_diffusion_steps 0 \
-    --tokenizer_padding_side "left"
+    --tokenizer_padding_side "left" \
 "
 
-if [ -z "${GANTRY}" ]; then
+if [ ! -z "${BEAKER}" ]; then
     gantry run -y -n sni_mistral_ar -t sni_mistral_ar --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
@@ -51,7 +47,18 @@ if [ -z "${GANTRY}" ]; then
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
         --venv 'base' \
         --pip requirements.txt \
-        -- ${CMD}
+        -- ${CMD} \
+        --eval_steps 200 \
+        --save_steps 400 \
+        --max_eval_samples 512 \
+        --gradient_accumulation_steps 4 \
+        --beaker \
+        --output_dir /results
 else
-    ${CMD}
+    ${CMD} \
+        --eval_steps 1 \
+        --save_steps 1 \
+        --max_eval_samples 16 \
+        --gradient_accumulation_steps 1 \
+        --output_dir outputs/test
 fi
