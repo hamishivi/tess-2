@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional, Union
 
-# import alpaca_eval
+import alpaca_eval
 import datasets
 import torch
 import transformers
@@ -23,10 +23,9 @@ from transformers.utils.versions import require_version
 
 from .arguments import get_args
 
-# from .data.data_collator import DataCollatorForSeq2Seq
 from .data.data_utils import load_data
 
-# from .inference.inference_utils import process_text
+from .inference.inference_utils import process_text
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainer_diffusion import DiffusionTrainer
@@ -45,7 +44,8 @@ def encode_with_messages_format(
     Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
     We concatenate all messages with the roles as delimiters and tokenize them together.
     """
-    messages = example["messages"]
+    # we only take the first two messages, since multi-turn is a little more complex
+    messages = example["messages"][:2]
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
 
@@ -282,11 +282,19 @@ def main():
             )
             eval_dataset = datasets.Dataset.from_dict(data)
             labels = []
+            # we dont assume a length on the response.
+            # so labels are -100 for for inputs, and 1 everywhere else.
+            # eval loss is meaningless here.
             for sample in eval_dataset["input_ids"]:
                 labels.append(
-                    [-100 if x == tokenizer.pad_token_id else x for x in sample]
+                    [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
                 )
             eval_dataset = eval_dataset.add_column("labels", labels)
+            # filter out samples without any space for generations.
+            # for roberta (512), should just be one.
+            eval_dataset = eval_dataset.filter(
+                lambda x: any([y != -100 for y in x["labels"]])
+            )
 
     def preprocess_logits_for_metrics(logits):
         return logits.argmax(dim=-1)
@@ -322,25 +330,25 @@ def main():
 
     # Metric
     def compute_metrics(results):
-        # keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
+        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
-        # eval_data = load_dataset("tatsu-lab/alpaca_eval")["eval"]
-        # for key in keys:
-        #     decoded_preds = (
-        #         process_text(results[key])
-        #         if not data_args.skip_special_tokens
-        #         else results[key]
-        #     )
+        eval_data = load_dataset("tatsu-lab/alpaca_eval")["eval"]
+        for key in keys:
+            decoded_preds = (
+                process_text(results[key])
+                if not data_args.skip_special_tokens
+                else results[key]
+            )
         # for each decoded sample, format into alpacaeval setup
-        # decoded_preds = [{"output": y, 'instruction': x['instruction'], 'generator': 'tess2'} for x, y in zip(eval_data, decoded_preds)]
-        # df_leaderboard, _ = alpaca_eval.evaluate(
-        #     decoded_preds,
-        #     is_overwrite_leaderboard=True,
-        #     is_return_instead_of_print=True
-        # )
-        # # grab tess2 results
-        # key_metrics = df_leaderboard.loc['tess2'].to_dict()
-        # metrics.update(key_metrics)
+        decoded_preds = [{"output": y, 'instruction': x['instruction'], 'generator': 'tess2'} for x, y in zip(eval_data, decoded_preds)]
+        df_leaderboard, _ = alpaca_eval.evaluate(
+            decoded_preds,
+            is_overwrite_leaderboard=True,
+            is_return_instead_of_print=True
+        )
+        # grab tess2 results
+        key_metrics = df_leaderboard.loc['tess2'].to_dict()
+        metrics.update(key_metrics)
         return metrics
 
     # Initialize our Trainer
