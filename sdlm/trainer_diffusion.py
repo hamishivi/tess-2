@@ -212,9 +212,9 @@ class DiffusionTrainer(Trainer):
         # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
         # original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
-        inputs.update(
-            {"original_timesteps": scale(original_timesteps, len(self.noise_scheduler))}
-        )
+        # inputs.update(
+        #     {"original_timesteps": scale(original_timesteps, len(self.noise_scheduler))}
+        # )
 
         inputs.update(
             {
@@ -222,10 +222,10 @@ class DiffusionTrainer(Trainer):
                 "simplex": noisy_simplex,
             }
         )
-        inputs.update({"max_timestep": len(self.noise_scheduler)})
+        # inputs.update({"max_timestep": len(self.noise_scheduler)})
         if self.diffusion_args.self_condition is not None:
             previous_pred = None
-            previous_hidden = None
+            # previous_hidden = None
             if np.random.rand(1) > 0.5:
                 next_timestep = inputs.pop("timesteps")
                 next_simplex = inputs.pop("simplex")
@@ -269,7 +269,7 @@ class DiffusionTrainer(Trainer):
                     logits_projection_fct,
                 )
                 # following rest of self-conditioning, don't backprop through.
-                previous_hidden = outputs.hidden_states.detach()
+                # previous_hidden = outputs.hidden_states.detach()
                 # pop timestep/simplex and put the old ones back.
                 inputs.update(
                     {
@@ -278,15 +278,15 @@ class DiffusionTrainer(Trainer):
                     }
                 )
             inputs.update({"previous_pred": previous_pred})
-            inputs.update({"previous_hidden": previous_hidden})
+            # inputs.update({"previous_hidden": previous_hidden})
         else:
             inputs.update({"previous_pred": None})
-            inputs.update({"previous_hidden": None})
-            previous_hidden = None
+            # inputs.update({"previous_hidden": None})
+            # previous_hidden = None
         # NOTE: we do this after computation of self-conditioning to not affect that one.
-        inputs.update(
-            {"classifier_free_guidance_in_train": self.classifier_free_guidance}
-        )
+        # inputs.update(
+        #     {"classifier_free_guidance_in_train": self.classifier_free_guidance}
+        # )
         # re-warp based on previous hidden state
         if is_cdcd_check(self.model):
             # replace masked tokens with <mask> token.
@@ -397,10 +397,10 @@ class DiffusionTrainer(Trainer):
                     "simplex": noisy_simplex,
                 }
             )
-            inputs.update({"max_timestep": len(self.noise_scheduler)})
+            # inputs.update({"max_timestep": len(self.noise_scheduler)})
             if self.diffusion_args.self_condition is not None:
                 previous_pred = None
-                last_hidden_state = None
+                # last_hidden_state = None
                 if np.random.rand(1) > 0.5:
                     outputs = model(**inputs, previous_pred=previous_pred)
                     logits_projection_fct = lambda x: logits_projection(  # noqa: E731
@@ -415,17 +415,17 @@ class DiffusionTrainer(Trainer):
                         outputs.logits,
                         logits_projection_fct,
                     )
-                    last_hidden_state = outputs.hidden_states
+                    # last_hidden_state = outputs.hidden_states
                 inputs.update(
                     {
                         "previous_pred": previous_pred,
-                        "previous_hidden": last_hidden_state,
+                        # "previous_hidden": last_hidden_state,
                     }
                 )
             # NOTE: we do this after computation of self-conditioning to not affect that one.
-            inputs.update(
-                {"classifier_free_guidance_in_train": self.classifier_free_guidance}
-            )
+            # inputs.update(
+            #     {"classifier_free_guidance_in_train": self.classifier_free_guidance}
+            # )
             with self.compute_loss_context_manager():
                 loss = self.compute_loss(model, inputs)
 

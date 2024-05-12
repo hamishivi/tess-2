@@ -155,8 +155,8 @@ def main():
             tokenizer,
             text_only=True,
             num_pos_examples=0,
-            max_source_length=data_args.max_seq_length,
-            max_target_length=data_args.max_seq_length,
+            max_source_length=data_args.max_source_length,
+            max_target_length=data_args.max_target_length,
         )
         raw_datasets = raw_datasets.map(
             collator,

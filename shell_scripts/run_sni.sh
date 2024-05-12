@@ -4,10 +4,12 @@ python -m sdlm.run_glue \
     --dataset_name sni \
     --do_train \
     --do_eval \
-    --max_seq_length 512 \
+    --max_seq_length 1024 \
+    --max_source_length 896 \
+    --max_target_length 128 \
     --skip_special_tokens true \
-    --per_device_train_batch_size 16 \
-    --per_device_eval_batch_size 16 \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
     --evaluation_strategy steps \
     --save_strategy steps \
     --report_to tensorboard \
