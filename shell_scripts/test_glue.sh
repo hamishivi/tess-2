@@ -1,0 +1,30 @@
+python -m sdlm.run_glue \
+    --model_name_or_path roberta-base \
+    --dataset_name stsb \
+    --output_dir tmp \
+    --do_train \
+    --do_eval \
+    --max_seq_length 128 \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 32 \
+    --evaluation_strategy epoch \
+    --save_strategy steps \
+    --report_to tensorboard \
+    --overwrite_output_dir \
+    --pad_to_max_length \
+    --simplex_value 5 \
+    --max_train_samples 100 \
+    --num_train_epochs 3 \
+    --num_diffusion_steps 5000 \
+    --num_inference_diffusion_steps 500 \
+    --conditional_generation seq2seq \
+    --learning_rate 3e-5 \
+    --gradient_accumulation_steps 1 \
+    --lr_scheduler_type cosine \
+    --beta_schedule squaredcos_improved_ddpm \
+    --top_p 0.99 \
+    --warmup_ratio 0.03 \
+    --logging_steps 50 \
+    --save_total_limit 1 \
+    --max_eval_samples 50 \
+    --skip_special_tokens False  # required to cut tokens at the right spot

@@ -1,37 +1,66 @@
 """Implements data preprocessings including the T5 preprocessing."""
-import numpy as np
 import itertools
-import pdb
+
+import numpy as np
 import torch
 
 
 # TODO: here the max perhaps needs to be also the half-length.
-def gpt_span_mask(length, pad_length, use_half_length_as_prefix_size, eval_context_size):
+def gpt_span_mask(
+    length, pad_length, use_half_length_as_prefix_size, eval_context_size
+):
     """Given the length and pad_length for an input generates a prefix (GPT-style) mask."""
     # Start of the sequence is not masked, so we consider length-1.
     # TODO: we need an assert for length not be smaller than a value.
     if not use_half_length_as_prefix_size:
         # high should be higher than low, otherwise we set prefix_size=1.
-        prefix_size = np.random.randint(low=1, high=int((length - 1) / 2)) if length >= 5 else 1
+        prefix_size = (
+            np.random.randint(low=1, high=int((length - 1) / 2)) if length >= 5 else 1
+        )
     else:
         # If eval_context_size is set, we consider it, otherwise we use half of the given length as
         # context. Note that since the start token is also masked, we deduct one from the given
         # context size.
-        prefix_size = eval_context_size - 1 if eval_context_size is not None else int((length - 1) / 2)
+        prefix_size = (
+            eval_context_size - 1
+            if eval_context_size is not None
+            else int((length - 1) / 2)
+        )
     # The start token is not masked.
-    return [False] + [False] * prefix_size + [True] * (length - prefix_size - 1) + [False] * pad_length
+    return (
+        [False]
+        + [False] * prefix_size
+        + [True] * (length - prefix_size - 1)
+        + [False] * pad_length
+    )
 
 
-def gpt_span_mask_batch(batch, use_half_length_as_prefix_size=False, eval_context_size=None):
+def gpt_span_mask_batch(
+    batch, use_half_length_as_prefix_size=False, eval_context_size=None
+):
     lengths = [len(feature["input_ids"]) for feature in batch]
     max_length = max(lengths)
     masks = [
-        gpt_span_mask(length, max_length - length, use_half_length_as_prefix_size, eval_context_size) for length in lengths
+        gpt_span_mask(
+            length,
+            max_length - length,
+            use_half_length_as_prefix_size,
+            eval_context_size,
+        )
+        for length in lengths
     ]
     return torch.tensor(masks)
 
 
-def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None, pad_length=None):
+def uncond_span_mask_batch(batch):
+    lengths = [len(feature["input_ids"]) for feature in batch]
+    max_length = max(lengths)
+    return torch.ones((len(batch), max_length), dtype=torch.bool)
+
+
+def t5_random_spans_mask(
+    length, mask_ratio, mean_mask_span_length=3.0, rng=None, pad_length=None
+):
     """Noise mask consisting of random spans of mask tokens.
 
     The number of mask tokens and the number of mask spans and non-mask spans
@@ -69,10 +98,15 @@ def t5_random_spans_mask(length, mask_ratio, mean_mask_span_length=3.0, rng=None
     num_mask_spans = max(num_mask_spans, 1)
     num_nonmask_tokens = length - num_mask_tokens
     mask_span_lengths = _random_segmentation(num_mask_tokens, num_mask_spans, rng=rng)
-    nonmask_span_lengths = _random_segmentation(num_nonmask_tokens, num_mask_spans, rng=rng)
+    nonmask_span_lengths = _random_segmentation(
+        num_nonmask_tokens, num_mask_spans, rng=rng
+    )
     mask = list(
         itertools.chain.from_iterable(
-            [[False] * nonmask_span_lengths[k] + [True] * mask_span_lengths[k] for k in range(num_mask_spans)]
+            [
+                [False] * nonmask_span_lengths[k] + [True] * mask_span_lengths[k]
+                for k in range(num_mask_spans)
+            ]
         )
     )[:orig_length]
     # Start and end of the sequence mask are set to False. Again since this is not line_by_line, we
@@ -87,7 +121,12 @@ def t5_random_spans_mask_batch(batch, mask_ratio, mean_mask_span_length=3.0, rng
     """Given not padded inputs, generates the T5 mask for each input."""
     lengths = [len(feature["input_ids"]) for feature in batch]
     max_length = max(lengths)
-    masks = [t5_random_spans_mask(length, mask_ratio, mean_mask_span_length, rng, max_length - length) for length in lengths]
+    masks = [
+        t5_random_spans_mask(
+            length, mask_ratio, mean_mask_span_length, rng, max_length - length
+        )
+        for length in lengths
+    ]
     return torch.tensor(masks)
 
 

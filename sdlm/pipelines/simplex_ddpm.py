@@ -4,11 +4,12 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import BaseOutput
 
-from inference.inference_utils import logits_projection
-from utils import scale, self_condition_preds
+from sdlm.inference.inference_utils import logits_projection
+from sdlm.models.utils import is_cdcd_check
+from sdlm.utils import scale, self_condition_preds
 
 
 @dataclass
@@ -24,6 +25,10 @@ class SimplexDiffusionPipelineOutput(BaseOutput):
     simplex: np.ndarray
     logits: np.ndarray
     loss: np.ndarray
+
+
+def yield_func(x):
+    yield x
 
 
 class SimplexDDPMPipeline(DiffusionPipeline):
@@ -62,11 +67,11 @@ class SimplexDDPMPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        batch_size: int = 1,
         seq_length: int = 512,
         generator: Optional[torch.Generator] = None,
         batch: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 1.0,
+        is_generator: bool = False,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         r"""
         Args:
@@ -99,6 +104,8 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # TODO(rabeeh): is giving the length cheating for this setting?
             # Adapts the sequence length to the given `span_mask`'s length.
             seq_length = batch["input_ids"].shape[1]
+        # idk why i have the bsz argument.
+        batch_size = batch["input_ids"].shape[0]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(
             simplex_shape, generator=generator, device=self.device
@@ -110,10 +117,32 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         logits_projection_fct = lambda x: logits_projection(  # noqa: E731
             x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
         )
+        losses = []
+        previous_hidden = None
 
+        warped_steps = []
+        prev_t = 0
         for t in self.progress_bar(self.scheduler.timesteps):
-            # TODO(rabeeh): also check without the scale.
+            original_t = torch.tensor([t], device=self.device).expand(
+                batch_size, seq_length
+            )
+            if is_cdcd_check(self.model):
+                # warp timesteps based on cdf
+                # we are in inference mode, anything in span_mask is to gen.
+                token_inputs = torch.where(
+                    batch["span_mask"], 50264, batch["input_ids"]
+                )
+                t = self.model.warp_timesteps(
+                    original_t,
+                    t_min=0,
+                    t_max=len(self.scheduler) - 1,
+                    token_input=token_inputs,
+                    span_mask=batch["span_mask"],
+                )
+            else:
+                t = original_t
             t_scaled = scale(t, len(self.scheduler))
+            warped_steps.append(t)
             """
             if classifier_free_guidance:
                 if self.classifier_free_uncond_input == "empty_token":
@@ -138,9 +167,12 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 if self.model.config.self_condition
                 else None,
                 classifier_free_guidance=classifier_free_guidance,
-                # unconditional_simplex=uncond_input if classifier_free_guidance else None,
+                reduce_loss="none",
+                max_timestep=len(self.scheduler),
+                previous_hidden=previous_hidden,
             )
             model_output_logits = model_output.logits
+            previous_hidden = model_output.hidden_states
 
             # Performs classifier-free guidance.
             if classifier_free_guidance:
@@ -172,14 +204,51 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # Projection.
             projected_logits = logits_projection_fct(model_output_logits)
 
+            old_simplex = simplex
+
             # 2. compute previous logits: x_t -> x_t-1
             noise = self.simplex_value * torch.randn(
                 simplex_shape, generator=generator, device=self.device
             )
+            if is_cdcd_check(self.model):
+                # warp timesteps based on cdf
+                token_inputs = torch.where(
+                    batch["span_mask"], 50264, batch["input_ids"]
+                )
+                prev_t = self.model.warp_timesteps(
+                    original_t - 1,
+                    t_min=0,
+                    t_max=len(self.scheduler) - 1,
+                    token_input=token_inputs,
+                    span_mask=batch["span_mask"],
+                ).long()
+                # since the tokenwise can do some wild stuff.
+                prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)
+            else:
+                prev_t = original_t - 1
             simplex = self.scheduler.step(
-                projected_logits, t, noise, generator=generator
+                projected_logits,
+                t,
+                prev_t,
+                noise,
+                generator=generator,
             ).prev_sample
 
+            # keep loss for logging
+            losses.append(model_output.loss.detach().cpu())
+
+            # yield over it. (prolly not optimal, but whatever)
+            yield SimplexDiffusionPipelineOutput(
+                simplex=old_simplex, logits=model_output_logits, loss=losses[-1]
+            )
+        # we take the mean loss over all timesteps
+        loss = torch.stack(losses, dim=0)
+        # from matplotlib import pyplot as plt
+        # warped_steps = torch.stack(warped_steps, dim=0)
+        # for i in range(warped_steps.shape[1]):
+        #     plt.plot(warped_steps[:, i, 256:].cpu())
+        #     plt.savefig(f"warps_prefix_tokenwise/warped_{i}.png")
+        #     plt.clf()
         return SimplexDiffusionPipelineOutput(
-            simplex=simplex, logits=model_output_logits, loss=model_output.loss
+            simplex=simplex, logits=model_output_logits, loss=loss
         )

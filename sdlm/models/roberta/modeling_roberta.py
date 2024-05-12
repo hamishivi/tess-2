@@ -14,7 +14,7 @@ from transformers.models.roberta.modeling_roberta import (
 )
 from transformers.utils import logging
 
-from utils import convert_to_simplex, mix_values_based_on_self_condition
+from sdlm.utils import convert_to_simplex, mix_values_based_on_self_condition
 
 logger = logging.get_logger(__name__)
 
@@ -40,12 +40,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.lm_head = RobertaLMHead(config)
 
-        # The LM head weights require special treatment only when they are tied with the word embeddings
-        self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
+        # # The LM head weights require special treatment only when they are tied with the word embeddings
+        # self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
 
-        self.vocab_to_hidden_dim_embed = nn.Linear(
-            config.vocab_size, config.hidden_size, bias=False
-        )
+        # self.vocab_to_hidden_dim_embed = nn.Linear(
+        #     config.vocab_size, config.hidden_size, bias=False
+        # )
         self.timestep_embed = nn.Linear(1, config.hidden_size, bias=True)
 
         if self.config.self_condition is not None and self.config.deepmind_conditional:
@@ -80,11 +80,16 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def post_init(self):
-        super().post_init()
-        self.vocab_to_hidden_dim_embed.weight.data = (
-            self.get_input_embeddings().weight.data.T
-        )
+    # run embedding matrix as linear layer
+    def vocab_to_hidden_dim_embed(self, input_data):
+        return F.linear(input_data, self.roberta.embeddings.word_embeddings.weight.T)
+
+    # def post_init(self):
+    #     super().post_init()
+    #     self.vocab_to_hidden_dim_embed.weight.data = (
+    #         self.get_input_embeddings().weight.data.T
+    #     )
+    #     import pdb; pdb.set_trace()
 
     def get_output_embeddings(self):
         return self.lm_head.decoder
@@ -122,7 +127,12 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         previous_pred: Optional[torch.FloatTensor] = None,
         classifier_free_guidance: bool = False,
         classifier_free_guidance_in_train: bool = False,
+        max_timestep: int = 5000,
+        reduce_loss: str = "mean",  # passed to 'reduction' in F.cross_entropy
         # unconditional_simplex: torch.FloatTensor = None,
+        return_all_losses: bool = False,  # return per-token loss for all items in batch
+        previous_hidden: Optional[torch.FloatTensor] = None,  # for CDCD predictions...
+        original_timesteps: Optional[torch.FloatTensor] = None,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -144,7 +154,6 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             simplex = torch.where(span_mask[:, :, None], simplex, mask_value)
         """
         inputs_probs = F.softmax(simplex, dim=-1)
-        seq_length = inputs_probs.shape[1]
         inputs_embeds = self.vocab_to_hidden_dim_embed(inputs_probs)
 
         if classifier_free_guidance or classifier_free_guidance_in_train:
@@ -246,11 +255,11 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 )
             )
 
-        # TODO: remove conversion.
-        timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float())
-        inputs_embeds = inputs_embeds + timesteps_embed.unsqueeze(1).repeat(
-            1, seq_length, 1
+        bsz = input_ids.shape[0]
+        timesteps_embed = self.timestep_embed(timesteps.view(-1, 1).float()).view(
+            bsz, -1, self.config.hidden_size
         )
+        inputs_embeds = inputs_embeds + timesteps_embed
 
         if span_mask is not None and not self.config.deepmind_conditional:
             # For the unmasked tokens, we only compute their original word embeddings.
@@ -277,6 +286,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
         )
         sequence_output = outputs[0]
         prediction_scores = self.lm_head(sequence_output)
+        # import pdb; pdb.set_trace()
 
         masked_lm_loss = None
         # In case of classifier-free guidance, since the number of output logits and input token ids do not match
@@ -288,16 +298,25 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
                 if classifier_free_guidance
                 else prediction_scores
             )
-            loss_fct = CrossEntropyLoss()
+            loss_fct = CrossEntropyLoss(reduction=reduce_loss)
             labels = (
                 torch.where(span_mask, input_ids, -100)
                 if span_mask is not None
                 else input_ids
             )
+            if self.config.mask_padding_in_loss:
+                # also mask padding token loss....
+                labels = torch.where(labels == self.config.pad_token_id, -100, labels)
             masked_lm_loss = loss_fct(
                 prediction_scores_for_loss.view(-1, self.config.vocab_size),
                 labels.view(-1),
             )
+            if return_all_losses:
+                all_lm_losses = masked_lm_loss.view(input_ids.shape[0], -1)
+            if reduce_loss == "none":
+                # take the average loss over tokens, not counting the masked tokens.
+                masked_lm_loss = masked_lm_loss.view(input_ids.shape[0], -1)
+                masked_lm_loss = masked_lm_loss.sum(dim=-1) / span_mask.sum(dim=-1)
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
@@ -306,7 +325,7 @@ class RobertaForDiffusionLM(RobertaPreTrainedModel):
             )
 
         return MaskedLMOutput(
-            loss=masked_lm_loss,
+            loss=all_lm_losses if return_all_losses else masked_lm_loss,
             logits=prediction_scores,
             hidden_states=outputs.last_hidden_state,
             attentions=outputs.attentions,

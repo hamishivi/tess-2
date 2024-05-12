@@ -9,10 +9,11 @@ import torch
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 
-from data.preprocessors import (
+from sdlm.data.preprocessors import (
     gpt_span_mask_batch,
     insert_extra_paddings,
     t5_random_spans_mask_batch,
+    uncond_span_mask_batch,
 )
 
 
@@ -104,7 +105,9 @@ class SpanInfillingDataCollator:
             self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(
                 batch
             )
-            self.mask_generator[Objective.unconditional] = lambda batch: None
+            self.mask_generator[
+                Objective.unconditional
+            ] = lambda batch: uncond_span_mask_batch(batch)
         elif self.conditional_generation == "span_infilling":
             self.mask_generator = lambda batch: t5_random_spans_mask_batch(
                 batch, data_args.mask_ratio, data_args.mean_mask_span_length, self.rng
@@ -115,6 +118,14 @@ class SpanInfillingDataCollator:
                 use_half_length_as_prefix_size=(mode == "eval"),
                 eval_context_size=eval_context_size,
             )
+        elif self.conditional_generation == "prefix_with_unconditional":
+            self.mask_generator = {}
+            self.mask_generator[Objective.prefix] = lambda batch: gpt_span_mask_batch(
+                batch
+            )
+            self.mask_generator[
+                Objective.unconditional
+            ] = lambda batch: uncond_span_mask_batch(batch)
         elif self.conditional_generation == "ul2" and mode == "train":
             self.mask_generator = {}
             self.mask_generator[
@@ -145,7 +156,6 @@ class SpanInfillingDataCollator:
             )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
-
         if self.extra_padding_ratio:
             # Inserting random tokens uniformly, we do not modify start and end of
             # sequence tokens.
@@ -177,6 +187,17 @@ class SpanInfillingDataCollator:
                 masks = {"span_mask": self.mask_generator[objective](features, setting)}
             else:
                 masks = {"span_mask": self.mask_generator[objective](features)}
+        elif (
+            self.conditional_generation == "prefix_with_unconditional"
+            and self.mode == "train"
+        ):
+            objectives = [
+                Objective.unconditional,
+                Objective.prefix,
+            ]
+            weights = [0.5, 0.5]
+            objective = choices(objectives, weights)[0]
+            masks = {"span_mask": self.mask_generator[objective](features)}
         elif self.conditional_generation == "ul2" and self.mode == "train":
             objectives = [Objective.t5, Objective.prefix, Objective.aggressive_t5]
             weights = [0.25, 0.25, 0.25]
@@ -207,6 +228,7 @@ class SpanInfillingDataCollator:
             "ul2",
             "ul2_with_unconditional",
             "ul2_variable",
+            "prefix_with_unconditional",
         ]:
             masks = {
                 "span_mask": gpt_span_mask_batch(
@@ -268,9 +290,58 @@ class DataCollatorForSeq2Seq:
             return_tensors="pt",
         )
         batch_length = features["input_ids"].shape[1]
+
         masks = [
             len(input) * [False] + (batch_length - len(input)) * [True]
             for input in input_ids
         ]
         features["span_mask"] = torch.tensor(masks)
+        if "attention_mask" in features:
+            features.pop("attention_mask")
+        return features
+
+
+LLAMA_SEQ2SEQ_SEP = [13, 7727, 29901]
+MISTRAL_SEQ2SEQ_SEP = [13, 3499, 28747]
+
+@dataclass
+class DataCollatorForLlamaSeq2Seq:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        if "attention_mask" in features:
+            features.pop("attention_mask")
+        # remove eos from input_ids
+        input_ids = [feature["input_ids"][:-1] for feature in features]
+        # remove sos from labels
+        labels = [feature["labels"][1:] for feature in features]
+        # tokenizer.encode('\nsummary: )
+
+        input_target = [
+            input + LLAMA_SEQ2SEQ_SEP + target
+            for input, target in zip(input_ids, labels)
+        ]
+        features = self.tokenizer.pad(
+            {"input_ids": input_target},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+        )
+        batch_length = features["input_ids"].shape[1]
+        masks = []
+        for input in input_ids:
+            context_length = len(input) + len(MISTRAL_SEQ2SEQ_SEP)
+            mask = context_length * [False] + (batch_length - context_length) * [True]
+            masks.append(mask)
+        # masks = [
+        #     (len(input) - 1 + SEP_LEN) * [False] + (batch_length - len(input)) * [True]
+        #     for input in input_ids
+        # ]
+        features["labels"] = torch.where(
+            torch.tensor(masks), features["input_ids"], -100
+        )
         return features

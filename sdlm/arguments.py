@@ -2,7 +2,7 @@
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import List, Optional
 
 from transformers import MODEL_MAPPING, HfArgumentParser, SchedulerType
 from transformers import TrainingArguments as HFTrainingArguments
@@ -13,7 +13,12 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 def get_args():
     parser = HfArgumentParser(
-        (ModelArguments, DataTrainingArguments, TrainingArguments, DiffusionArguments)
+        (
+            ModelArguments,
+            DataTrainingArguments,
+            Seq2SeqTrainingArguments,
+            DiffusionArguments,
+        )
     )
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -50,6 +55,12 @@ class ModelArguments:
         metadata={
             "help": "If training from scratch, pass a model type from the list: "
             + ", ".join(MODEL_TYPES)
+        },
+    )
+    use_model: str = field(
+        default="",
+        metadata={
+            "help": "Choose whether to use a cdcd or tokenwise model. Options: cdcd, tokenwise_cdcd, confidence."
         },
     )
     config_overrides: Optional[str] = field(
@@ -115,15 +126,35 @@ class ModelArguments:
             "help": "If set, resizes the position embedding alternatively, and copies from the original for the uncovered part."
         },
     )
-    # h3
-    d_model: Optional[int] = field(default=0, metadata={"help": "`d_model` for H3."})
-    n_head: Optional[int] = field(default=0, metadata={"help": "`n_head` for H3."})
-    attn_layer_idx: Optional[Tuple] = field(
-        default=tuple(), metadata={"help": "Attention layer indices for H3."}
+    from_scratch: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "Whether to train the model from scratch or not. Default to false."
+        },
     )
-    # longformer
-    attention_window: int = field(
-        default=1, metadata={"help": "Attention window for Longformer."}
+    use_flash_attention2: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use flash attention 2."},
+    )
+    is_causal: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use causal attention (for Llama)."},
+    )
+    use_lora: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use LoRA."},
+    )
+    lora_rank: Optional[int] = field(
+        default=16,
+        metadata={"help": "LoRA rank."},
+    )
+    lora_alpha: Optional[int] = field(
+        default=32,
+        metadata={"help": "LoRA alpha."},
+    )
+    lora_dropout: Optional[float] = field(
+        default=0.1,
+        metadata={"help": "LoRA dropout."},
     )
 
     def __post_init__(self):
@@ -190,9 +221,6 @@ class TrainingArguments(HFTrainingArguments):
             "help": "If set, computes the evaluation loss from the simplex values."
         },
     )
-    ssdlm_optimizer: bool = field(
-        default=False, metadata={"help": "If set, uses ssdlm optimizer."}
-    )
     save_checkpoints_on_s3: bool = field(
         default=False,
         metadata={
@@ -201,6 +229,13 @@ class TrainingArguments(HFTrainingArguments):
     )
     # NOTE: change default to suppress deprecation warning
     optim: str = field(default="adamw_torch")
+    # just for beaker training, to allow auto-resume easier.
+    beaker: bool = field(default=False)
+    mask_padding_in_loss: bool = field(
+        default=False,
+        metadata={"help": "Whether to mask padding token in loss computation."},
+    )
+    generation_config: str = field(default=None)
 
 
 @dataclass
@@ -241,6 +276,7 @@ class Seq2SeqTrainingArguments(TrainingArguments):
             )
         },
     )
+    predict_with_generate: Optional[bool] = field(default=True)
 
 
 @dataclass
@@ -250,7 +286,7 @@ class DataTrainingArguments:
     """
 
     split_glue: bool = field(
-        default=True,
+        default=False,
         metadata={
             "help": "If set to true split the glue dev/train to make the test set"
             "otherwises uses the original splits."
@@ -364,13 +400,13 @@ class DataTrainingArguments:
     conditional_generation: Optional[str] = field(
         default=None,
         metadata={
-            "help": "It can be `span_infilling`, `prefix_lm`, `ul2`, or `ul2_with_unconditional`, `seq2seq`."
+            "help": "It can be `span_infilling`, `prefix_lm`, `ul2`, or `ul2_with_unconditional`, `seq2seq`, `prefix_with_unconditional`"
             "In case of `span_infilling`: It trains/evals on filling spans like T5. In `prefix_lm`: it trains/evals"
             "on completing the prefixes like GPT2. In `ul2`, it trains on a mixture of span_infilling, agressive"
             "span_infilling, or prefix_lm and evals on prefix_lm with masking half of the sequence. In case of"
             "`ul2_with_unconditional`: it uses ul2 with also including unconditional generation during training."
             "`seq2seq` is used for translation or summarization tasks. `ul2_variable`: is ul2 for the different"
-            "T5 mask_ratio till half of the sequence."
+            "T5 mask_ratio till half of the sequence. `prefix_with_unconditional`: use prefix-lm with unconditional."
         },
     )
     eval_context_size: Optional[int] = field(
@@ -476,8 +512,12 @@ class DataTrainingArguments:
     )
     shuffle: bool = field(
         default=False,
+        metadata={"help": "If set, we will shuffle the data before training."},
+    )
+    eval_long_only: bool = field(
+        default=False,
         metadata={
-            "help": "If set, we will shuffle the data before training."
+            "help": "If set, we will only evaluate on the long examples in the validation set."
         },
     )
 
@@ -513,6 +553,7 @@ class DataTrainingArguments:
                 "ul2",
                 "ul2_with_unconditional",
                 "prefix_lm",
+                "prefix_with_unconditional",
                 "seq2seq",
                 "ul2_variable",
             ]
@@ -534,8 +575,9 @@ class DiffusionArguments:
     num_diffusion_steps: int = field(
         default=2500, metadata={"help": "Defines the number of diffusion steps."}
     )
-    num_inference_diffusion_steps: int = field(
-        default=2500, metadata={"help": "Number of inference diffusion steps."}
+    num_inference_diffusion_steps: List[int] = field(
+        default_factory=lambda: [1, 10, 100],
+        metadata={"help": "Diffusion timesteps to try during inference."},
     )
     beta_schedule: str = field(
         default="squaredcos_improved_ddpm",
@@ -632,4 +674,8 @@ class DiffusionArguments:
     )
     generate_with_seed: bool = field(
         default=False, metadata={"help": "If set, generates with seed."}
+    )
+    multiply_factor: float = field(
+        default=1.0,
+        metadata={"help": "Determines the starting noise level."},
     )

@@ -3,17 +3,17 @@ import json
 import os
 import sys
 
+from run_mlm import get_compute_metrics
+from trainer import GENERATION_RESULTS
 from transformers import HfArgumentParser
 from transformers.trainer_utils import denumpify_detensorize
 
-from run_mlm import get_compute_metrics
 from sdlm.arguments import (
     DataTrainingArguments,
     DiffusionArguments,
     ModelArguments,
     TrainingArguments,
 )
-from trainer import GENERATION_RESULTS
 
 
 def save_metrics(metrics, split, training_args):

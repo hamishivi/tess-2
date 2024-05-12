@@ -1,13 +1,24 @@
+from .cdcd.positionwise_warper_model import (
+    PositionwiseCDCDRobertaConfig,
+    PositionwiseCDCDRobertaForDiffusionLM,
+)
+from .cdcd.tokenwise_warper_model import (
+    TokenwiseCDCDRobertaConfig,
+    TokenwiseCDCDRobertaForDiffusionLM,
+)
+from .cdcd.warper_model import CDCDRobertaConfig, CDCDRobertaForDiffusionLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 from .roberta.modeling_roberta import RobertaForDiffusionLM
 from .utils import load_model
-from .xlm_roberta.configuration_xlm_roberta import XLMRobertaDiffusionConfig
-from .xlm_roberta.modeling_xlm_roberta import XLMRobertaForDiffusionLM
 
 __all__ = (
     "RobertaDiffusionConfig",
     "RobertaForDiffusionLM",
-    "XLMRobertaDiffusionConfig",
-    "XLMRobertaForDiffusionLM",
     "load_model",
+    "CDCDRobertaForDiffusionLM",
+    "CDCDRobertaConfig",
+    "TokenwiseCDCDRobertaForDiffusionLM",
+    "TokenwiseCDCDRobertaConfig",
+    "PositionwiseCDCDRobertaForDiffusionLM",
+    "PositionwiseCDCDRobertaConfig",
 )

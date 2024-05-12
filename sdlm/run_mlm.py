@@ -4,20 +4,20 @@ import sys
 
 import datasets
 import transformers
-from datasets import load_from_disk, Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
+from datasets import Dataset, load_from_disk
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
-from arguments import get_args
-from data.data_collator import SpanInfillingDataCollator
-from data.data_utils import load_data, tokenize_data_new
-from inference.inference_utils import evaluate_generation
-from models import load_model
-from schedulers import SimplexDDPMScheduler
-from trainer import DiffusionTrainer
+from .arguments import get_args
+from .data.data_collator import SpanInfillingDataCollator
+from .data.data_utils import load_data, tokenize_data_new
+from .inference.inference_utils import evaluate_generation
+from .models import load_model
+from .schedulers import TokenWiseSimplexDDPMScheduler
+from .trainer_diffusion import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -28,6 +28,8 @@ require_version(
 )
 
 logger = logging.getLogger(__name__)
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def get_compute_metrics(data_args, training_args, model_args):
@@ -45,6 +47,7 @@ def get_compute_metrics(data_args, training_args, model_args):
         "prefix_lm",
         "ul2",
         "ul2_with_unconditional",
+        "prefix_with_unconditional",
         "ul2_variable",
     ]
     compute_metrics = lambda results: evaluate_generation(  # noqa: E731
@@ -58,6 +61,13 @@ def get_compute_metrics(data_args, training_args, model_args):
         eval_for_all_metrics=training_args.eval_for_all_metrics,
     )
     return compute_metrics
+
+
+# so we evaluate on the first step, useful for checking training is working.
+class EvaluateFirstStepCallback(TrainerCallback):
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step == 1:
+            control.should_evaluate = True
 
 
 def main():
@@ -94,7 +104,11 @@ def main():
         and not training_args.overwrite_output_dir
     ):
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+        if (
+            last_checkpoint is None
+            and len(os.listdir(training_args.output_dir)) > 0
+            and not training_args.beaker
+        ):
             raise ValueError(
                 f"Output directory ({training_args.output_dir}) already exists and is not empty. "
                 "Use --overwrite_output_dir to overcome."
@@ -111,23 +125,30 @@ def main():
     set_seed(training_args.seed)
 
     # load model
-    tokenizer, model = load_model(model_args, diffusion_args, logger)
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
+    )
 
     # init schedulers
-    noise_scheduler = SimplexDDPMScheduler(
+    noise_scheduler = TokenWiseSimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
         beta_schedule=diffusion_args.beta_schedule,
         simplex_value=diffusion_args.simplex_value,
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
+        multiply_factor=diffusion_args.multiply_factor,
     )
-    inference_noise_scheduler = SimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_inference_diffusion_steps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-    )
+    inference_noise_schedulers = [
+        TokenWiseSimplexDDPMScheduler(
+            num_train_timesteps=timesteps,
+            beta_schedule=diffusion_args.beta_schedule,
+            simplex_value=diffusion_args.simplex_value,
+            clip_sample=diffusion_args.clip_sample,
+            device=training_args.device,
+            multiply_factor=diffusion_args.multiply_factor,
+        )
+        for timesteps in diffusion_args.num_inference_diffusion_steps
+    ]
 
     if data_args.tokenized_data_path:
         tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
@@ -151,10 +172,23 @@ def main():
         eval_dataset = tokenized_datasets["validation"]
         # convert eval dataset to regular dataset
         if isinstance(eval_dataset, datasets.IterableDataset):
+
             def iterable_generator():
                 for x in eval_dataset:
                     yield x
+
             eval_dataset = Dataset.from_generator(iterable_generator)
+        if data_args.eval_long_only:
+            # filter out short examples so that we prompt the model with examples
+            # that actually require generating out to a decent length.
+            # is a list at this point so
+            assert model.config.pad_token_id is not None
+            eval_dataset = eval_dataset.filter(
+                lambda x: len(
+                    [i for i in x["input_ids"] if i != model.config.pad_token_id]
+                )
+                >= 300
+            )
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
@@ -182,7 +216,11 @@ def main():
     if training_args.do_eval:
         compute_metrics = get_compute_metrics(data_args, training_args, model_args)
 
-    if data_args.shuffle:
+    if data_args.shuffle and data_args.streaming:
+        train_dataset = train_dataset.shuffle(
+            seed=training_args.seed, buffer_size=10_000
+        )
+    elif data_args.shuffle:
         train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     # Initialize our Trainer
@@ -202,8 +240,9 @@ def main():
         noise_scheduler=noise_scheduler,
         diffusion_args=diffusion_args,
         data_args=data_args,
-        inference_noise_scheduler=inference_noise_scheduler,
+        inference_noise_schedulers=inference_noise_schedulers,
     )
+    trainer.add_callback(EvaluateFirstStepCallback())
 
     # Training
     if training_args.do_train:

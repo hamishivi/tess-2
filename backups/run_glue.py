@@ -10,23 +10,22 @@ from dataclasses import dataclass
 import datasets
 import numpy as np
 import transformers
-from datasets import load_dataset
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
-from transformers.trainer_callback import TrainerState
-from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import WEIGHTS_NAME, check_min_version, send_example_telemetry
-from transformers.utils.versions import require_version
-
 from arguments import DataTrainingArguments as BaseDataTrainingArguments
 from arguments import DiffusionArguments, ModelArguments, TrainingArguments
 from data.data_collator import DataCollatorForSeq2Seq
 from data.data_utils import split_glue
 from data.postprocessors import get_post_processor
+from datasets import load_dataset
 from inference.inference_utils import process_text
 from metrics.metrics import get_glue_metrics
 from models import RobertaDiffusionConfig, RobertaForDiffusionLM
 from schedulers import SimplexDDPMScheduler
 from trainer import DiffusionTrainer
+from transformers import AutoTokenizer, HfArgumentParser, set_seed
+from transformers.trainer_callback import TrainerState
+from transformers.trainer_utils import get_last_checkpoint
+from transformers.utils import WEIGHTS_NAME, check_min_version, send_example_telemetry
+from transformers.utils.versions import require_version
 from utils import lmap, round_stsb_target
 
 # This is computed with scripts/compute_max_tokens_of_labels.py
