@@ -25,7 +25,7 @@ python -m sdlm.run_mlm \
     --conditional_generation ul2 \
     --self_condition "logits_mean" \
     --self_condition_mix_before_weights \
-    --dataset_name HuggingFaceFW/fineweb --dataset_config_name CC-MAIN-2024-10 --streaming \
+    --dataset_name NousResearch/dolma-v1_7-305B --streaming \
     --bf16 \
     --optim adamw_torch_fused \
     --gradient_checkpointing \
@@ -34,10 +34,11 @@ python -m sdlm.run_mlm \
     --line_by_line true \
     --eval_long_only true \
     --mask_padding_in_loss false \
+    --disable_timestep_embed true \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n fineweb_mistral -t fineweb_mistral --allow-dirty \
+    gantry run -y -n dolma_mistral_disable_timestep -t dolma_mistral_disable_timestep --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
         --gpus 1 \
@@ -49,7 +50,7 @@ if [ ! -z "${BEAKER}" ]; then
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --eval_steps 500 \
+        --eval_steps 200 \
         --save_steps 1000 \
         --max_eval_samples 512 \
         --gradient_accumulation_steps 4 \
