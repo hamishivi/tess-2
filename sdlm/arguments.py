@@ -251,6 +251,9 @@ class TrainingArguments(HFTrainingArguments):
     timestep_embed_lr: Optional[float] = field(
         default=None, metadata={"help": "LR for timestep embedding."}
     )
+    disable_timestep_embed: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to disable timestep embedding."}
+    )
 
 
 @dataclass

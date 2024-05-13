@@ -16,6 +16,7 @@ class DiffusionConfigMixin:
         is_causal: bool = False,
         mask_padding_in_loss: bool = False,
         padding_side: str = "right",
+        disable_timestep_embed: bool = False,
         **kwargs,
     ):
         self.self_condition = self_condition
@@ -32,3 +33,4 @@ class DiffusionConfigMixin:
         self.is_causal = is_causal
         self.mask_padding_in_loss = mask_padding_in_loss
         self.padding_side = padding_side
+        self.disable_timestep_embed = disable_timestep_embed

@@ -42,9 +42,10 @@ class DiffusionModelMixin:
 
         # Original word embeddings without noise.
         inputs_word_embeds = self.get_input_embeddings()(input_ids)
-        timesteps = torch.where(span_mask, timesteps, torch.zeros_like(timesteps))
-        timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
-        inputs_embeds = inputs_embeds + timesteps_embed
+        if not self.config.disable_timestep_embed:
+            timesteps = torch.where(span_mask, timesteps, torch.zeros_like(timesteps))
+            timesteps_embed = self.timestep_embed(timesteps.unsqueeze(-1).float())
+            inputs_embeds = inputs_embeds + timesteps_embed
         # For the unmasked tokens, we only compute their original word embeddings.
         # Note that this also sets the self-conditioned inputs which we are conditioning on
         # to their original word embeddings values.
