@@ -33,12 +33,13 @@ class MistralForDiffusionLM(DiffusionModelMixin, MistralPreTrainedModel):
         self.model = MistralModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        # self.timestep_embed = nn.Sequential(
-        #     nn.Linear(1, config.hidden_size, bias=False),
-        #     Sin(),
-        #     nn.Linear(config.hidden_size, config.hidden_size, bias=False),
-        # )
-        self.timestep_embed = nn.Linear(1, config.hidden_size, bias=False)
+        if not self.config.disable_timestep_embed:
+            # self.timestep_embed = nn.Sequential(
+            #     nn.Linear(1, config.hidden_size, bias=False),
+            #     Sin(),
+            #     nn.Linear(config.hidden_size, config.hidden_size, bias=False),
+            # )
+            self.timestep_embed = nn.Linear(1, config.hidden_size, bias=False)
         self.post_init()
 
     def post_init(self):

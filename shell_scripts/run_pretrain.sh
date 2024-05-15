@@ -1,8 +1,8 @@
 CMD="
 python -m sdlm.run_mlm \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 16  \
-    --per_device_eval_batch_size 16 \
+    --per_device_train_batch_size 12  \
+    --per_device_eval_batch_size 12 \
     --do_train \
     --do_eval \
     --evaluation_strategy steps \
@@ -11,7 +11,6 @@ python -m sdlm.run_mlm \
     --max_seq_length 512  \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
-    --num_inference_diffusion_steps 10 100 200 \
     --lr_scheduler_type cosine \
     --learning_rate 1e-5 \
     --pad_to_max_length \
@@ -32,13 +31,11 @@ python -m sdlm.run_mlm \
     --use_flash_attention2 \
     --is_causal false \
     --line_by_line true \
-    --eval_long_only true \
     --mask_padding_in_loss false \
-    --disable_timestep_embed true \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n dolma_mistral_disable_timestep -t dolma_mistral_disable_timestep --allow-dirty \
+    gantry run -y -n dolma_mistral -t dolma_mistral --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
         --gpus 1 \
@@ -54,6 +51,8 @@ if [ ! -z "${BEAKER}" ]; then
         --save_steps 1000 \
         --max_eval_samples 512 \
         --gradient_accumulation_steps 4 \
+        --num_inference_diffusion_steps 10 100 200 \
+        --eval_long_only true \
         --beaker \
         --output_dir /results
 else
@@ -62,5 +61,7 @@ else
         --save_steps 5 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
+        --num_inference_diffusion_steps 10 \
+        --eval_long_only false \
         --output_dir outputs/test
 fi
