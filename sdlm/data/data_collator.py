@@ -339,7 +339,7 @@ class DataCollatorForCausalLMSeq2Seq:
         features = self.tokenizer.pad(
             {"input_ids": input_target},
             padding=self.padding,
-            max_length=self.max_length + len(SEP),
+            max_length=self.max_length,
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors="pt",
             return_attention_mask=True,
