@@ -140,6 +140,7 @@ class ARTrainer(Seq2SeqTrainer):
 
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
+        # NOTE: text logging
         if self.args.log_generated_texts:
             self.log_results_to_tensorboard(output)
 
