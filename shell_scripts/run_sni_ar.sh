@@ -17,7 +17,7 @@ python -m sdlm.run_sni_ar \
     --pad_to_max_length \
     --num_train_epochs 4 \
     --conditional_generation seq2seq \
-    --learning_rate 1e-5 \
+    --learning_rate 1e-6 \
     --lr_scheduler_type cosine \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
