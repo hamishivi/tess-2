@@ -36,7 +36,7 @@ python -m sdlm.run_sni_ar \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n sni_mistral_ar -t sni_mistral_ar --allow-dirty \
+    gantry run -y -n sni_mistral_ar_lr -t sni_mistral_ar_lr --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
         --gpus 1 \
