@@ -22,9 +22,7 @@ from transformers.utils import PaddingStrategy, check_min_version
 from transformers.utils.versions import require_version
 
 from .arguments import get_args
-
 from .data.data_utils import load_data
-
 from .inference.inference_utils import process_text
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
@@ -340,14 +338,17 @@ def main():
                 else results[key]
             )
         # for each decoded sample, format into alpacaeval setup
-        decoded_preds = [{"output": y, 'instruction': x['instruction'], 'generator': 'tess2'} for x, y in zip(eval_data, decoded_preds)]
+        decoded_preds = [
+            {"output": y, "instruction": x["instruction"], "generator": "tess2"}
+            for x, y in zip(eval_data, decoded_preds)
+        ]
         df_leaderboard, _ = alpaca_eval.evaluate(
             decoded_preds,
             is_overwrite_leaderboard=True,
-            is_return_instead_of_print=True
+            is_return_instead_of_print=True,
         )
         # grab tess2 results
-        key_metrics = df_leaderboard.loc['tess2'].to_dict()
+        key_metrics = df_leaderboard.loc["tess2"].to_dict()
         metrics.update(key_metrics)
         return metrics
 
