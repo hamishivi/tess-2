@@ -36,8 +36,6 @@ python -m sdlm.run_tulu \
     --skip_special_tokens false \
 "
 
-checkpoint_mount="01HXWV4M5Q7HQY2JZRVRDCQCGG:checkpoint-22000"
-
 if [ ! -z "${BEAKER}" ]; then
     gantry run -y -n sni_mistral_dolma_adapt -t sni_mistral_dolma_adapt --allow-dirty \
         --workspace ai2/tess2 \
@@ -48,10 +46,10 @@ if [ ! -z "${BEAKER}" ]; then
         --cluster ai2/allennlp-cirrascale \
         --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
-        --dataset "${checkpoint_mount}:/model" \
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
+        --model_name_or_path /net/nfs.cirrascale/allennlp/jaket/simplex-diffusion/outputs/dolma_mistral/checkpoint-22000 \
         --evaluation_strategy epoch \
         --eval_steps 200 \
         --save_steps 400 \
@@ -62,7 +60,7 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /results
 else
     ${CMD} \
-        --model_name_or_path mistralai/Mistral-7B-v0.1 \
+        --model_name_or_path /net/nfs.cirrascale/allennlp/jaket/simplex-diffusion/outputs/dolma_mistral/checkpoint-22000 \
         --evaluation_strategy steps \
         --eval_steps 1 \
         --save_steps 5 \
