@@ -32,10 +32,18 @@ class ARTrainer(Seq2SeqTrainer):
         # TODO: we need to fix this which happens during the only eval option.
         if self.tb_writer.tb_writer is None:
             return
-        for i, prediction in enumerate(output.predictions):
-            print("AAA", self.tokenizer.decode(prediction))
+        for i, (label, prediction) in enumerate(
+            zip(output.label_ids, output.predictions)
+        ):
+            total_text = ""
+            decoded_label = self.tokenizer.decode(label[label != -100])
+            decoded_prediction = self.tokenizer.decode(
+                prediction, skip_special_tokens=True
+            )
+            total_text += f"*** label ***: {decoded_label} \n"
+            total_text += f"*** prediction ***: {decoded_prediction}"
             self.tb_writer.tb_writer.add_text(
-                f"sample_{i}", self.tokenizer.decode(prediction), self.state.global_step
+                f"sample_{i}", total_text, self.state.global_step
             )
 
     def get_train_dataloader(self) -> DataLoader:
