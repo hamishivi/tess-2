@@ -6,6 +6,7 @@ python -m sdlm.run_tulu \
     --dataset_name allenai/tulu-v2-sft-mixture \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
+    --evaluation_strategy steps \
     --do_train \
     --do_eval \
     --num_train_epochs 2 \
@@ -53,9 +54,8 @@ if [ ! -z "${BEAKER}" ]; then
         --pip requirements.txt \
         -- ${CMD} \
         --model_name_or_path /net/nfs.cirrascale/allennlp/jaket/simplex-diffusion/outputs/dolma_mistral/checkpoint-22000 \
-        --evaluation_strategy epoch \
-        --eval_steps 200 \
-        --save_steps 400 \
+        --eval_steps 1000 \
+        --save_steps 500 \
         --max_eval_samples 1000 \
         --gradient_accumulation_steps 16 \
         --num_inference_diffusion_steps 50 100 200 \
@@ -63,9 +63,8 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /results
 else
     ${CMD} \
-        --model_name_or_path /net/nfs.cirrascale/allennlp/jaket/simplex-diffusion/outputs/dolma_mistral/checkpoint-22000 \
-        --evaluation_strategy steps \
-        --eval_steps 1 \
+        --model_name_or_path mistralai/Mistral-7B-v0.1 \
+        --eval_steps 3 \
         --save_steps 5 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \

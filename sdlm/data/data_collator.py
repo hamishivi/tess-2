@@ -394,6 +394,5 @@ class DataCollatorForMultiTurnSeq2Seq:
             return_attention_mask=False,
         )["input_ids"]
         # true wherever we have an actual label
-        masks = torch.where(label_features == -100, False, True)
-        features["span_mask"] = torch.tensor(masks)
+        features["span_mask"] = torch.where(label_features == -100, False, True)
         return features
