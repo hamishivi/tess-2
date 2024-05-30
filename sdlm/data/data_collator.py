@@ -245,8 +245,6 @@ class SpanInfillingDataCollator:
             return_tensors=self.return_tensors,
             return_attention_mask=False,
         )
-        if "attention_mask" in batch:
-            del batch["attention_mask"]
         return {**batch, **masks}
 
 
@@ -298,8 +296,6 @@ class DataCollatorForSeq2Seq:
             for input in input_ids
         ]
         features["span_mask"] = torch.tensor(masks)
-        if "attention_mask" in features:
-            features.pop("attention_mask")
         return features
 
 
@@ -367,3 +363,37 @@ def get_sep_index(input_id, target):
         if torch.equal(input_id[i : i + target_length], target):
             return i + target_length - 1
     raise ValueError("This is not supposed to happen")
+
+
+# custom collator for the multi-turn input format.
+@dataclass
+class DataCollatorForMultiTurnSeq2Seq:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        input_ids = [feature["input_ids"] for feature in features]
+        labels = [feature["labels"] for feature in features]
+        features = self.tokenizer.pad(
+            {"input_ids": input_ids},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )
+        # pad labels out for easy mask
+        label_features = self.tokenizer.pad(
+            {"input_ids": labels},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )["input_ids"]
+        # true wherever we have an actual label
+        masks = torch.where(label_features == -100, False, True)
+        features["span_mask"] = torch.tensor(masks)
+        return features

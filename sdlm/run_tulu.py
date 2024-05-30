@@ -7,21 +7,20 @@ Runs alpacaEval as an intermediate set.
 import logging
 import os
 import sys
-from dataclasses import dataclass
-from typing import Optional, Union
 
 import alpaca_eval
 import datasets
 import torch
 import transformers
 from datasets import load_dataset
-from transformers import PreTrainedTokenizerBase, set_seed
+from transformers import set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import PaddingStrategy, check_min_version
+from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 from .arguments import get_args
+from .data.data_collator import DataCollatorForMultiTurnSeq2Seq
 from .data.data_utils import load_data
 from .inference.inference_utils import process_text
 from .models import load_model
@@ -119,40 +118,6 @@ def encode_with_messages_format(
         "labels": labels.flatten(),
         "attention_mask": attention_mask.flatten(),
     }
-
-
-# custom collator for the multi-turn input format.
-@dataclass
-class DataCollatorForMultiTurnSeq2Seq:
-    tokenizer: PreTrainedTokenizerBase
-    padding: Union[bool, str, PaddingStrategy] = True
-    max_length: Optional[int] = None
-    pad_to_multiple_of: Optional[int] = None
-
-    def __call__(self, features):
-        input_ids = [feature["input_ids"] for feature in features]
-        labels = [feature["labels"] for feature in features]
-        features = self.tokenizer.pad(
-            {"input_ids": input_ids},
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors="pt",
-        )
-        # pad labels out for easy mask
-        label_features = self.tokenizer.pad(
-            {"input_ids": labels},
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors="pt",
-        )["input_ids"]
-        # true wherever we have an actual label
-        masks = torch.where(label_features == -100, False, True)
-        features["span_mask"] = torch.tensor(masks)
-        if "attention_mask" in features:
-            features.pop("attention_mask")
-        return features
 
 
 def main():
