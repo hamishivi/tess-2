@@ -7,6 +7,7 @@ gantry run -y -n mistral-cnn-dm-lora -t mistral-cnn-dm-lora --budget ai2/allennl
     --cluster ai2/allennlp-cirrascale \
     --env 'HF_HOME=/net/nfs.cirrascale/allennlp/hamishi/.hf' \
     --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+    --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
     --venv 'base' \
     --pip requirements.txt \
     -- python -m sdlm.run_sum \

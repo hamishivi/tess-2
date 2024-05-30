@@ -46,6 +46,9 @@ if [ ! -z "${BEAKER}" ]; then
         --cluster ai2/allennlp-cirrascale \
         --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+        --env 'IS_ALPACA_EVAL_2=False' \
+        --env-secret OPENAI_API_KEY=OPENAI_API_KEY \
+        --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
