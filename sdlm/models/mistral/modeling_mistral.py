@@ -8,9 +8,10 @@ from transformers.models.mistral.modeling_mistral import (
 )
 from transformers.utils import logging
 
-from sdlm.data.data_collator import DataCollatorForCausalLMSeq2Seq, get_sep_index
-from sdlm.data.data_utils import pad_sequence
-from sdlm.models.mixins.modeling_mixin import DiffusionModelMixin
+from sdlm.models.mixins.modeling_mixin import (
+    CausalLMForSeq2SeqMixin,
+    DiffusionModelMixin,
+)
 
 logger = logging.get_logger(__name__)
 
@@ -70,28 +71,5 @@ class MistralForDiffusionLM(DiffusionModelMixin, MistralPreTrainedModel):
         return F.linear(input_data, self.get_input_embeddings().weight.data.T)
 
 
-class MistralForSeq2SeqLM(MistralForCausalLM):
-    @torch.inference_mode()
-    def generate(self, *args, **kwargs):
-        context_tokens = []
-        input_ids = kwargs.pop("input_ids")
-        SEP = torch.tensor(
-            DataCollatorForCausalLMSeq2Seq.MISTRAL_SEP, device=input_ids.device
-        )
-        for input_id in input_ids:
-            # index = list(input_id).index(self.config.eos_token_id)
-            end_of_sep_idx = get_sep_index(input_id, SEP)
-            context_tokens.append(input_id[: end_of_sep_idx + 1])
-        input_ids = pad_sequence(
-            context_tokens,
-            padding_value=self.config.pad_token_id,
-            batch_first=True,
-            padding_side=self.config.padding_side,
-        )
-        kwargs["input_ids"] = input_ids.to(self.device)
-        kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
-        kwargs["use_cache"] = False
-        outputs = super().generate(*args, **kwargs)
-        seq_len = input_ids.size(1)
-        output_ids = outputs[:, seq_len:]
-        return output_ids.to(self.device)
+class MistralForSeq2SeqLM(CausalLMForSeq2SeqMixin, MistralForCausalLM):
+    pass

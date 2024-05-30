@@ -29,7 +29,6 @@ python -m sdlm.run_sni_ar \
     --use_flash_attention2 \
     --is_causal true \
     --mask_padding_in_loss false \
-    --generation_max_length 1155 \
     --generation_num_beams 1 \
     --num_diffusion_steps 0 \
     --tokenizer_padding_side "left" \

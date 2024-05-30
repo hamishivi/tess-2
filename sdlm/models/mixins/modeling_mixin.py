@@ -5,6 +5,7 @@ from torch.nn import CrossEntropyLoss
 from torch.nn import functional as F
 from transformers.modeling_outputs import MaskedLMOutput
 
+from sdlm.data.data_utils import pad_sequence
 from sdlm.utils import mix_values_based_on_self_condition
 
 
@@ -102,3 +103,68 @@ class DiffusionModelMixin:
             hidden_states=outputs.last_hidden_state,
             attentions=outputs.attentions,
         )
+
+
+class CausalLMForSeq2SeqMixin:
+    def forward(
+        self,
+        input_ids,
+        attention_mask=None,
+        position_ids=None,
+        past_key_values=None,
+        inputs_embeds=None,
+        labels=None,
+        use_cache=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        pad_lengths=None,
+        context_lengths=None,
+    ):
+        """
+        HACK: added input lengths to forward args for generate(),
+        otherwise `Trainer`'s `remove_unused_columns` will remove all
+        keys from kwargs.
+        """
+        return super().forward(
+            input_ids,
+            attention_mask,
+            position_ids,
+            past_key_values,
+            inputs_embeds,
+            labels,
+            use_cache,
+            output_attentions,
+            output_hidden_states,
+            return_dict,
+        )
+
+    @torch.inference_mode()
+    def generate(self, *args, **kwargs):
+        context_tokens = []
+        # labels not needed for generation
+        del kwargs["labels"]
+        input_ids = kwargs.pop("input_ids")
+        pad_lengths = kwargs.pop("pad_lengths")
+        context_lengths = kwargs.pop("context_lengths")
+        for input_id, pad_length, context_length in zip(
+            input_ids, pad_lengths, context_lengths
+        ):
+            # grab non-padding context, without labels
+            context_tokens.append(input_id[pad_length : pad_length + context_length])
+        input_ids = pad_sequence(
+            context_tokens,
+            padding_value=self.config.pad_token_id,
+            batch_first=True,
+            padding_side=self.config.padding_side,
+        )
+        kwargs["input_ids"] = input_ids.to(self.device)
+        kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
+        # need to set to false due to flash attention
+        kwargs["use_cache"] = False
+        # TODO: remove hard coded values
+        kwargs["max_new_tokens"] = 128
+        outputs = super().generate(*args, **kwargs)
+        seq_len = input_ids.size(1)
+        output_ids = outputs[:, seq_len:]
+        return output_ids.to(self.device)

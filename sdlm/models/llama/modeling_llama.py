@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers.models.llama.modeling_llama import (
@@ -8,9 +7,10 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.utils import logging
 
-from sdlm.data.data_collator import DataCollatorForCausalLMSeq2Seq
-from sdlm.data.data_utils import pad_sequence
-from sdlm.models.mixins.modeling_mixin import DiffusionModelMixin
+from sdlm.models.mixins.modeling_mixin import (
+    CausalLMForSeq2SeqMixin,
+    DiffusionModelMixin,
+)
 
 logger = logging.get_logger(__name__)
 
@@ -66,36 +66,5 @@ class LlamaForDiffusionLM(DiffusionModelMixin, LlamaPreTrainedModel):
         return F.linear(input_data, self.get_input_embeddings().weight.data.T)
 
 
-def get_sep_index(input_id, target):
-    # TODO: improve sliding window to e.g., rolling hash
-    target_length = len(target)
-    for i in range(len(input_id) - len(target) + 1):
-        if torch.equal(input_id[i : i + target_length], target):
-            return i + target_length - 1
-    raise ValueError("This is not supposed to happen")
-
-
-class LlamaForSeq2SeqLM(LlamaForCausalLM):
-    @torch.inference_mode()
-    def generate(self, *args, **kwargs):
-        context_tokens = []
-        input_ids = kwargs.pop("input_ids")
-        SEP = torch.tensor(
-            DataCollatorForCausalLMSeq2Seq.LLAMA_SEP, device=input_ids.device
-        )
-        for input_id in input_ids:
-            # index = list(input_id).index(self.config.eos_token_id)
-            end_of_sep_idx = get_sep_index(input_id, SEP)
-            context_tokens.append(input_id[: end_of_sep_idx + 1])
-        input_ids = pad_sequence(
-            context_tokens,
-            padding_value=self.config.pad_token_id,
-            batch_first=True,
-            padding_side=self.config.padding_side,
-        )
-        kwargs["input_ids"] = input_ids.to(self.device)
-        kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
-        outputs = super().generate(*args, **kwargs)
-        seq_len = input_ids.size(1)
-        output_ids = outputs[:, seq_len:]
-        return output_ids.to(self.device)
+class LlamaForSeq2SeqLM(CausalLMForSeq2SeqMixin, LlamaForCausalLM):
+    pass

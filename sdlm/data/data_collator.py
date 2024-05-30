@@ -305,6 +305,7 @@ class DataCollatorForCausalLMSeq2Seq:
     padding: Union[bool, str, PaddingStrategy] = True
     max_length: Optional[int] = None
     pad_to_multiple_of: Optional[int] = None
+    use_sep: Optional[bool] = False
     # \nsummary:
     # LLAMA_SEP: Tuple[int] = (13, 7727, 29901)
     # MISTRAL_SEP: Tuple[int] = (13, 3499, 28747)
@@ -320,14 +321,18 @@ class DataCollatorForCausalLMSeq2Seq:
         # remove sos from labels
         labels = [feature["labels"][1:] for feature in features]
 
-        SEP = None
-        tokenizer_name = self.tokenizer.name_or_path.lower()
-        if "mistral" in tokenizer_name:
-            SEP = list(self.MISTRAL_SEP)
-        elif "llama" in tokenizer_name:
-            SEP = list(self.LLAMA_SEP)
-        else:
-            raise ValueError("Unrecognized tokenizer.name_or_path")
+        SEP = []
+        if self.use_sep:
+            # guard incomplete code path
+            # TODO: add use_sep to arguments
+            assert False
+            tokenizer_name = self.tokenizer.name_or_path.lower()
+            if "mistral" in tokenizer_name:
+                SEP = list(self.MISTRAL_SEP)
+            elif "llama" in tokenizer_name:
+                SEP = list(self.LLAMA_SEP)
+            else:
+                raise ValueError("Unrecognized tokenizer.name_or_path")
 
         input_target = [
             input + SEP + target for input, target in zip(input_ids, labels)
@@ -342,6 +347,8 @@ class DataCollatorForCausalLMSeq2Seq:
         )
         batch_length = features["input_ids"].shape[1]
         masks = []
+        pad_lengths = []
+        context_lengths = []
         for input, label in zip(input_ids, labels):
             context_length = len(input) + len(SEP)
             label_length = len(label)
@@ -350,19 +357,14 @@ class DataCollatorForCausalLMSeq2Seq:
                 raise NotImplementedError
             mask = (context_length + pad_length) * [False] + label_length * [True]
             masks.append(mask)
+            pad_lengths.append(pad_length)
+            context_lengths.append(context_length)
         features["labels"] = torch.where(
             torch.tensor(masks), features["input_ids"], -100
         )
+        features["pad_lengths"] = torch.tensor(pad_lengths)
+        features["context_lengths"] = torch.tensor(context_lengths)
         return features
-
-
-def get_sep_index(input_id, target):
-    # TODO: improve sliding window to e.g., rolling hash
-    target_length = len(target)
-    for i in range(len(input_id) - len(target) + 1):
-        if torch.equal(input_id[i : i + target_length], target):
-            return i + target_length - 1
-    raise ValueError("This is not supposed to happen")
 
 
 # custom collator for the multi-turn input format.
