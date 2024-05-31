@@ -35,16 +35,19 @@ class ARTrainer(Seq2SeqTrainer):
         for i, (label, prediction) in enumerate(
             zip(output.label_ids, output.predictions)
         ):
-            total_text = ""
-            decoded_label = self.tokenizer.decode(label[label != -100])
-            decoded_prediction = self.tokenizer.decode(
-                prediction, skip_special_tokens=True
-            )
-            total_text += f"*** label ***: {decoded_label} \n"
-            total_text += f"*** prediction ***: {decoded_prediction}"
-            self.tb_writer.tb_writer.add_text(
-                f"sample_{i}", total_text, self.state.global_step
-            )
+            try:
+                total_text = ""
+                decoded_label = self.tokenizer.decode(label[label != -100])
+                decoded_prediction = self.tokenizer.decode(
+                    prediction, skip_special_tokens=True
+                )
+                total_text += f"*** label ***: {decoded_label} \n"
+                total_text += f"*** prediction ***: {decoded_prediction}"
+                self.tb_writer.tb_writer.add_text(
+                    f"sample_{i}", total_text, self.state.global_step
+                )
+            except OverflowError:
+                print("[ERROR] tokenization", prediction)
 
     def get_train_dataloader(self) -> DataLoader:
         self.data_collator = self.original_data_collator("train")
