@@ -38,7 +38,7 @@ python -m sdlm.run_tulu \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n sni_mistral_dolma_adapt -t sni_mistral_dolma_adapt --allow-dirty \
+    gantry run -y -n tulu_mistral_dolma_adapt -t tulu_mistral_dolma_adapt --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
         --gpus 1 \
