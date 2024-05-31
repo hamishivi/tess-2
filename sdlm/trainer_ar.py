@@ -39,7 +39,7 @@ class ARTrainer(Seq2SeqTrainer):
                 total_text = ""
                 decoded_label = self.tokenizer.decode(label[label != -100])
                 decoded_prediction = self.tokenizer.decode(
-                    prediction, skip_special_tokens=True
+                    prediction[prediction != -100]
                 )
                 total_text += f"*** label ***: {decoded_label} \n"
                 total_text += f"*** prediction ***: {decoded_prediction}"
