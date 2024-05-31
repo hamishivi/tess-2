@@ -17,7 +17,7 @@ python -m sdlm.run_sni_ar \
     --pad_to_max_length \
     --num_train_epochs 4 \
     --conditional_generation seq2seq \
-    --learning_rate 1e-6 \
+    --learning_rate 1e-5 \
     --lr_scheduler_type cosine \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
@@ -35,7 +35,7 @@ python -m sdlm.run_sni_ar \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n sni_mistral_ar_lr -t sni_mistral_ar_lr --allow-dirty \
+    gantry run -y -n sni_mistral_ar -t sni_mistral_ar --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
         --gpus 1 \
