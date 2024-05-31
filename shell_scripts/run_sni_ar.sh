@@ -1,41 +1,41 @@
 CMD="
-python -m sdlm.run_mlm \
+python -m sdlm.run_sni_ar \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 12  \
-    --per_device_eval_batch_size 12 \
+    --dataset_name sni \
     --do_train \
     --do_eval \
+    --max_seq_length 1155 \
+    --max_source_length 1024 \
+    --max_target_length 128 \
+    --skip_special_tokens true \
+    --per_device_train_batch_size 16 \
+    --per_device_eval_batch_size 16 \
     --evaluation_strategy steps \
+    --save_strategy steps \
     --report_to tensorboard \
     --overwrite_output_dir \
-    --max_seq_length 512  \
-    --simplex_value 5 \
-    --num_diffusion_steps 5000  \
-    --lr_scheduler_type cosine \
-    --learning_rate 1e-5 \
     --pad_to_max_length \
-    --beta_schedule squaredcos_improved_ddpm \
-    --weight_decay 0.01 \
-    --top_p 0.99 \
-    --max_steps 100000 \
-    --warmup_ratio 0.05 \
+    --num_train_epochs 4 \
+    --conditional_generation seq2seq \
+    --learning_rate 1e-5 \
+    --lr_scheduler_type cosine \
+    --warmup_ratio 0.03 \
     --logging_steps 50 \
-    --save_total_limit 2 \
-    --conditional_generation ul2 \
-    --self_condition "logits_mean" \
-    --self_condition_mix_before_weights \
-    --dataset_name NousResearch/dolma-v1_7-305B --streaming \
+    --save_total_limit 1 \
+    --preprocessing_num_workers 16 \
     --bf16 \
     --optim adamw_torch_fused \
     --gradient_checkpointing \
     --use_flash_attention2 \
-    --is_causal false \
-    --line_by_line true \
+    --is_causal true \
     --mask_padding_in_loss false \
+    --generation_num_beams 1 \
+    --num_diffusion_steps 0 \
+    --tokenizer_padding_side "left" \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n dolma_mistral -t dolma_mistral --allow-dirty \
+    gantry run -y -n sni_mistral_ar -t sni_mistral_ar --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
         --gpus 1 \
@@ -49,11 +49,9 @@ if [ ! -z "${BEAKER}" ]; then
         --pip requirements.txt \
         -- ${CMD} \
         --eval_steps 200 \
-        --save_steps 1000 \
+        --save_steps 400 \
         --max_eval_samples 512 \
         --gradient_accumulation_steps 4 \
-        --num_inference_diffusion_steps 10 100 200 \
-        --eval_long_only true \
         --beaker \
         --output_dir /results
 else
@@ -62,7 +60,5 @@ else
         --save_steps 5 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
-        --num_inference_diffusion_steps 10 \
-        --eval_long_only false \
         --output_dir outputs/test
 fi

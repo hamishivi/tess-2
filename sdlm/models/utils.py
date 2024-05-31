@@ -77,6 +77,11 @@ def is_tokenwise_cdcd_check(model):
     )
 
 
+def freeze(module):
+    for param in module.parameters():
+        param.requires_grad = False
+
+
 def load_model(model_args, data_args, training_args, diffusion_args, logger):
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -102,6 +107,7 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         empty_token_be_mask=diffusion_args.empty_token_be_mask,
         is_causal=model_args.is_causal,
         mask_padding_in_loss=training_args.mask_padding_in_loss,
+        padding_side=model_args.tokenizer_padding_side,
         token=os.environ.get("HF_TOKEN", None),
         **config_kwargs,
     )
@@ -109,6 +115,7 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
+        "padding_side": model_args.tokenizer_padding_side,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.tokenizer_name:
@@ -129,8 +136,6 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
 
-    # set padding side
-    tokenizer.padding_side = "right"
     try:
         tokenizer.add_eos_token = True
     except AttributeError:
@@ -157,6 +162,10 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             if model_args.use_flash_attention2
             else "eager",
         ).to("cuda")
+        if model_args.freeze_embedding:
+            model.get_input_embeddings().requires_grad = False
+        if model_args.freeze_model:
+            freeze(model)
     else:
         logger.warning("Training new model from scratch")
         model = model_cls._from_config(config)

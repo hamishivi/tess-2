@@ -1,15 +1,12 @@
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union
+import math
+import time
+from typing import Dict, List, Optional
 
-import numpy as np
-import torch
 from torch.utils.data import DataLoader, Dataset
-from transformers import Seq2SeqTrainer, Trainer
+from transformers import Seq2SeqTrainer
 from transformers.integrations import TensorBoardCallback
-from transformers.trainer_utils import seed_worker
-from transformers.utils import is_datasets_available, is_sagemaker_mp_enabled, logging
-
-if is_datasets_available():
-    import datasets
+from transformers.trainer_utils import speed_metrics
+from transformers.utils import logging
 
 skip_first_batches = None
 IS_SAGEMAKER_MP_POST_1_10 = False
@@ -19,21 +16,11 @@ GENERATION_RESULTS = "generated"
 logger = logging.get_logger(__name__)
 
 
-class EvalLoopOutput(NamedTuple):
-    logits: Union[np.ndarray, Tuple[np.ndarray]]
-    simplex: Union[np.ndarray, Tuple[np.ndarray]]
-    input_ids: Optional[Union[np.ndarray, Tuple[np.ndarray]]]
-    metrics: Optional[Dict[str, float]]
-    results: Optional[Dict[str, List[str]]]
-    num_samples: Optional[int]
-
-
 class ARTrainer(Seq2SeqTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs, preprocess_logits_for_metrics=None)
-        self.vocab_size = self.model.config.vocab_size
         self.tb_writer = self.get_tb_writer()
-        self.eos_token_id = self.tokenizer.eos_token_id
+        self.original_data_collator = self.data_collator
 
     def get_tb_writer(self):
         for cb in self.callback_handler.callbacks:
@@ -41,149 +28,131 @@ class ARTrainer(Seq2SeqTrainer):
                 return cb
         return None
 
-    def log_results_to_tensorboard(self, state, length, results):
+    def log_results_to_tensorboard(self, output):
         # TODO: we need to fix this which happens during the only eval option.
         if self.tb_writer.tb_writer is None:
             return
-        for i in range(length):
-            total_text = ""
-            for k, v in results.items():
-                total_text += f"*** {k} ***: {v[i]}" + "  \n"
-            self.tb_writer.tb_writer.add_text(
-                f"sample_{i}", total_text, state.global_step
-            )
+        for i, (label, prediction) in enumerate(
+            zip(output.label_ids, output.predictions)
+        ):
+            try:
+                total_text = ""
+                decoded_label = self.tokenizer.decode(label[label != -100])
+                decoded_prediction = self.tokenizer.decode(
+                    prediction[prediction != -100]
+                )
+                total_text += f"*** label ***: {decoded_label} \n"
+                total_text += f"*** prediction ***: {decoded_prediction}"
+                self.tb_writer.tb_writer.add_text(
+                    f"sample_{i}", total_text, self.state.global_step
+                )
+            except OverflowError:
+                print("[ERROR] tokenization", prediction)
 
     def get_train_dataloader(self) -> DataLoader:
-        """
-        Returns the training [`~torch.utils.data.DataLoader`].
-        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
-        training if necessary) otherwise.
-        Subclass and override this method if you want to inject some custom behavior.
-        """
-        if self.train_dataset is None:
-            raise ValueError("Trainer: training requires a train_dataset.")
-
-        train_dataset = self.train_dataset
-        data_collator = self.data_collator("train")
-        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
-            train_dataset = self._remove_unused_columns(
-                train_dataset, description="training"
-            )
-        else:
-            data_collator = self._get_collator_with_removed_columns(
-                data_collator, description="training"
-            )
-
-        dataloader_params = {
-            "batch_size": self._train_batch_size,
-            "collate_fn": data_collator,
-            "num_workers": self.args.dataloader_num_workers,
-            "pin_memory": self.args.dataloader_pin_memory,
-        }
-
-        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
-            dataloader_params["sampler"] = self._get_train_sampler()
-            dataloader_params["drop_last"] = self.args.dataloader_drop_last
-            dataloader_params["worker_init_fn"] = seed_worker
-
-        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
+        self.data_collator = self.original_data_collator("train")
+        return super().get_train_dataloader()
 
     def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
+        self.data_collator = self.original_data_collator("eval")
+        return super().get_eval_dataloader(eval_dataset)
+
+    def evaluate(
+        self,
+        eval_dataset: Optional[Dataset] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+        **gen_kwargs,
+    ) -> Dict[str, float]:
         """
-        Returns the evaluation [`~torch.utils.data.DataLoader`].
-        Subclass and override this method if you want to inject some custom behavior.
-        Args:
-            eval_dataset (`torch.utils.data.Dataset`, *optional*):
-                If provided, will override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns not accepted
-                by the `model.forward()` method are automatically removed. It must implement `__len__`.
+        Copied from
+        - https://github.com/huggingface/transformers/blob/main/src/transformers/trainer.py
+        - https://github.com/huggingface/transformers/blob/main/src/transformers/trainer_seq2seq.py
+        with added tensorboard text logging.
         """
-        if eval_dataset is None and self.eval_dataset is None:
-            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+        gen_kwargs = gen_kwargs.copy()
+
+        # Use legacy argument setting if a) the option is not explicitly passed; and b) the argument is set in the
+        # training args
+        if (
+            gen_kwargs.get("max_length") is None
+            and gen_kwargs.get("max_new_tokens") is None
+            and self.args.generation_max_length is not None
+        ):
+            gen_kwargs["max_length"] = self.args.generation_max_length
+        if (
+            gen_kwargs.get("num_beams") is None
+            and self.args.generation_num_beams is not None
+        ):
+            gen_kwargs["num_beams"] = self.args.generation_num_beams
+        # We don't want to drop samples in general
+        self.gather_function = self.accelerator.gather
+        self._gen_kwargs = gen_kwargs
+        # return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-        data_collator = self.data_collator("eval")
+        if isinstance(eval_dataset, dict):
+            metrics = {}
+            for eval_dataset_name, _eval_dataset in eval_dataset.items():
+                dataset_metrics = self.evaluate(
+                    eval_dataset=_eval_dataset,
+                    ignore_keys=ignore_keys,
+                    metric_key_prefix=f"{metric_key_prefix}_{eval_dataset_name}",
+                )
+                metrics.update(dataset_metrics)
+            return metrics
 
-        if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
-            eval_dataset = self._remove_unused_columns(
-                eval_dataset, description="evaluation"
+        # memory metrics - must set up as early as possible
+        self._memory_tracker.start()
+
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        # NOTE: no tpu
+        # if self.is_fsdp_xla_v2_enabled:
+        #     eval_dataloader = tpu_spmd_dataloader(eval_dataloader)
+
+        start_time = time.time()
+
+        eval_loop = (
+            self.prediction_loop
+            if self.args.use_legacy_prediction_loop
+            else self.evaluation_loop
+        )
+        output = eval_loop(
+            eval_dataloader,
+            description="Evaluation",
+            # No point gathering the predictions if there are no metrics, otherwise we defer to
+            # self.args.prediction_loss_only
+            prediction_loss_only=True if self.compute_metrics is None else None,
+            ignore_keys=ignore_keys,
+            metric_key_prefix=metric_key_prefix,
+        )
+
+        total_batch_size = self.args.eval_batch_size * self.args.world_size
+        if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
+        output.metrics.update(
+            speed_metrics(
+                metric_key_prefix,
+                start_time,
+                num_samples=output.num_samples,
+                num_steps=math.ceil(output.num_samples / total_batch_size),
             )
-        else:
-            data_collator = self._get_collator_with_removed_columns(
-                data_collator, description="evaluation"
-            )
+        )
 
-        dataloader_params = {
-            "batch_size": self.args.eval_batch_size,
-            "collate_fn": data_collator,
-            "num_workers": self.args.dataloader_num_workers,
-            "pin_memory": self.args.dataloader_pin_memory,
-        }
+        self.log(output.metrics)
 
-        if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
-            dataloader_params["sampler"] = self._get_eval_sampler(eval_dataset)
-            dataloader_params["drop_last"] = self.args.dataloader_drop_last
+        # NOTE: no tpu
+        # if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
+        #     # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
+        #     xm.master_print(met.metrics_report())
 
-        return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
+        self.control = self.callback_handler.on_evaluate(
+            self.args, self.state, self.control, output.metrics
+        )
 
-    def create_optimizer(self):
-        from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-        from transformers.trainer_pt_utils import get_parameter_names
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
 
-        # overriden
-        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+        # NOTE: text logging
+        if self.args.log_generated_texts:
+            self.log_results_to_tensorboard(output)
 
-        if self.optimizer is None:
-            decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
-            decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-                self.args
-            )
-
-            # only training warping parameters...
-            optimizer_grouped_parameters = [
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            n in decay_parameters
-                            and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-                        )
-                    ],
-                    "weight_decay": self.args.weight_decay,
-                    "lr": optimizer_kwargs["lr"],
-                },
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            n not in decay_parameters
-                            and p.requires_grad
-                            and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-                        )
-                    ],
-                    "weight_decay": 0.0,
-                    "lr": optimizer_kwargs["lr"],
-                },
-                {
-                    "params": [
-                        p
-                        for n, p in opt_model.named_parameters()
-                        if (
-                            ("cdf" in n or "linear_l" in n or "position_l" in n)
-                            and p.requires_grad
-                        )
-                    ],
-                    "weight_decay": 0.0,
-                    "lr": 1e-3,
-                },
-            ]
-
-            optimizer_kwargs.pop("lr")
-
-            self.optimizer = optimizer_cls(
-                optimizer_grouped_parameters, **optimizer_kwargs
-            )
-
-        return self.optimizer
+        return output.metrics

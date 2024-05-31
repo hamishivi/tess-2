@@ -78,6 +78,10 @@ class ModelArguments:
             "help": "Pretrained tokenizer name or path if not the same as model_name"
         },
     )
+    tokenizer_padding_side: Optional[str] = field(
+        default="right",
+        metadata={"help": "Tokenizer padding side"},
+    )
     cache_dir: Optional[str] = field(
         default=None,
         metadata={
@@ -155,6 +159,14 @@ class ModelArguments:
     lora_dropout: Optional[float] = field(
         default=0.1,
         metadata={"help": "LoRA dropout."},
+    )
+    freeze_embedding: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to freeze vocab embedding (and tied LM head)."},
+    )
+    freeze_model: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to freeze the entire model."},
     )
 
     def __post_init__(self):
@@ -236,6 +248,12 @@ class TrainingArguments(HFTrainingArguments):
         metadata={"help": "Whether to mask padding token in loss computation."},
     )
     generation_config: str = field(default=None)
+    timestep_embed_lr: Optional[float] = field(
+        default=None, metadata={"help": "LR for timestep embedding."}
+    )
+    disable_timestep_embed: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to disable timestep embedding."}
+    )
 
 
 @dataclass

@@ -6,26 +6,21 @@ import random
 import sys
 
 import datasets
-import numpy as np
 import transformers
 from datasets import load_dataset
 from transformers import AutoTokenizer, set_seed
-from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
 from .arguments import get_args
-from .data.data_collator import DataCollatorForSeq2Seq
+from .data.data_collator import DataCollatorForCausalLMSeq2Seq
 from .data.data_utils import split_glue
-from .data.postprocessors import get_post_processor
+from .data.postprocessors import postprocess_text_for_metric
 from .data.sni.sni_collator import DataCollatorForNI
-from .inference.inference_utils import process_text
 from .metrics.metrics import get_glue_metrics
 from .models import load_model
-from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer_diffusion import DiffusionTrainer
-from .utils import lmap
+from .trainer_ar import ARTrainer
 
 # This is computed with scripts/compute_max_tokens_of_labels.py
 MAX_LABEL_LENGTH = 5
@@ -34,28 +29,28 @@ check_min_version("4.25.0")
 require_version("datasets>=1.8.0")
 
 task_to_keys = {
-    "cola": ("sentence", None),
-    "mnli": ("premise", "hypothesis"),
-    "mrpc": ("sentence1", "sentence2"),
-    "qnli": ("question", "sentence"),
-    "qqp": ("question1", "question2"),
-    "rte": ("sentence1", "sentence2"),
-    "sst2": ("sentence", None),
-    "stsb": ("sentence1", "sentence2"),
-    "wnli": ("sentence1", "sentence2"),
+    # "cola": ("sentence", None),
+    # "mnli": ("premise", "hypothesis"),
+    # "mrpc": ("sentence1", "sentence2"),
+    # "qnli": ("question", "sentence"),
+    # "qqp": ("question1", "question2"),
+    # "rte": ("sentence1", "sentence2"),
+    # "sst2": ("sentence", None),
+    # "stsb": ("sentence1", "sentence2"),
+    # "wnli": ("sentence1", "sentence2"),
     "sni": ("inputs", None),
 }
 
 task_to_metric = {
-    "cola": "matthews_correlation",
-    "mnli": "accuracy",
-    "mrpc": "combined_score",
-    "qnli": "accuracy",
-    "qqp": "combined_score",
-    "rte": "accuracy",
-    "sst2": "accuracy",
-    "stsb": "combined_score",
-    "wnli": "accuracy",
+    # "cola": "matthews_correlation",
+    # "mnli": "accuracy",
+    # "mrpc": "combined_score",
+    # "qnli": "accuracy",
+    # "qqp": "combined_score",
+    # "rte": "accuracy",
+    # "sst2": "accuracy",
+    # "stsb": "combined_score",
+    # "wnli": "accuracy",
     "sni": "rouge",
 }
 
@@ -70,13 +65,6 @@ def main():
     if data_args.dataset_name not in task_to_keys.keys():
         raise ValueError(
             "Unknown task, you should pick one in " + ",".join(task_to_keys.keys())
-        )
-
-    if training_args.checkpoint_best_model:
-        # TODO: ask which one they report and use the one needed here.
-        # TODO: test both simplex and logits.
-        training_args.metric_for_best_model = (
-            "pred_texts_from_simplex_masked_" + task_to_metric[data_args.dataset_name]
         )
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
@@ -137,6 +125,7 @@ def main():
         use_fast=model_args.use_fast_tokenizer,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
+        padding_side=model_args.tokenizer_padding_side,
     )
 
     # Downloading and loading a dataset from the hub.
@@ -171,28 +160,6 @@ def main():
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-
-    # for glue tasks, grab the string labels
-    # currently not working in eval TODO: bugfix this
-    # if data_args.dataset_name != "sni":
-    #     if data_args.dataset_name != "stsb":
-    #         label_list = raw_datasets["train"].features["label"].names
-    #         raw_datasets = raw_datasets.cast_column(
-    #             "label", Value(dtype="string", id=None)
-    #         )
-    #         # map labels to the strings
-    #         raw_datasets = raw_datasets.map(
-    #             lambda x: {"label": label_list[int(x["label"])].replace("_", " ")},
-    #         )
-    #     else:
-    #         # stsb in t5 style - round stsb values
-    #         label_list = [str(x / 5.0) for x in range(26)]
-    #         raw_datasets = raw_datasets.cast_column(
-    #             "label", Value(dtype="string", id=None)
-    #         )
-    #         raw_datasets = raw_datasets.map(
-    #             lambda x: {"label": f"{(round(float(x['label'])*5) / 5):.1f}"},
-    #         )
 
     # Split dataset, since test sets of GLUE do not have the labels.
     if data_args.split_glue:
@@ -281,9 +248,6 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    def preprocess_logits_for_metrics(logits):
-        return logits.argmax(dim=-1)
-
     if (
         training_args.do_predict
         or data_args.dataset_name is not None
@@ -314,44 +278,33 @@ def main():
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # Get the metric function
-    task_metrics = get_glue_metrics(data_args.dataset_name)
+    metric = get_glue_metrics(data_args.dataset_name)[0]
 
-    def postprocess_text(texts):
-        return lmap(str.strip, texts)
+    def compute_metrics(eval_preds):
+        import numpy as np
 
-    # TODO: we maybe need to pad till the sentences, and then predict the tokens we need for the few ones we need.
-    def compute_metrics(results):
-        post_processor = get_post_processor(data_args.dataset_name)
+        preds, labels = eval_preds
+        if isinstance(preds, tuple):
+            preds = preds[0]
+        # Replace -100s used for padding as we can't decode them
+        preds = np.where(preds != -100, preds, tokenizer.pad_token_id)
+        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+        labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+        # Some simple post-processing
+        decoded_preds, decoded_labels = postprocess_text_for_metric(
+            "rouge", decoded_preds, decoded_labels
+        )
+        result = metric(predictions=decoded_preds, targets=decoded_labels)
+        result = {k: round(v * 100, 4) for k, v in result.items()}
+        prediction_lens = [
+            np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds
+        ]
+        result["gen_len"] = np.mean(prediction_lens)
+        return result
 
-        # TODO: we need to change the metrics here.
-        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
-        decoded_labels = postprocess_text(process_text(results["gold_texts_masked"]))
-        if post_processor is not None:
-            decoded_labels = [post_processor(x) for x in decoded_labels]
-
-        metrics = {}
-        for key in keys:
-            decoded_preds = postprocess_text(process_text(results[key]))
-            if post_processor is not None:
-                decoded_preds = [post_processor(x) for x in decoded_preds]
-            key_metrics = {}
-            for metric in task_metrics:
-                key_metrics.update(
-                    metric(predictions=decoded_preds, targets=decoded_labels)
-                )
-            if len(key_metrics) > 1:
-                key_metrics["combined_score"] = np.mean(
-                    list(key_metrics.values())
-                ).item()
-            key_metrics = {f"{key}_{k}": v for k, v in key_metrics.items()}
-            metrics.update(key_metrics)
-
-        return metrics
-
-    # Data collator will default to DataCollatorWithPadding when the tokenizer is passed to Trainer, so we change it if
-    # we already did the padding.
     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForSeq2Seq(  # noqa: E731
+    data_collator = lambda mode: DataCollatorForCausalLMSeq2Seq(  # noqa: E731
         tokenizer,
         # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
@@ -359,27 +312,8 @@ def main():
         pad_to_multiple_of=8 if training_args.fp16 else None,
     )
 
-    # init schedulers
-    noise_scheduler = TokenWiseSimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-    )
-    inference_noise_schedulers = [
-        TokenWiseSimplexDDPMScheduler(
-            num_train_timesteps=timesteps,
-            beta_schedule=diffusion_args.beta_schedule,
-            simplex_value=diffusion_args.simplex_value,
-            clip_sample=diffusion_args.clip_sample,
-            device=training_args.device,
-        )
-        for timesteps in diffusion_args.num_inference_diffusion_steps
-    ]
-
     # Initialize our Trainer
-    trainer = DiffusionTrainer(
+    trainer = ARTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
@@ -389,13 +323,10 @@ def main():
         compute_metrics=compute_metrics
         if (training_args.do_eval or training_args.do_predict)
         else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics
-        if (training_args.do_eval or training_args.do_predict)
-        else None,
-        noise_scheduler=noise_scheduler,
-        diffusion_args=diffusion_args,
-        data_args=data_args,
-        inference_noise_schedulers=inference_noise_schedulers,
+        # preprocess_logits_for_metrics=preprocess_logits_for_metrics
+        # if (training_args.do_eval or training_args.do_predict)
+        # else None,
+        # data_args=data_args,
     )
 
     # Training
@@ -419,21 +350,6 @@ def main():
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
-
-    # We will load the best model here to avoid an issue when do_train is not set.
-    if training_args.load_states_in_eval_from_model_path and not training_args.do_train:
-        trainer.state = TrainerState.load_from_json(
-            os.path.join(model_args.model_name_or_path, "trainer_state.json")
-        )
-        if (
-            training_args.load_best_model_at_end
-            and trainer.state.best_model_checkpoint is not None
-        ):
-            checkpoint_path = trainer.state.best_model_checkpoint
-        else:
-            checkpoint_path = model_args.model_name_or_path
-        trainer._load_from_checkpoint(checkpoint_path)
-        trainer._load_rng_state(checkpoint_path)
 
     # Evaluation
     if training_args.do_eval:

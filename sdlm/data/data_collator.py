@@ -2,7 +2,7 @@ import random
 from dataclasses import dataclass
 from enum import Enum
 from random import choices
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -243,9 +243,8 @@ class SpanInfillingDataCollator:
             max_length=self.max_length,
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors=self.return_tensors,
+            return_attention_mask=False,
         )
-        if "attention_mask" in batch:
-            del batch["attention_mask"]
         return {**batch, **masks}
 
 
@@ -288,6 +287,7 @@ class DataCollatorForSeq2Seq:
             max_length=self.max_length,
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors="pt",
+            return_attention_mask=False,
         )
         batch_length = features["input_ids"].shape[1]
 
@@ -296,20 +296,22 @@ class DataCollatorForSeq2Seq:
             for input in input_ids
         ]
         features["span_mask"] = torch.tensor(masks)
-        if "attention_mask" in features:
-            features.pop("attention_mask")
         return features
 
 
-LLAMA_SEQ2SEQ_SEP = [13, 7727, 29901]
-MISTRAL_SEQ2SEQ_SEP = [13, 3499, 28747]
-
 @dataclass
-class DataCollatorForLlamaSeq2Seq:
+class DataCollatorForCausalLMSeq2Seq:
     tokenizer: PreTrainedTokenizerBase
     padding: Union[bool, str, PaddingStrategy] = True
     max_length: Optional[int] = None
     pad_to_multiple_of: Optional[int] = None
+    use_sep: Optional[bool] = False
+    # \nsummary:
+    # LLAMA_SEP: Tuple[int] = (13, 7727, 29901)
+    # MISTRAL_SEP: Tuple[int] = (13, 3499, 28747)
+    # <sep>
+    LLAMA_SEP: Tuple[int] = (529, 19570, 29958)
+    MISTRAL_SEP: Tuple[int] = (523, 21571, 28767)
 
     def __call__(self, features):
         if "attention_mask" in features:
@@ -318,11 +320,22 @@ class DataCollatorForLlamaSeq2Seq:
         input_ids = [feature["input_ids"][:-1] for feature in features]
         # remove sos from labels
         labels = [feature["labels"][1:] for feature in features]
-        # tokenizer.encode('\nsummary: )
+
+        SEP = []
+        if self.use_sep:
+            # guard incomplete code path
+            # TODO: add use_sep to arguments
+            assert False
+            tokenizer_name = self.tokenizer.name_or_path.lower()
+            if "mistral" in tokenizer_name:
+                SEP = list(self.MISTRAL_SEP)
+            elif "llama" in tokenizer_name:
+                SEP = list(self.LLAMA_SEP)
+            else:
+                raise ValueError("Unrecognized tokenizer.name_or_path")
 
         input_target = [
-            input + LLAMA_SEQ2SEQ_SEP + target
-            for input, target in zip(input_ids, labels)
+            input + SEP + target for input, target in zip(input_ids, labels)
         ]
         features = self.tokenizer.pad(
             {"input_ids": input_target},
@@ -330,18 +343,58 @@ class DataCollatorForLlamaSeq2Seq:
             max_length=self.max_length,
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors="pt",
+            return_attention_mask=True,
         )
         batch_length = features["input_ids"].shape[1]
         masks = []
-        for input in input_ids:
-            context_length = len(input) + len(MISTRAL_SEQ2SEQ_SEP)
-            mask = context_length * [False] + (batch_length - context_length) * [True]
+        pad_lengths = []
+        context_lengths = []
+        for input, label in zip(input_ids, labels):
+            context_length = len(input) + len(SEP)
+            label_length = len(label)
+            pad_length = batch_length - context_length - label_length
+            if self.tokenizer.padding_side == "right":
+                raise NotImplementedError
+            mask = (context_length + pad_length) * [False] + label_length * [True]
             masks.append(mask)
-        # masks = [
-        #     (len(input) - 1 + SEP_LEN) * [False] + (batch_length - len(input)) * [True]
-        #     for input in input_ids
-        # ]
+            pad_lengths.append(pad_length)
+            context_lengths.append(context_length)
         features["labels"] = torch.where(
             torch.tensor(masks), features["input_ids"], -100
         )
+        features["pad_lengths"] = torch.tensor(pad_lengths)
+        features["context_lengths"] = torch.tensor(context_lengths)
+        return features
+
+
+# custom collator for the multi-turn input format.
+@dataclass
+class DataCollatorForMultiTurnSeq2Seq:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        input_ids = [feature["input_ids"] for feature in features]
+        labels = [feature["labels"] for feature in features]
+        features = self.tokenizer.pad(
+            {"input_ids": input_ids},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )
+        # pad labels out for easy mask
+        label_features = self.tokenizer.pad(
+            {"input_ids": labels},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )["input_ids"]
+        # true wherever we have an actual label
+        features["span_mask"] = torch.where(label_features == -100, False, True)
         return features

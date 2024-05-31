@@ -35,7 +35,6 @@ from transformers.trainer_utils import (  # ShardedDDPOption,
     TrainOutput,
     denumpify_detensorize,
     has_length,
-    seed_worker,
     speed_metrics,
 )
 from transformers.training_args import ParallelMode
@@ -100,6 +99,7 @@ class DiffusionTrainer(Trainer):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.original_data_collator = self.data_collator
         self.noise_scheduler = noise_scheduler
         self.diffusion_args = diffusion_args
         self.data_args = data_args
@@ -212,9 +212,9 @@ class DiffusionTrainer(Trainer):
         # the warper model will scale the timesteps to the correct range.
         timesteps = scale(timesteps, len(self.noise_scheduler))
         # original_timesteps_scaled = scale(original_timesteps, len(self.noise_scheduler))
-        inputs.update(
-            {"original_timesteps": scale(original_timesteps, len(self.noise_scheduler))}
-        )
+        # inputs.update(
+        #     {"original_timesteps": scale(original_timesteps, len(self.noise_scheduler))}
+        # )
 
         inputs.update(
             {
@@ -222,10 +222,10 @@ class DiffusionTrainer(Trainer):
                 "simplex": noisy_simplex,
             }
         )
-        inputs.update({"max_timestep": len(self.noise_scheduler)})
+        # inputs.update({"max_timestep": len(self.noise_scheduler)})
         if self.diffusion_args.self_condition is not None:
             previous_pred = None
-            previous_hidden = None
+            # previous_hidden = None
             if np.random.rand(1) > 0.5:
                 next_timestep = inputs.pop("timesteps")
                 next_simplex = inputs.pop("simplex")
@@ -269,7 +269,7 @@ class DiffusionTrainer(Trainer):
                     logits_projection_fct,
                 )
                 # following rest of self-conditioning, don't backprop through.
-                previous_hidden = outputs.hidden_states.detach()
+                # previous_hidden = outputs.hidden_states.detach()
                 # pop timestep/simplex and put the old ones back.
                 inputs.update(
                     {
@@ -278,15 +278,15 @@ class DiffusionTrainer(Trainer):
                     }
                 )
             inputs.update({"previous_pred": previous_pred})
-            inputs.update({"previous_hidden": previous_hidden})
+            # inputs.update({"previous_hidden": previous_hidden})
         else:
             inputs.update({"previous_pred": None})
-            inputs.update({"previous_hidden": None})
-            previous_hidden = None
+            # inputs.update({"previous_hidden": None})
+            # previous_hidden = None
         # NOTE: we do this after computation of self-conditioning to not affect that one.
-        inputs.update(
-            {"classifier_free_guidance_in_train": self.classifier_free_guidance}
-        )
+        # inputs.update(
+        #     {"classifier_free_guidance_in_train": self.classifier_free_guidance}
+        # )
         # re-warp based on previous hidden state
         if is_cdcd_check(self.model):
             # replace masked tokens with <mask> token.
@@ -325,7 +325,7 @@ class DiffusionTrainer(Trainer):
     def light_prediction_step(
         self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        with torch.no_grad():
+        with torch.inference_mode():
             inputs = self._prepare_inputs(inputs)
             # Truncate the length if needed.
             if self.data_args.truncation_length > 0:
@@ -397,10 +397,10 @@ class DiffusionTrainer(Trainer):
                     "simplex": noisy_simplex,
                 }
             )
-            inputs.update({"max_timestep": len(self.noise_scheduler)})
+            # inputs.update({"max_timestep": len(self.noise_scheduler)})
             if self.diffusion_args.self_condition is not None:
                 previous_pred = None
-                last_hidden_state = None
+                # last_hidden_state = None
                 if np.random.rand(1) > 0.5:
                     outputs = model(**inputs, previous_pred=previous_pred)
                     logits_projection_fct = lambda x: logits_projection(  # noqa: E731
@@ -415,17 +415,17 @@ class DiffusionTrainer(Trainer):
                         outputs.logits,
                         logits_projection_fct,
                     )
-                    last_hidden_state = outputs.hidden_states
+                    # last_hidden_state = outputs.hidden_states
                 inputs.update(
                     {
                         "previous_pred": previous_pred,
-                        "previous_hidden": last_hidden_state,
+                        # "previous_hidden": last_hidden_state,
                     }
                 )
             # NOTE: we do this after computation of self-conditioning to not affect that one.
-            inputs.update(
-                {"classifier_free_guidance_in_train": self.classifier_free_guidance}
-            )
+            # inputs.update(
+            #     {"classifier_free_guidance_in_train": self.classifier_free_guidance}
+            # )
             with self.compute_loss_context_manager():
                 loss = self.compute_loss(model, inputs)
 
@@ -445,7 +445,7 @@ class DiffusionTrainer(Trainer):
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         inputs = self._prepare_inputs(inputs)
         # full inference.
-        with torch.no_grad():
+        with torch.inference_mode():
             with self.compute_loss_context_manager():
                 for i, x in enumerate(
                     pipeline(
@@ -1023,75 +1023,12 @@ class DiffusionTrainer(Trainer):
             )
 
     def get_train_dataloader(self) -> DataLoader:
-        """
-        Returns the training [`~torch.utils.data.DataLoader`].
-        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
-        training if necessary) otherwise.
-        Subclass and override this method if you want to inject some custom behavior.
-        """
-        if self.train_dataset is None:
-            raise ValueError("Trainer: training requires a train_dataset.")
-
-        train_dataset = self.train_dataset
-        data_collator = self.data_collator("train")
-        if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
-            train_dataset = self._remove_unused_columns(
-                train_dataset, description="training"
-            )
-        else:
-            data_collator = self._get_collator_with_removed_columns(
-                data_collator, description="training"
-            )
-
-        dataloader_params = {
-            "batch_size": self._train_batch_size,
-            "collate_fn": data_collator,
-            "num_workers": self.args.dataloader_num_workers,
-            "pin_memory": self.args.dataloader_pin_memory,
-        }
-
-        if not isinstance(train_dataset, torch.utils.data.IterableDataset):
-            dataloader_params["sampler"] = self._get_train_sampler()
-            dataloader_params["drop_last"] = self.args.dataloader_drop_last
-            dataloader_params["worker_init_fn"] = seed_worker
-
-        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
+        self.data_collator = self.original_data_collator("train")
+        return super().get_train_dataloader()
 
     def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
-        """
-        Returns the evaluation [`~torch.utils.data.DataLoader`].
-        Subclass and override this method if you want to inject some custom behavior.
-        Args:
-            eval_dataset (`torch.utils.data.Dataset`, *optional*):
-                If provided, will override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns not accepted
-                by the `model.forward()` method are automatically removed. It must implement `__len__`.
-        """
-        if eval_dataset is None and self.eval_dataset is None:
-            raise ValueError("Trainer: evaluation requires an eval_dataset.")
-        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-        data_collator = self.data_collator("eval")
-
-        if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
-            eval_dataset = self._remove_unused_columns(
-                eval_dataset, description="evaluation"
-            )
-        else:
-            data_collator = self._get_collator_with_removed_columns(
-                data_collator, description="evaluation"
-            )
-
-        dataloader_params = {
-            "batch_size": self.args.eval_batch_size,
-            "collate_fn": data_collator,
-            "num_workers": self.args.dataloader_num_workers,
-            "pin_memory": self.args.dataloader_pin_memory,
-        }
-
-        if not isinstance(eval_dataset, torch.utils.data.IterableDataset):
-            dataloader_params["sampler"] = self._get_eval_sampler(eval_dataset)
-            dataloader_params["drop_last"] = self.args.dataloader_drop_last
-
-        return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
+        self.data_collator = self.original_data_collator("eval")
+        return super().get_eval_dataloader(eval_dataset)
 
     def get_light_eval_dataloader(
         self, eval_dataset: Optional[Dataset] = None
@@ -1107,7 +1044,7 @@ class DiffusionTrainer(Trainer):
         if eval_dataset is None and self.eval_dataset is None:
             raise ValueError("Trainer: evaluation requires an eval_dataset.")
         eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-        data_collator = self.data_collator("train")
+        data_collator = self.original_data_collator("train")
 
         if is_datasets_available() and isinstance(eval_dataset, datasets.Dataset):
             eval_dataset = self._remove_unused_columns(
@@ -1646,66 +1583,62 @@ class DiffusionTrainer(Trainer):
 
         return TrainOutput(self.state.global_step, train_loss, metrics)
 
-    # def create_optimizer(self):
-    #     from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
-    #     from transformers.trainer_pt_utils import get_parameter_names
+    def create_optimizer(self):
+        from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+        from transformers.trainer_pt_utils import get_parameter_names
 
-    #     # overriden
-    #     opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
 
-    #     if self.optimizer is None:
-    #         decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
-    #         decay_parameters = [name for name in decay_parameters if "bias" not in name]
-    #         optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
-    #             self.args
-    #         )
+        if self.optimizer is not None:
+            return self.optimizer
 
-    #         # only training warping parameters...
-    #         optimizer_grouped_parameters = [
-    #             {
-    #                 "params": [
-    #                     p
-    #                     for n, p in opt_model.named_parameters()
-    #                     if (
-    #                         n in decay_parameters
-    #                         and p.requires_grad
-    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-    #                     )
-    #                 ],
-    #                 "weight_decay": self.args.weight_decay,
-    #                 "lr": optimizer_kwargs["lr"],
-    #             },
-    #             {
-    #                 "params": [
-    #                     p
-    #                     for n, p in opt_model.named_parameters()
-    #                     if (
-    #                         n not in decay_parameters
-    #                         and p.requires_grad
-    #                         and not ("cdf" in n or "linear_l" in n or "position_l" in n)
-    #                     )
-    #                 ],
-    #                 "weight_decay": 0.0,
-    #                 "lr": optimizer_kwargs["lr"],
-    #             },
-    #             {
-    #                 "params": [
-    #                     p
-    #                     for n, p in opt_model.named_parameters()
-    #                     if (
-    #                         ("cdf" in n or "linear_l" in n or "position_l" in n)
-    #                         and p.requires_grad
-    #                     )
-    #                 ],
-    #                 "weight_decay": 0.0,
-    #                 "lr": 1e-3,
-    #             },
-    #         ]
+        decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
+        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+        optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(
+            self.args
+        )
 
-    #         optimizer_kwargs.pop("lr")
+        # override to apply higher lr to timestep_embed
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (
+                        n in decay_parameters
+                        and p.requires_grad
+                        and not ("timestep_embed" in n)
+                    )
+                ],
+                "weight_decay": self.args.weight_decay,
+                "lr": optimizer_kwargs["lr"],
+            },
+            {
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (
+                        n not in decay_parameters
+                        and p.requires_grad
+                        and not ("timestep_embed" in n)
+                    )
+                ],
+                "weight_decay": 0.0,
+                "lr": optimizer_kwargs["lr"],
+            },
+            {
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (("timestep_embed" in n) and p.requires_grad)
+                ],
+                "weight_decay": 0.0,
+                "lr": self.args.timestep_embed_lr or self.args.learning_rate,
+            },
+        ]
 
-    #         self.optimizer = optimizer_cls(
-    #             optimizer_grouped_parameters, **optimizer_kwargs
-    #         )
+        optimizer_kwargs.pop("lr")
 
-    #     return self.optimizer
+        self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+
+        return self.optimizer
