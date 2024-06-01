@@ -3,6 +3,7 @@ import os
 import sys
 
 import datasets
+import torch
 import transformers
 from datasets import Dataset, load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
@@ -15,7 +16,7 @@ from .arguments import get_args
 from .data.data_collator import SpanInfillingDataCollator
 from .data.data_utils import load_data, tokenize_data_new
 from .inference.inference_utils import evaluate_generation
-from .models import load_model
+from .models import get_torch_dtype, load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainer_diffusion import DiffusionTrainer
 
@@ -35,9 +36,13 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 def get_compute_metrics(data_args, training_args, model_args):
     # Causal language model.
     causal_model = AutoModelForCausalLM.from_pretrained(
-        model_args.autoregressive_eval_model
-    )
-    causal_model = causal_model.to(training_args.device)
+        model_args.autoregressive_eval_model,
+        torch_dtype=get_torch_dtype(training_args),
+        attn_implementation="flash_attention_2"
+        if model_args.use_flash_attention2
+        else "eager",
+    ).to(training_args.device)
+    causal_model = torch.compile(causal_model)
     causal_tokenizer = AutoTokenizer.from_pretrained(
         model_args.autoregressive_eval_model
     )
