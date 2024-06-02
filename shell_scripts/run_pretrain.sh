@@ -1,14 +1,14 @@
 CMD="
-python -m sdlm.run_mlm \
+python -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 12  \
-    --per_device_eval_batch_size 12 \
+    --per_device_train_batch_size 7  \
+    --per_device_eval_batch_size 7 \
     --do_train \
     --do_eval \
     --evaluation_strategy steps \
     --report_to tensorboard \
     --overwrite_output_dir \
-    --max_seq_length 512  \
+    --max_seq_length 4096  \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
     --lr_scheduler_type cosine \
@@ -35,10 +35,10 @@ python -m sdlm.run_mlm \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n dolma_mistral -t dolma_mistral --allow-dirty \
+    gantry run -y -n dolma_mistral_long -t dolma_mistral_long --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
-        --gpus 1 \
+        --gpus 2 \
         --priority normal \
         --budget ai2/allennlp \
         --cluster ai2/allennlp-cirrascale \
@@ -52,7 +52,7 @@ if [ ! -z "${BEAKER}" ]; then
         --save_steps 1000 \
         --max_eval_samples 512 \
         --gradient_accumulation_steps 4 \
-        --num_inference_diffusion_steps 10 100 200 \
+        --num_inference_diffusion_steps 100 200 \
         --eval_long_only true \
         --beaker \
         --output_dir /results
