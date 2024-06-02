@@ -20,7 +20,7 @@ from .data.postprocessors import postprocess_text_for_metric
 from .data.sni.sni_collator import DataCollatorForNI
 from .metrics.metrics import get_glue_metrics
 from .models import load_model
-from .trainer_ar import ARTrainer
+from .trainers.trainer_ar import ARTrainer
 
 # This is computed with scripts/compute_max_tokens_of_labels.py
 MAX_LABEL_LENGTH = 5

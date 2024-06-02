@@ -18,7 +18,7 @@ from .data.data_collator import DataCollatorForCausalLMSeq2Seq
 from .data.data_utils import load_data
 from .data.postprocessors import postprocess_text_for_metric
 from .models.utils import load_model
-from .trainer_ar import ARTrainer
+from .trainers.trainer_ar import ARTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 # check_min_version("4.40.0.dev0")

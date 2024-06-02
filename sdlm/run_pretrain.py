@@ -18,7 +18,7 @@ from .data.data_utils import load_data, tokenize_data_new
 from .inference.inference_utils import evaluate_generation
 from .models import get_torch_dtype, load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer_diffusion import DiffusionTrainer
+from .trainers.trainer_diffusion import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")

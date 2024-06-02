@@ -47,10 +47,13 @@ from transformers.utils import (
     logging,
 )
 
-from .inference.inference_utils import logits_projection, predict_conditional_generated
-from .models.utils import is_cdcd_check
-from .pipelines.simplex_ddpm import SimplexDDPMPipeline
-from .utils import convert_to_simplex, pad_data, scale, self_condition_preds
+from sdlm.inference.inference_utils import (
+    logits_projection,
+    predict_conditional_generated,
+)
+from sdlm.models.utils import is_cdcd_check
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from sdlm.utils import convert_to_simplex, pad_data, scale, self_condition_preds
 
 if is_apex_available():
     from apex import amp
