@@ -1,8 +1,8 @@
 CMD="
 python -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 7  \
-    --per_device_eval_batch_size 7 \
+    --per_device_train_batch_size 6  \
+    --per_device_eval_batch_size 6 \
     --do_train \
     --do_eval \
     --evaluation_strategy steps \
@@ -38,7 +38,7 @@ if [ ! -z "${BEAKER}" ]; then
     gantry run -y -n dolma_mistral_long -t dolma_mistral_long --allow-dirty \
         --workspace ai2/tess2 \
         --nfs \
-        --gpus 2 \
+        --gpus 4 \
         --priority normal \
         --budget ai2/allennlp \
         --cluster ai2/allennlp-cirrascale \
@@ -51,7 +51,7 @@ if [ ! -z "${BEAKER}" ]; then
         --eval_steps 200 \
         --save_steps 1000 \
         --max_eval_samples 512 \
-        --gradient_accumulation_steps 4 \
+        --gradient_accumulation_steps 2 \
         --num_inference_diffusion_steps 100 200 \
         --eval_long_only true \
         --beaker \
