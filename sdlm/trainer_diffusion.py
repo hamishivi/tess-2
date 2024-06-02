@@ -104,6 +104,7 @@ class DiffusionTrainer(Trainer):
         self.diffusion_args = diffusion_args
         self.data_args = data_args
         self.vocab_size = self.model.config.vocab_size
+        self.dtype = self.model.dtype
         self.inference_noise_schedulers = inference_noise_schedulers
         self.inference_timesteps = diffusion_args.num_inference_diffusion_steps
         self.tb_writer = self.get_tb_writer()
@@ -159,7 +160,10 @@ class DiffusionTrainer(Trainer):
 
         # Creates the noisy simplex and timesteps.
         simplex = convert_to_simplex(
-            inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size
+            inputs["input_ids"],
+            self.diffusion_args.simplex_value,
+            self.vocab_size,
+            dtype=self.dtype,
         )
         noise = self.diffusion_args.simplex_value * torch.randn(
             simplex.shape, device=simplex.device, dtype=simplex.dtype
@@ -337,7 +341,10 @@ class DiffusionTrainer(Trainer):
                 ]
             # Creates the noisy simplex and timesteps.
             simplex = convert_to_simplex(
-                inputs["input_ids"], self.diffusion_args.simplex_value, self.vocab_size
+                inputs["input_ids"],
+                self.diffusion_args.simplex_value,
+                self.vocab_size,
+                dtype=self.dtype,
             )
             noise = self.diffusion_args.simplex_value * torch.randn(
                 simplex.shape, device=simplex.device, dtype=simplex.dtype

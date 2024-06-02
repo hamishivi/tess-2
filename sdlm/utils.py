@@ -18,8 +18,12 @@ def join_texts(prefixes, sentences):
     return [f"{prefix}{sentence}" for prefix, sentence in zip(prefixes, sentences)]
 
 
-def convert_to_simplex(token_ids, simplex_value, vocab_size):
-    return 2 * simplex_value * F.one_hot(token_ids, vocab_size) - simplex_value
+def convert_to_simplex(
+    token_ids, simplex_value, vocab_size, dtype: torch.dtype = torch.float32
+):
+    return (2 * simplex_value * F.one_hot(token_ids, vocab_size) - simplex_value).to(
+        dtype
+    )
 
 
 def scale(inputs, scale_value):

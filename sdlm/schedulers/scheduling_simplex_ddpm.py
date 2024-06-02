@@ -29,7 +29,11 @@ class SimplexDDPMSchedulerOutput(BaseOutput):
 
 
 def betas_for_alpha_bar(
-    num_diffusion_timesteps, device, max_beta=0.999, improved_ddpm=False
+    num_diffusion_timesteps,
+    device,
+    max_beta=0.999,
+    improved_ddpm=False,
+    dtype=torch.bfloat16,
 ):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -64,11 +68,9 @@ def betas_for_alpha_bar(
         if improved_ddpm:
             alphas_cumprod.append(alpha_bar_t1)
     # TODO(rabeeh): maybe this cause memory issue.
-    betas = torch.tensor(betas, dtype=torch.float32, device=device)
+    betas = torch.tensor(betas, dtype=dtype, device=device)
     if improved_ddpm:
-        return betas, torch.tensor(
-            alphas_cumprod, dtype=torch.torch.float32, device=device
-        )
+        return betas, torch.tensor(alphas_cumprod, dtype=dtype, device=device)
     return betas
 
 
@@ -86,6 +88,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = False,
+        dtype: torch.dtype = torch.float32,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -94,7 +97,7 @@ class SimplexDDPMScheduler(DDPMScheduler):
                 beta_start,
                 beta_end,
                 num_train_timesteps,
-                dtype=torch.float32,
+                dtype=dtype,
                 device=device,
             )
         elif beta_schedule == "scaled_linear":
@@ -104,21 +107,28 @@ class SimplexDDPMScheduler(DDPMScheduler):
                     beta_start**0.5,
                     beta_end**0.5,
                     num_train_timesteps,
-                    dtype=torch.float32,
+                    dtype=dtype,
                     device=device,
                 )
                 ** 2
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps, device=device)
+            self.betas = betas_for_alpha_bar(
+                num_train_timesteps, device=device, dtype=dtype
+            )
         elif beta_schedule == "squaredcos_improved_ddpm":
             self.betas, self.alphas_cumprod = betas_for_alpha_bar(
-                num_train_timesteps, device=device, improved_ddpm=True
+                num_train_timesteps,
+                device=device,
+                improved_ddpm=True,
+                dtype=dtype,
             )
         elif beta_schedule == "sigmoid":
             # GeoDiff sigmoid schedule
-            betas = torch.linspace(-6, 6, num_train_timesteps, device=device)
+            betas = torch.linspace(
+                -6, 6, num_train_timesteps, device=device, dtype=dtype
+            )
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
             raise NotImplementedError(
@@ -220,6 +230,7 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
         variance_type: str = "fixed_small",
         clip_sample: bool = False,
         multiply_factor: float = 1.0,
+        dtype: torch.dtype = torch.float32,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -228,7 +239,7 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
                 beta_start,
                 beta_end,
                 num_train_timesteps,
-                dtype=torch.float32,
+                dtype=dtype,
                 device=device,
             )
         elif beta_schedule == "scaled_linear":
@@ -238,21 +249,28 @@ class TokenWiseSimplexDDPMScheduler(DDPMScheduler):
                     beta_start**0.5,
                     beta_end**0.5,
                     num_train_timesteps,
-                    dtype=torch.float32,
+                    dtype=dtype,
                     device=device,
                 )
                 ** 2
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps, device=device)
+            self.betas = betas_for_alpha_bar(
+                num_train_timesteps, device=device, dtype=dtype
+            )
         elif beta_schedule == "squaredcos_improved_ddpm":
             self.betas, self.alphas_cumprod = betas_for_alpha_bar(
-                num_train_timesteps, device=device, improved_ddpm=True
+                num_train_timesteps,
+                device=device,
+                improved_ddpm=True,
+                dtype=dtype,
             )
         elif beta_schedule == "sigmoid":
             # GeoDiff sigmoid schedule
-            betas = torch.linspace(-6, 6, num_train_timesteps, device=device)
+            betas = torch.linspace(
+                -6, 6, num_train_timesteps, device=device, dtype=dtype
+            )
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
             raise NotImplementedError(
