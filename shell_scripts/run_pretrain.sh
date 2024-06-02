@@ -9,6 +9,8 @@ python -m sdlm.run_pretrain \
     --report_to tensorboard \
     --overwrite_output_dir \
     --max_seq_length 4096  \
+    --min_eval_seq_length 512 \
+    --max_eval_seq_length 512 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
     --lr_scheduler_type cosine \
@@ -53,7 +55,6 @@ if [ ! -z "${BEAKER}" ]; then
         --max_eval_samples 512 \
         --gradient_accumulation_steps 4 \
         --num_inference_diffusion_steps 100 200 \
-        --eval_long_only true \
         --beaker \
         --output_dir /results
 else
@@ -63,6 +64,5 @@ else
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
-        --eval_long_only false \
         --output_dir outputs/test
 fi

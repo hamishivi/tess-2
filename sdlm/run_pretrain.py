@@ -3,7 +3,6 @@ import os
 import sys
 
 import datasets
-import torch
 import transformers
 from datasets import Dataset, load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
@@ -33,6 +32,17 @@ logger = logging.getLogger(__name__)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
+def filter_by_length(min_len: int, max_len: int, pad_token_id: int) -> bool:
+    """hashable filter function for hf dataset library"""
+
+    def func(x):
+        return (
+            min_len <= len([i for i in x["input_ids"] if i != pad_token_id]) <= max_len
+        )
+
+    return func
+
+
 def get_compute_metrics(data_args, training_args, model_args):
     # Causal language model.
     causal_model = AutoModelForCausalLM.from_pretrained(
@@ -42,11 +52,9 @@ def get_compute_metrics(data_args, training_args, model_args):
         if model_args.use_flash_attention2
         else "eager",
     ).to(training_args.device)
-    causal_model = torch.compile(causal_model)
     causal_tokenizer = AutoTokenizer.from_pretrained(
         model_args.autoregressive_eval_model
     )
-
     is_conditional_generation = data_args.conditional_generation is not None
     prefix_lm_eval = data_args.conditional_generation in [
         "prefix_lm",
@@ -202,16 +210,16 @@ def main():
                     yield x
 
             eval_dataset = Dataset.from_generator(iterable_generator)
-        if data_args.eval_long_only:
-            # filter out short examples so that we prompt the model with examples
-            # that actually require generating out to a decent length.
-            # is a list at this point so
+        if data_args.min_eval_seq_length is not None or data_args.max_eval_seq_length:
+            # filter out examples based on specified eval lengths
+            # eval_dataset is a list at this point
+            min_len = data_args.min_eval_seq_length or 0
+            max_len = data_args.max_eval_seq_length or data_args.max_seq_length
+            assert 0 <= min_len <= max_len <= data_args.max_seq_length
             assert model.config.pad_token_id is not None
+
             eval_dataset = eval_dataset.filter(
-                lambda x: len(
-                    [i for i in x["input_ids"] if i != model.config.pad_token_id]
-                )
-                >= 300
+                filter_by_length(min_len, max_len, model.config.pad_token_id)
             )
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
