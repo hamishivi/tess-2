@@ -1,8 +1,8 @@
 CMD="
 python -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 6  \
-    --per_device_eval_batch_size 6 \
+    --per_device_train_batch_size 4  \
+    --per_device_eval_batch_size 4 \
     --do_train \
     --do_eval \
     --evaluation_strategy steps \
@@ -51,7 +51,7 @@ if [ ! -z "${BEAKER}" ]; then
         --eval_steps 200 \
         --save_steps 1000 \
         --max_eval_samples 512 \
-        --gradient_accumulation_steps 2 \
+        --gradient_accumulation_steps 4 \
         --num_inference_diffusion_steps 100 200 \
         --eval_long_only true \
         --beaker \
