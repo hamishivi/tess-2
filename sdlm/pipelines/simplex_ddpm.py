@@ -124,7 +124,9 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         )
         if config.self_condition is not None:
             previous_pred = torch.zeros(
-                (batch_size, seq_length, vocab_size), device=device
+                (batch_size, seq_length, vocab_size),
+                device=device,
+                dtype=dtype,
             )
         logits_projection_fct = lambda x: logits_projection(  # noqa: E731
             x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
