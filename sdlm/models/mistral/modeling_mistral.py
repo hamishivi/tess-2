@@ -22,11 +22,6 @@ class Sin(nn.Module):
 
 
 class MistralForDiffusionLM(DiffusionModelMixin, MistralPreTrainedModel):
-    _keys_to_ignore_on_save = [r"lm_head.weight", r"lm_head.bias"]
-    _keys_to_ignore_on_load_mi2ssing = [
-        r"lm_head.weight",
-        r"lm_head.bias",
-    ]
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):
