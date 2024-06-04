@@ -128,9 +128,7 @@ def logits_projection(logits, sampling_type, top_p, simplex_value, temperature):
     # TODO(rabeeh): huggingface has different sampling, like constrastive one.
     # also there are more variant in diffusion-lm.
     token_ids = sample_logits(sampling_type, logits, top_p, temperature)
-    return convert_to_simplex(
-        token_ids, simplex_value, vocab_size=logits.shape[2], dtype=logits.dtype
-    )
+    return convert_to_simplex(token_ids, simplex_value, vocab_size=logits.shape[2])
 
 
 def filter_empty(texts):

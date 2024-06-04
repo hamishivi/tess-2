@@ -100,11 +100,9 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         """
         # get config
         try:
-            dtype = self.model.dtype
             config = self.model.config
         except AttributeError:
             # wrapped in data parallel
-            dtype = self.model.module.dtype
             config = self.model.module.config
         # Sample gaussian noise to begin loop
         vocab_size = config.vocab_size
@@ -117,10 +115,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         batch_size = batch["input_ids"].shape[0]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(
-            simplex_shape,
-            generator=generator,
-            device=device,
-            dtype=dtype,
+            simplex_shape, generator=generator, device=device
         )
         if config.self_condition is not None:
             previous_pred = torch.zeros(
@@ -218,10 +213,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
             # 2. compute previous logits: x_t -> x_t-1
             noise = self.simplex_value * torch.randn(
-                simplex_shape,
-                generator=generator,
-                device=device,
-                dtype=dtype,
+                simplex_shape, generator=generator, device=device
             )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf

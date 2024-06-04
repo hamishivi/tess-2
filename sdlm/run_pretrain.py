@@ -150,7 +150,6 @@ def main():
         clip_sample=diffusion_args.clip_sample,
         device=training_args.device,
         multiply_factor=diffusion_args.multiply_factor,
-        dtype=get_torch_dtype(training_args),
     )
     inference_noise_schedulers = [
         TokenWiseSimplexDDPMScheduler(
@@ -160,7 +159,6 @@ def main():
             clip_sample=diffusion_args.clip_sample,
             device=training_args.device,
             multiply_factor=diffusion_args.multiply_factor,
-            dtype=get_torch_dtype(training_args),
         )
         for timesteps in diffusion_args.num_inference_diffusion_steps
     ]
