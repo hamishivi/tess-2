@@ -1,8 +1,9 @@
 CMD="
-python -m sdlm.run_pretrain \
+accelerate launch
+    --mixed_precision bf16 -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
     --per_device_train_batch_size 4  \
-    --per_device_eval_batch_size 4 \
+    --per_device_eval_batch_size 2 \
     --do_train \
     --do_eval \
     --evaluation_strategy steps \
@@ -10,7 +11,6 @@ python -m sdlm.run_pretrain \
     --overwrite_output_dir \
     --max_seq_length 4096  \
     --min_eval_seq_length 512 \
-    --max_eval_seq_length 512 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
     --lr_scheduler_type cosine \
@@ -34,6 +34,7 @@ python -m sdlm.run_pretrain \
     --is_causal false \
     --line_by_line true \
     --mask_padding_in_loss false \
+    --without_compute_metrics true \
 "
 
 if [ ! -z "${BEAKER}" ]; then
