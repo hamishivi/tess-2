@@ -98,28 +98,21 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             # Converts this to a simplex (batch_size, max_seq, vocab_size)
             uncond_simplex = convert_to_simplex(uncond_input["input_ids"], self.simplex_value, self.model.config.vocab_size)
         """
-        # get config
-        try:
-            config = self.model.config
-        except AttributeError:
-            # wrapped in data parallel
-            config = self.model.module.config
         # Sample gaussian noise to begin loop
-        vocab_size = config.vocab_size
+        vocab_size = self.model.config.vocab_size
         if batch is not None:
             # TODO(rabeeh): is giving the length cheating for this setting?
             # Adapts the sequence length to the given `span_mask`'s length.
             seq_length = batch["input_ids"].shape[1]
         # idk why i have the bsz argument.
-        device = batch["input_ids"].device
         batch_size = batch["input_ids"].shape[0]
         simplex_shape = (batch_size, seq_length, vocab_size)
         simplex = self.simplex_value * torch.randn(
-            simplex_shape, generator=generator, device=device
+            simplex_shape, generator=generator, device=self.device
         )
-        if config.self_condition is not None:
+        if self.model.config.self_condition is not None:
             previous_pred = torch.zeros(
-                (batch_size, seq_length, vocab_size), device=device
+                (batch_size, seq_length, vocab_size), device=self.device
             )
         logits_projection_fct = lambda x: logits_projection(  # noqa: E731
             x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
@@ -130,7 +123,9 @@ class SimplexDDPMPipeline(DiffusionPipeline):
         warped_steps = []
         prev_t = 0
         for t in self.progress_bar(self.scheduler.timesteps):
-            original_t = torch.tensor([t], device=device).expand(batch_size, seq_length)
+            original_t = torch.tensor([t], device=self.device).expand(
+                batch_size, seq_length
+            )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
                 # we are in inference mode, anything in span_mask is to gen.
@@ -168,7 +163,9 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 else None,
                 simplex=simplex,
                 timesteps=t_scaled,
-                previous_pred=previous_pred if config.self_condition else None,
+                previous_pred=previous_pred
+                if self.model.config.self_condition
+                else None,
                 classifier_free_guidance=classifier_free_guidance,
                 reduce_loss="none",
                 max_timestep=len(self.scheduler),
@@ -192,14 +189,14 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                         logits_pred - logits_uncond
                     )
 
-            if config.self_condition is not None:
+            if self.model.config.self_condition is not None:
                 if classifier_free_guidance:
                     prev_output_logits = model_output.logits.chunk(2)[1]
                 else:
                     prev_output_logits = model_output_logits
 
                 previous_pred = self_condition_preds(
-                    config.self_condition,
+                    self.model.config.self_condition,
                     prev_output_logits,
                     logits_projection_fct,
                 )
@@ -211,7 +208,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
             # 2. compute previous logits: x_t -> x_t-1
             noise = self.simplex_value * torch.randn(
-                simplex_shape, generator=generator, device=device
+                simplex_shape, generator=generator, device=self.device
             )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
