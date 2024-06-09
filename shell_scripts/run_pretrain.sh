@@ -2,10 +2,11 @@ CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 4  \
+    --per_device_train_batch_size 2  \
     --per_device_eval_batch_size 2 \
     --do_train \
     --do_eval \
+    --log_level info \
     --evaluation_strategy steps \
     --report_to tensorboard \
     --overwrite_output_dir \
@@ -34,6 +35,7 @@ accelerate launch
     --is_causal false \
     --line_by_line true \
     --mask_padding_in_loss false \
+    --ddp_find_unused_parameters false \
     --without_compute_metrics true \
 "
 
