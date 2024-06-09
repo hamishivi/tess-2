@@ -260,7 +260,9 @@ class DiffusionTrainer(Trainer):
                         "simplex": noisy_simplex,
                     }
                 )
-                outputs = model(**inputs, previous_pred=previous_pred)
+                # we don't backprop through this.
+                with torch.inference_mode():
+                    outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(  # noqa: E731
                     x,
                     self.diffusion_args.sampling_type,
@@ -272,7 +274,7 @@ class DiffusionTrainer(Trainer):
                     self.diffusion_args.self_condition,
                     outputs.logits,
                     logits_projection_fct,
-                )
+                ).detach()
                 # following rest of self-conditioning, don't backprop through.
                 # previous_hidden = outputs.hidden_states.detach()
                 # pop timestep/simplex and put the old ones back.

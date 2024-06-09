@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 
+import torch
 import datasets
 import transformers
 from datasets import Dataset, load_from_disk
@@ -73,6 +74,9 @@ def get_compute_metrics(data_args, training_args, model_args):
         skip_special_tokens=data_args.skip_special_tokens,
         eval_for_all_metrics=training_args.eval_for_all_metrics,
     )
+    # nuke causal model and explcitly free memory
+    del causal_model
+    torch.cuda.empty_cache()
     return compute_metrics
 
 
