@@ -82,6 +82,15 @@ def freeze(module):
         param.requires_grad = False
 
 
+def get_torch_dtype(training_args):
+    torch_dtype = torch.float32
+    if training_args.bf16:
+        torch_dtype = torch.bfloat16
+    elif training_args.fp16:
+        torch_dtype = torch.float16
+    return torch_dtype
+
+
 def load_model(model_args, data_args, training_args, diffusion_args, logger):
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -143,12 +152,6 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         pass
 
     if model_args.model_name_or_path and not model_args.from_scratch:
-        # identify dtype
-        torch_dtype = torch.float32
-        if training_args.bf16:
-            torch_dtype = torch.bfloat16
-        elif training_args.fp16:
-            torch_dtype = torch.float16
         model = model_cls.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -156,7 +159,7 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
-            torch_dtype=torch_dtype,
+            torch_dtype=get_torch_dtype(training_args),
             token=os.environ.get("HF_TOKEN", None),
             attn_implementation="flash_attention_2"
             if model_args.use_flash_attention2

@@ -532,11 +532,13 @@ class DataTrainingArguments:
         default=False,
         metadata={"help": "If set, we will shuffle the data before training."},
     )
-    eval_long_only: bool = field(
-        default=False,
-        metadata={
-            "help": "If set, we will only evaluate on the long examples in the validation set."
-        },
+    min_eval_seq_length: Optional[int] = field(
+        default=None,
+        metadata={"help": "Minimum sequence length of evaluation samples."},
+    )
+    max_eval_seq_length: Optional[int] = field(
+        default=None,
+        metadata={"help": "Maximuim sequence length of evaluation samples."},
     )
 
     def __post_init__(self):

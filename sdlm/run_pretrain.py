@@ -15,9 +15,9 @@ from .arguments import get_args
 from .data.data_collator import SpanInfillingDataCollator
 from .data.data_utils import load_data, tokenize_data_new
 from .inference.inference_utils import evaluate_generation
-from .models import load_model
+from .models import get_torch_dtype, load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainer_diffusion import DiffusionTrainer
+from .trainers.trainer_diffusion import DiffusionTrainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -32,16 +32,29 @@ logger = logging.getLogger(__name__)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
+def filter_by_length(min_len: int, max_len: int, pad_token_id: int) -> bool:
+    """hashable filter function for hf dataset library"""
+
+    def func(x):
+        return (
+            min_len <= len([i for i in x["input_ids"] if i != pad_token_id]) <= max_len
+        )
+
+    return func
+
+
 def get_compute_metrics(data_args, training_args, model_args):
     # Causal language model.
     causal_model = AutoModelForCausalLM.from_pretrained(
-        model_args.autoregressive_eval_model
-    )
-    causal_model = causal_model.to(training_args.device)
+        model_args.autoregressive_eval_model,
+        torch_dtype=get_torch_dtype(training_args),
+        attn_implementation="flash_attention_2"
+        if model_args.use_flash_attention2
+        else "eager",
+    ).to(training_args.device)
     causal_tokenizer = AutoTokenizer.from_pretrained(
         model_args.autoregressive_eval_model
     )
-
     is_conditional_generation = data_args.conditional_generation is not None
     prefix_lm_eval = data_args.conditional_generation in [
         "prefix_lm",
@@ -195,16 +208,16 @@ def main():
                     yield x
 
             eval_dataset = Dataset.from_generator(iterable_generator)
-        if data_args.eval_long_only:
-            # filter out short examples so that we prompt the model with examples
-            # that actually require generating out to a decent length.
-            # is a list at this point so
+        if data_args.min_eval_seq_length is not None or data_args.max_eval_seq_length:
+            # filter out examples based on specified eval lengths
+            # eval_dataset is a list at this point
+            min_len = data_args.min_eval_seq_length or 0
+            max_len = data_args.max_eval_seq_length or data_args.max_seq_length
+            assert 0 <= min_len <= max_len <= data_args.max_seq_length
             assert model.config.pad_token_id is not None
+
             eval_dataset = eval_dataset.filter(
-                lambda x: len(
-                    [i for i in x["input_ids"] if i != model.config.pad_token_id]
-                )
-                >= 300
+                filter_by_length(min_len, max_len, model.config.pad_token_id)
             )
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
@@ -230,7 +243,9 @@ def main():
         eval_context_size=data_args.eval_context_size,
     )
 
-    if training_args.do_eval:
+    compute_metrics = None
+    if training_args.do_eval and not training_args.without_compute_metrics:
+        # call only when necessary
         compute_metrics = get_compute_metrics(data_args, training_args, model_args)
 
     if data_args.shuffle and data_args.streaming:
@@ -248,9 +263,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics
-        if training_args.do_eval and not training_args.without_compute_metrics
-        else None,
+        compute_metrics=compute_metrics,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
         if training_args.do_eval
         else None,

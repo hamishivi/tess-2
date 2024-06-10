@@ -112,7 +112,7 @@ def perplexity(
 
         labels = encoded_batch
 
-        with torch.no_grad():
+        with torch.inference_mode():
             out_logits = model(encoded_batch, attention_mask=attn_mask).logits
 
         shift_logits = out_logits[..., :-1, :].contiguous()
