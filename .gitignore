@@ -1,6 +1,7 @@
 # custom
 outputs
 raw
+.conda
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
