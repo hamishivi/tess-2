@@ -116,6 +116,8 @@ class DiffusionTrainer(Trainer):
             and data_args.conditional_generation is not None
         )
         self.counter = 0
+        # TODO: control seed.
+        self.self_cond_generator = np.random.default_rng(42)
 
     def annotated_split(self, split):
         return f"{split}_top_p_{self.diffusion_args.top_p}_temperature_{self.diffusion_args.temperature}_seed_{self.args.seed}_guidance_scale_{self.diffusion_args.guidance_scale}"
@@ -229,7 +231,7 @@ class DiffusionTrainer(Trainer):
         if self.diffusion_args.self_condition is not None:
             previous_pred = None
             # previous_hidden = None
-            if np.random.rand(1) > 0.5:
+            if self.self_cond_generator.random(1) > 0.5:
                 next_timestep = inputs.pop("timesteps")
                 next_simplex = inputs.pop("simplex")
                 timesteps = torch.clamp(
@@ -258,7 +260,9 @@ class DiffusionTrainer(Trainer):
                         "simplex": noisy_simplex,
                     }
                 )
-                outputs = model(**inputs, previous_pred=previous_pred)
+                # we don't backprop through this.
+                with torch.inference_mode():
+                    outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(  # noqa: E731
                     x,
                     self.diffusion_args.sampling_type,
@@ -270,7 +274,7 @@ class DiffusionTrainer(Trainer):
                     self.diffusion_args.self_condition,
                     outputs.logits,
                     logits_projection_fct,
-                )
+                ).detach()
                 # following rest of self-conditioning, don't backprop through.
                 # previous_hidden = outputs.hidden_states.detach()
                 # pop timestep/simplex and put the old ones back.
