@@ -205,7 +205,10 @@ def load_classifier(classifier_model_name_or_path: str):
     tokenizer = AutoTokenizer.from_pretrained(classifier_model_name_or_path)
     model = AutoModelForSequenceClassification.from_pretrained(
         classifier_model_name_or_path,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
     ).eval()
+    model.gradient_checkpointing_enable()
     # NOTE: for quick testing (reduce vram req)
     # model.model.layers = torch.nn.ModuleList([model.model.layers[0]])
     freeze(model)

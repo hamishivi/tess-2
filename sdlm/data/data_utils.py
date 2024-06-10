@@ -43,9 +43,10 @@ def load_data(data_args, model_args):
 def tokenize_data_new(data_args, tokenizer, raw_datasets, training_args):
     # Preprocessing the datasets.
     # First we tokenize all the texts.
+    column_names = None
     if training_args.do_train and "train" in raw_datasets:
         column_names = raw_datasets["train"].column_names
-    else:
+    elif "validation" in raw_datasets:
         column_names = raw_datasets["validation"].column_names
     if column_names is None:
         text_column_name = "text"

@@ -255,18 +255,43 @@ class SimplexDDPMPipeline(DiffusionPipeline):
 
 
 class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
-    def __init__(self, *args, classifier_model_name_or_path: str, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        model,
+        scheduler,
+        simplex_value,
+        top_p,
+        sampling_type,
+        is_conditional_generation,
+        tokenizer,
+        classifier_free_uncond_input,
+        temperature,
+        guidance_softmax_combination,
+        classifier_model_name_or_path,
+    ) -> None:
+        super().__init__(
+            model,
+            scheduler,
+            simplex_value,
+            top_p,
+            sampling_type,
+            is_conditional_generation,
+            tokenizer,
+            classifier_free_uncond_input,
+            temperature,
+            guidance_softmax_combination,
+        )
         self.classifier = None
         if classifier_model_name_or_path is not None:
             classifier_tokenizer, classifier = load_classifier(
                 classifier_model_name_or_path
             )
             check_tokenizer_equal(self.tokenizer, classifier_tokenizer)
-            self.classifier = classifier
+            self.classifier = classifier.to(self.device)
 
     @torch.enable_grad()
     def get_classifier_guidance(self, logits: torch.FloatTensor) -> torch.FloatTensor:
+        logits = logits.to(torch.bfloat16)
         logits.requires_grad = True
         simplex = torch.softmax(logits, dim=-1)
         inputs_embeds = F.linear(
