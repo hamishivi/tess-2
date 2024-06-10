@@ -2,8 +2,8 @@ CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 2  \
-    --per_device_eval_batch_size 2 \
+    --per_device_train_batch_size 1  \
+    --per_device_eval_batch_size 1 \
     --do_train \
     --do_eval \
     --log_level info \
@@ -62,10 +62,10 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /results
 else
     ${CMD} \
-        --eval_steps 1 \
-        --save_steps 5 \
+        --eval_steps 10 \
+        --save_steps 50 \
         --max_eval_samples 16 \
-        --gradient_accumulation_steps 1 \
+        --gradient_accumulation_steps 4 \
         --num_inference_diffusion_steps 10 \
         --output_dir outputs/test
 fi

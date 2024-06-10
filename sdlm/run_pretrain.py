@@ -2,7 +2,6 @@ import logging
 import os
 import sys
 
-import torch
 import datasets
 import transformers
 from datasets import Dataset, load_from_disk
@@ -74,9 +73,6 @@ def get_compute_metrics(data_args, training_args, model_args):
         skip_special_tokens=data_args.skip_special_tokens,
         eval_for_all_metrics=training_args.eval_for_all_metrics,
     )
-    # nuke causal model and explcitly free memory
-    del causal_model
-    torch.cuda.empty_cache()
     return compute_metrics
 
 
@@ -247,7 +243,9 @@ def main():
         eval_context_size=data_args.eval_context_size,
     )
 
-    if training_args.do_eval:
+    compute_metrics = None
+    if training_args.do_eval and not training_args.without_compute_metrics:
+        # call only when necessary
         compute_metrics = get_compute_metrics(data_args, training_args, model_args)
 
     if data_args.shuffle and data_args.streaming:
@@ -265,9 +263,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics
-        if training_args.do_eval and not training_args.without_compute_metrics
-        else None,
+        compute_metrics=compute_metrics,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
         if training_args.do_eval
         else None,
