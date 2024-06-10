@@ -10,7 +10,7 @@ accelerate launch
     --evaluation_strategy steps \
     --report_to tensorboard \
     --overwrite_output_dir \
-    --max_seq_length 4096  \
+    --max_seq_length 4096 \
     --min_eval_seq_length 512 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
@@ -23,7 +23,7 @@ accelerate launch
     --max_steps 100000 \
     --warmup_ratio 0.05 \
     --logging_steps 50 \
-    --save_total_limit 2 \
+    --save_total_limit 1 \
     --conditional_generation ul2 \
     --self_condition "logits_mean" \
     --self_condition_mix_before_weights \
@@ -40,24 +40,26 @@ accelerate launch
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n dolma_mistral_long -t dolma_mistral_long --allow-dirty \
+    gantry run -y -n dolma_mistral_4096_h100x8 -t dolma_mistral_4096_h100x8 --allow-dirty \
         --workspace ai2/tess2 \
-        --nfs \
-        --gpus 4 \
+        --gpus 8 \
         --priority normal \
         --budget ai2/allennlp \
-        --cluster ai2/allennlp-cirrascale \
-        --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
+        --preemptible \
+        --no-nfs \
+        --cluster ai2/jupiter-cirrascale-2 \
+        --env 'HF_HOME=/net/weka/reviz/jaket/.hf' \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+        --env-secret HF_TOKEN=HF_TOKEN \
         --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --eval_steps 200 \
+        --eval_steps 500 \
         --save_steps 1000 \
-        --max_eval_samples 512 \
+        --max_eval_samples 200 \
         --gradient_accumulation_steps 4 \
-        --num_inference_diffusion_steps 100 200 \
+        --num_inference_diffusion_steps 100 \
         --beaker \
         --output_dir /results
 else
@@ -65,7 +67,7 @@ else
         --eval_steps 10 \
         --save_steps 50 \
         --max_eval_samples 16 \
-        --gradient_accumulation_steps 4 \
+        --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
         --output_dir outputs/test
 fi
