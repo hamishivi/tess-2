@@ -3,7 +3,7 @@ from typing import Optional
 
 import torch
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import AutoTokenizer
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from .ar_warp.ar_warper import GARDiffusionLM
 from .cdcd.ar_warper import CDCDGARRobertaForDiffusionLM
@@ -199,3 +199,32 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         model.model = get_peft_model(model.model, peft_config).base_model
 
     return tokenizer, model
+
+
+def load_classifier(classifier_model_name_or_path: str):
+    tokenizer = AutoTokenizer.from_pretrained(classifier_model_name_or_path)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        classifier_model_name_or_path,
+    ).eval()
+    # NOTE: for quick testing (reduce vram req)
+    # model.model.layers = torch.nn.ModuleList([model.model.layers[0]])
+    freeze(model)
+    return tokenizer, model
+
+
+def check_tokenizer_equal(tokenizer1, tokenizer2):
+    # check class
+    assert tokenizer1.__class__ is tokenizer2.__class__
+    # check vocab size
+    assert tokenizer1.vocab_size == tokenizer2.vocab_size
+    # check special tokens size
+    assert len(tokenizer1.special_tokens_map) == len(tokenizer2.special_tokens_map)
+    # check special tokens
+    for special_token in ("bos", "eos", "unk", "pad"):
+        attr = f"{special_token}_token_id"
+        assert getattr(tokenizer1, attr) == getattr(tokenizer2, attr)
+    # full decoding check
+    for i in range(tokenizer1.vocab_size + len(tokenizer1.special_tokens_map)):
+        decoded1 = tokenizer1.decode([i])
+        decoded2 = tokenizer2.decode([i])
+        assert decoded1 == decoded2

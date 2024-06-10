@@ -668,7 +668,7 @@ class DiffusionArguments:
     guidance_scale: float = field(
         default=1.0,
         metadata={
-            "help": "classifier-free guidance is applied if guidance_scale > 1.0."
+            "help": "scale for classifier (or classifier-free) guidance."
         },
     )
     classifier_free_uncond_input: str = field(
@@ -698,4 +698,8 @@ class DiffusionArguments:
     multiply_factor: float = field(
         default=1.0,
         metadata={"help": "Determines the starting noise level."},
+    )
+    classifier_model_name_or_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Classifier for classifier guidance."},
     )
