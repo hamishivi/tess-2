@@ -2,16 +2,16 @@ CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 1  \
-    --per_device_eval_batch_size 1 \
+    --per_device_train_batch_size 2  \
+    --per_device_eval_batch_size 2 \
     --do_train \
     --do_eval \
     --log_level info \
     --evaluation_strategy steps \
     --report_to tensorboard \
-    --overwrite_output_dir \
-    --max_seq_length 4096 \
-    --min_eval_seq_length 512 \
+    --overwrite_output_dir false \
+    --max_seq_length 2048 \
+    --min_eval_seq_length 1050 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
     --lr_scheduler_type cosine \
@@ -20,8 +20,8 @@ accelerate launch
     --beta_schedule squaredcos_improved_ddpm \
     --weight_decay 0.01 \
     --top_p 0.99 \
-    --max_steps 100000 \
-    --warmup_ratio 0.05 \
+    --max_steps 200000 \
+    --warmup_ratio 0.025 \
     --logging_steps 50 \
     --save_total_limit 1 \
     --conditional_generation ul2 \
@@ -55,10 +55,10 @@ if [ ! -z "${BEAKER}" ]; then
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --eval_steps 500 \
+        --eval_steps 1000 \
         --save_steps 1000 \
         --max_eval_samples 200 \
-        --gradient_accumulation_steps 4 \
+        --gradient_accumulation_steps 8 \
         --num_inference_diffusion_steps 100 \
         --beaker \
         --output_dir /results
