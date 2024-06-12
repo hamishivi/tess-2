@@ -1,9 +1,9 @@
 CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_pretrain \
-    --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 1  \
-    --per_device_eval_batch_size 1 \
+    --model_name_or_path outputs/dolma_mistral_512_47000/checkpoint-47000 \
+    --per_device_train_batch_size 12  \
+    --per_device_eval_batch_size 12 \
     --do_train false \
     --do_eval true \
     --load_states_in_eval_from_model_path false \
@@ -11,7 +11,7 @@ accelerate launch
     --evaluation_strategy steps \
     --report_to tensorboard \
     --overwrite_output_dir \
-    --max_seq_length 4096 \
+    --max_seq_length 512 \
     --min_eval_seq_length 512 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
@@ -39,6 +39,10 @@ accelerate launch
     --ddp_find_unused_parameters false \
     --without_compute_metrics true \
     --classifier_model_name_or_path weqweasdas/RM-Mistral-7B \
+    --guidance_scale 0.1 \
+    --use_gumbel_softmax true \
+    --do_hard_sample true \
+    --softmax_temperature 2 \
 "
 
 if [ ! -z "${BEAKER}" ]; then
@@ -63,7 +67,7 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /results
 else
     ${CMD} \
-        --max_eval_samples 16 \
+        --max_eval_samples 8 \
         --num_inference_diffusion_steps 10 \
         --output_dir outputs/test
 fi

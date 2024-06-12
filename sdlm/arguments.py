@@ -667,9 +667,7 @@ class DiffusionArguments:
     )
     guidance_scale: float = field(
         default=1.0,
-        metadata={
-            "help": "scale for classifier (or classifier-free) guidance."
-        },
+        metadata={"help": "scale for classifier (or classifier-free) guidance."},
     )
     classifier_free_uncond_input: str = field(
         default="empty_token",
@@ -702,4 +700,18 @@ class DiffusionArguments:
     classifier_model_name_or_path: Optional[str] = field(
         default=None,
         metadata={"help": "Classifier for classifier guidance."},
+    )
+    use_gumbel_softmax: bool = field(
+        default=False,
+        metadata={"help": "Whether to use gumbel softmax for classifier guidance."},
+    )
+    do_hard_sample: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use gumbel softmax hard sampling trick for classifier guidance."
+        },
+    )
+    softmax_temperature: float = field(
+        default=1.0,
+        metadata={"help": "Softmax for classifier guidance."},
     )

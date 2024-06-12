@@ -13,6 +13,7 @@ from transformers import Trainer
 with warnings.catch_warnings():
     warnings.simplefilter(action="ignore", category=FutureWarning)
     from transformers.deepspeed import deepspeed_init
+
 from transformers.integrations import TensorBoardCallback
 from transformers.trainer_pt_utils import (
     IterableDatasetShard,
@@ -21,11 +22,7 @@ from transformers.trainer_pt_utils import (
     nested_detach,
     nested_numpify,
 )
-from transformers.trainer_utils import (
-    denumpify_detensorize,
-    has_length,
-    speed_metrics,
-)
+from transformers.trainer_utils import denumpify_detensorize, has_length, speed_metrics
 from transformers.utils import (
     is_apex_available,
     is_datasets_available,
@@ -437,6 +434,9 @@ class DiffusionTrainer(Trainer):
                         if self.diffusion_args.generate_with_seed
                         else None,
                         is_generator=False,
+                        use_gumbel_softmax=self.diffusion_args.use_gumbel_softmax,
+                        do_hard_sample=self.diffusion_args.do_hard_sample,
+                        softmax_temperature=self.diffusion_args.softmax_temperature,
                     )
                 ):
                     outputs = x
@@ -1046,7 +1046,6 @@ class DiffusionTrainer(Trainer):
             dataloader_params["drop_last"] = self.args.dataloader_drop_last
 
         return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
-
 
     def create_optimizer(self):
         from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS

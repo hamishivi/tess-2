@@ -8,7 +8,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import BaseOutput
 
 from sdlm.inference.inference_utils import logits_projection
-from sdlm.models.utils import is_cdcd_check, load_classifier, check_tokenizer_equal
+from sdlm.models.utils import check_tokenizer_equal, is_cdcd_check, load_classifier
 from sdlm.utils import scale, self_condition_preds
 
 
@@ -290,10 +290,21 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
             self.classifier = classifier.to(self.device)
 
     @torch.enable_grad()
-    def get_classifier_guidance(self, logits: torch.FloatTensor) -> torch.FloatTensor:
+    def get_classifier_guidance(
+        self,
+        logits: torch.FloatTensor,
+        use_gumbel_softmax: bool,
+        do_hard_sample: bool,
+        softmax_temperature: float,
+    ) -> torch.FloatTensor:
         logits = logits.to(torch.bfloat16)
         logits.requires_grad = True
-        simplex = torch.softmax(logits, dim=-1)
+        if use_gumbel_softmax:
+            simplex = F.gumbel_softmax(
+                logits, tau=softmax_temperature, hard=do_hard_sample, dim=-1
+            )
+        else:
+            simplex = torch.softmax(logits / softmax_temperature, dim=-1)
         inputs_embeds = F.linear(
             simplex, self.classifier.model.get_input_embeddings().weight.data.T
         )
@@ -302,7 +313,7 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
         reward = reward.sum()
         reward.backward()
         return logits.grad
-    
+
     @torch.no_grad()
     def __call__(
         self,
@@ -311,13 +322,12 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
         batch: Optional[torch.FloatTensor] = None,
         guidance_scale: float = 1.0,
         is_generator: bool = False,
+        use_gumbel_softmax: bool = False,
+        do_hard_sample: bool = False,
+        softmax_temperature: float = 1.0,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         # check for classifier guidance
         use_classifier_guidance = self.classifier is not None and guidance_scale > 0.0
-        if not use_classifier_guidance:
-            return super().__call__(
-                seq_length, generator, batch, guidance_scale, is_generator
-            )
 
         # NOTE: copied from SimplexDDPMPipeline
         # Sample gaussian noise to begin loop
@@ -389,10 +399,16 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
             previous_hidden = model_output.hidden_states
 
             # NOTE: classifier guidance!
-            classifier_guidance = self.get_classifier_guidance(model_output_logits)
-            model_output_logits = (
-                model_output_logits + guidance_scale * classifier_guidance
-            )
+            if use_classifier_guidance:
+                classifier_guidance = self.get_classifier_guidance(
+                    logits=model_output_logits,
+                    use_gumbel_softmax=use_gumbel_softmax,
+                    do_hard_sample=do_hard_sample,
+                    softmax_temperature=softmax_temperature,
+                )
+                model_output_logits = (
+                    model_output_logits + guidance_scale * classifier_guidance
+                )
 
             if self.model.config.self_condition is not None:
                 prev_output_logits = model_output_logits
