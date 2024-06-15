@@ -2,15 +2,14 @@ CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_pretrain \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
-    --per_device_train_batch_size 2  \
-    --per_device_eval_batch_size 2 \
+    --per_device_train_batch_size 8  \
+    --per_device_eval_batch_size 8 \
     --do_train \
     --do_eval \
     --log_level info \
     --evaluation_strategy steps \
     --report_to tensorboard \
-    --overwrite_output_dir false \
-    --max_seq_length 2048 \
+    --max_seq_length 512 \
     --min_eval_seq_length 1050 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
@@ -27,7 +26,7 @@ accelerate launch
     --conditional_generation ul2 \
     --self_condition "logits_mean" \
     --self_condition_mix_before_weights \
-    --dataset_name NousResearch/dolma-v1_7-305B --streaming \
+    --dataset_name "sdlm/data/dolma/dolma_dataset.py" --streaming \
     --bf16 \
     --optim adamw_torch_fused \
     --gradient_checkpointing \
@@ -60,14 +59,17 @@ if [ ! -z "${BEAKER}" ]; then
         --max_eval_samples 200 \
         --gradient_accumulation_steps 8 \
         --num_inference_diffusion_steps 100 \
+        --overwrite_output_dir false \
         --beaker \
         --output_dir /results
 else
     ${CMD} \
-        --eval_steps 10 \
-        --save_steps 50 \
+        --eval_steps 100 \
+        --save_steps 500 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
-        --output_dir outputs/test
+        --output_dir outputs/test \
+        --overwrite_output_dir true \
+        --dataloader_num_workers 0
 fi
