@@ -53,6 +53,7 @@ if [ ! -z "${BEAKER}" ]; then
         --env 'HF_HOME=/net/weka/reviz/jaket/.hf' \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
         --env-secret HF_TOKEN=HF_TOKEN \
+        --weka oe-data-default:/data/input \
         --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
         --venv 'base' \
         --pip requirements.txt \
