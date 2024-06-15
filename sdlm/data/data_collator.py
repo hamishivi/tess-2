@@ -156,6 +156,25 @@ class SpanInfillingDataCollator:
             )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if "text" in features[0]:
+            # adpated from sdlm/data/data_utils.py (`tokenize_data_new`)
+            texts = [
+                feature["text"]
+                for feature in features
+                if len(feature["text"]) > 0 and not feature["text"].isspace()
+            ]
+            tokens = self.tokenizer(
+                texts,
+                # TODO: remove hard-coded params
+                padding="longest",
+                truncation=True,
+                max_length=self.max_length,
+                return_attention_mask=False,
+                return_special_tokens_mask=False,
+            )
+            # below code expects this format
+            features = [{"input_ids": token} for token in tokens["input_ids"]]
+
         if self.extra_padding_ratio:
             # Inserting random tokens uniformly, we do not modify start and end of
             # sequence tokens.
@@ -237,14 +256,24 @@ class SpanInfillingDataCollator:
                     eval_context_size=self.eval_context_size,
                 )
             }
-        batch = self.tokenizer.pad(
-            features,
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors=self.return_tensors,
-            return_attention_mask=False,
-        )
+        try:
+            # reformat
+            batch = {
+                "input_ids": torch.tensor(
+                    [feature["input_ids"] for feature in features]
+                )
+            }
+        except:  # noqa
+            batch = self.tokenizer.pad(
+                features,
+                padding=self.padding,
+                max_length=self.max_length,
+                pad_to_multiple_of=self.pad_to_multiple_of,
+                return_tensors=self.return_tensors,
+                return_attention_mask=False,
+            )
+            # we just need input_ids
+            batch = {"input_ids": batch["input_ids"]}
         return {**batch, **masks}
 
 

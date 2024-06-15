@@ -10,7 +10,7 @@ accelerate launch
     --evaluation_strategy steps \
     --report_to tensorboard \
     --max_seq_length 512 \
-    --min_eval_seq_length 1050 \
+    --min_eval_seq_length 350 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
     --lr_scheduler_type cosine \
@@ -36,6 +36,9 @@ accelerate launch
     --mask_padding_in_loss false \
     --ddp_find_unused_parameters false \
     --without_compute_metrics true \
+    --dataloader_num_workers 8 \
+    --remove_unused_columns false \
+    --dispatch_batches false \
 "
 
 if [ ! -z "${BEAKER}" ]; then
@@ -57,19 +60,18 @@ if [ ! -z "${BEAKER}" ]; then
         --eval_steps 1000 \
         --save_steps 1000 \
         --max_eval_samples 200 \
-        --gradient_accumulation_steps 8 \
+        --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 100 \
         --overwrite_output_dir false \
         --beaker \
         --output_dir /results
 else
     ${CMD} \
-        --eval_steps 100 \
-        --save_steps 500 \
+        --eval_steps 10 \
+        --save_steps 50 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
         --output_dir outputs/test \
-        --overwrite_output_dir true \
-        --dataloader_num_workers 0
+        --overwrite_output_dir true
 fi
