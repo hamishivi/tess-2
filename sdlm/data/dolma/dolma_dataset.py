@@ -115,7 +115,7 @@ class Dolma(datasets.GeneratorBasedBuilder):
         # NOTE: modified to support offline + streaming
 
         with open(
-            "/net/weka/reviz/jaket/simplex-diffusion/sdlm/data/dolma/subset_urls.json"
+            "sdlm/data/dolma/subset_urls.json"
         ) as f:
             subset_urls = json.load(f)
 
