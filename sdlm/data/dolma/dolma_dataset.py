@@ -114,9 +114,7 @@ class Dolma(datasets.GeneratorBasedBuilder):
     ) -> List[datasets.SplitGenerator]:
         # NOTE: modified to support offline + streaming
 
-        with open(
-            "sdlm/data/dolma/subset_urls.json"
-        ) as f:
+        with open("sdlm/data/dolma/subset_urls.json") as f:
             subset_urls = json.load(f)
 
         subset_files = [
