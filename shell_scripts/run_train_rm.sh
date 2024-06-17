@@ -11,6 +11,7 @@ python -m sdlm.train_reward_model \
     --report_to="tensorboard" \
     --logging_steps=50 \
     --save_total_limit 1 \
+    --optim adamw_torch_fused \
     --evaluation_strategy="no" \
     --max_length=512 \
     --gradient_checkpointing \

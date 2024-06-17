@@ -40,6 +40,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, HfAr
 
 from trl import ModelConfig, RewardConfig, RewardTrainer, get_kbit_device_map, get_peft_config, get_quantization_config
 from sdlm.models.mistral.modeling_mistral import MistralforSequenceClassificationWithPadding
+from sdlm.models.utils import get_torch_dtype
 
 tqdm.pandas()
 
@@ -62,7 +63,10 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
 # new little trainer with the scheduler we want.
 class RewardTrainerScheduler(RewardTrainer):
     def create_scheduler(self, num_training_steps: int, optimizer: torch.optim.Optimizer = None):
-        return get_linear_schedule_with_warmup(optimizer, self.args.warmup_steps, num_training_steps, end_lr_ratio=0.1)
+        if self.lr_scheduler is None:
+            self.lr_scheduler = get_linear_schedule_with_warmup(optimizer, self.args.warmup_steps, num_training_steps, end_lr_ratio=0.1)
+            self._created_lr_scheduler = True
+        return self.lr_scheduler
 
 @dataclass
 class RewardModelingArguments:
@@ -94,6 +98,7 @@ if __name__ == "__main__":
         attn_implementation="flash_attention_2"
             if reward_config.use_flash_attention2
             else "eager",
+        torch_dtype=get_torch_dtype(config),
     )
     tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path, use_fast=True)
     if not tokenizer.pad_token_id:
@@ -168,7 +173,6 @@ if __name__ == "__main__":
     )
     trainer.train()
     trainer.save_model(config.output_dir)
-    trainer.push_to_hub()
     metrics = trainer.evaluate()
     trainer.log_metrics("eval", metrics)
     print(metrics)
