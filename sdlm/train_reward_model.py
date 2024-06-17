@@ -122,7 +122,7 @@ if __name__ == "__main__":
             " Make sure to pass --lora_task_type SEQ_CLS when using this script."
         )
 
-    # Dataset - currently hardcoded.
+    # Dataset loading
     raw_datasets = load_dataset(reward_config.dataset_name)
     # Tokenize chosen/rejected pairs of inputs
     # Adapt this section to your needs for custom datasets
