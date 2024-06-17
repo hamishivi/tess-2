@@ -10,7 +10,7 @@ python -m sdlm.train_reward_model \
     --report_to="tensorboard" \
     --logging_steps=50 \
     --save_total_limit 1 \
-    --eval_strategy="no" \
+    --evaluation_strategy="no" \
     --max_length=512 \
     --attn_implementation=flash_attention_2 \
     --gradient_checkpointing \
@@ -21,11 +21,10 @@ python -m sdlm.train_reward_model \
 if [ ! -z "${BEAKER}" ]; then
     gantry run -y -n mistral_rm_train -t mistral_rm_train --allow-dirty \
         --workspace ai2/tess2 \
-        --nfs \
         --gpus 1 \
-        --priority normal \
+        --priority preemptible \
         --budget ai2/allennlp \
-        --cluster ai2/allennlp-cirrascale \
+        --cluster ai2/jupiter-cirrascale-2 \
         --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
         --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
@@ -35,7 +34,6 @@ if [ ! -z "${BEAKER}" ]; then
         --eval_steps 200 \
         --save_steps 400 \
         --gradient_accumulation_steps 64 \
-        --beaker \
         --output_dir /results
 else
     ${CMD} \
