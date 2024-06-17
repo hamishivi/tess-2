@@ -3,7 +3,7 @@ python -m sdlm.train_reward_model \
     --dataset_name argilla/ultrafeedback-binarized-preferences-cleaned \
     --model_name_or_path mistralai/Mistral-7B-v0.1 \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 4 \
+    --per_device_train_batch_size 1 \
     --remove_unused_columns=False \
     --gradient_checkpointing=True \
     --warmup_ratio 0.03 \
@@ -35,7 +35,7 @@ if [ ! -z "${BEAKER}" ]; then
         -- ${CMD} \
         --eval_steps 200 \
         --save_steps 400 \
-        --gradient_accumulation_steps 64 \
+        --gradient_accumulation_steps 128 \
         --output_dir /results
 else
     ${CMD} \

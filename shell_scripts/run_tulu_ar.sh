@@ -22,6 +22,7 @@ python -m sdlm.run_tulu_ar \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
     --save_total_limit 1 \
+    --pad_to_max_length \
     --save_strategy steps \
     --gradient_checkpointing \
     --num_diffusion_steps 0 \
