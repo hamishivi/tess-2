@@ -21,7 +21,6 @@ from .llama.modeling_llama import LlamaForDiffusionLM, LlamaForSeq2SeqLM
 from .mistral.configuration_mistral import MistralDiffusionConfig
 from .mistral.modeling_mistral import MistralForDiffusionLM, MistralForSeq2SeqLM
 from .roberta.configuration_roberta import RobertaDiffusionConfig
-from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 
 def model_config_helper(
@@ -53,12 +52,11 @@ def model_config_helper(
         return RobertaDiffusionConfig, GARDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "cdcdgar":
         return CDCDRobertaConfig, CDCDGARRobertaForDiffusionLM
-    else:  # "roberta" in model_name_or_path:
-        print(
-            f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
-        )
-        return RobertaDiffusionConfig, RobertaForDiffusionLM
-    raise ValueError("Unsupported model.")
+    # default to mistral
+    print(
+        f"Using MistralDiffusionConfig and MistralForDiffusionLM for {model_name_or_path}"
+    )
+    return MistralDiffusionConfig, MistralForDiffusionLM
 
 
 def is_cdcd_check(model):
