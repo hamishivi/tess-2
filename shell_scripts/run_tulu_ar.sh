@@ -23,6 +23,10 @@ python -m sdlm.run_tulu_ar \
     --logging_steps 50 \
     --save_total_limit 1 \
     --pad_to_max_length \
+    --bf16 \
+    --optim adamw_torch_fused \
+    --gradient_checkpointing \
+    --use_flash_attention2 \
     --save_strategy steps \
     --gradient_checkpointing \
     --num_diffusion_steps 0 \

@@ -402,3 +402,34 @@ class DataCollatorForMultiTurnSeq2Seq:
         # true wherever we have an actual label
         features["span_mask"] = torch.where(label_features == -100, False, True)
         return features
+
+# custom collator for the multi-turn input format with causal 
+@dataclass
+class DataCollatorForCausalMultiTurnSeq2Seq:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        input_ids = [feature["input_ids"] for feature in features]
+        labels = [feature["labels"] for feature in features]
+        features = self.tokenizer.pad(
+            {"input_ids": input_ids},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )
+        # pad labels out for easy mask
+        label_features = self.tokenizer.pad(
+            {"input_ids": labels},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )["input_ids"]
+        features['labels'] = label_features
+        return features
