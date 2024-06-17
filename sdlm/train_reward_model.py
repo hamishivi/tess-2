@@ -30,8 +30,10 @@ python examples/scripts/reward_modeling.py \
 """
 import warnings
 from dataclasses import dataclass
+from functools import partial
 
 import torch
+from torch.optim.lr_scheduler import LambdaLR
 from datasets import load_dataset
 from tqdm import tqdm
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, HfArgumentParser
@@ -41,11 +43,33 @@ from sdlm.models.mistral.modeling_mistral import MistralforSequenceClassificatio
 
 tqdm.pandas()
 
+# TODO: allow end_lr to be changed via some config.
+def _get_linear_schedule_with_warmup_lr_lambda(current_step: int, *, num_warmup_steps: int, num_training_steps: int, end_lr_ratio: float = 0.1):
+    if current_step < num_warmup_steps:
+        return float(current_step) / float(max(1, num_warmup_steps))
+    else:
+        return end_lr_ratio + (1.0 - end_lr_ratio) * max(0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps)))
+
+def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, end_lr_ratio, last_epoch=-1):
+    lr_lambda = partial(
+        _get_linear_schedule_with_warmup_lr_lambda,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=num_training_steps,
+        end_lr_ratio=end_lr_ratio,
+    )
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+# new little trainer with the scheduler we want.
+class RewardTrainerScheduler(RewardTrainer):
+    def create_scheduler(self, num_training_steps: int, optimizer: torch.optim.Optimizer = None):
+        return get_linear_schedule_with_warmup(optimizer, self.args.warmup_steps, num_training_steps, end_lr_ratio=0.1)
+
 @dataclass
 class RewardModelingArguments:
     include_padding: bool = False  # if true, we pad the input_ids to the max_length and compute reward at final token.
     use_tulu_chat_template: bool = False  # if true, we use the tulu chat template for the input_ids.
-
+    end_lr: float = 1e-6  # final learning rate for the learning rate scheduler.
+    dataset_name: str = "argilla/ultrafeedback-binarized-preferences-cleaned"  # dataset to use for reward modeling.
 
 if __name__ == "__main__":
     parser = HfArgumentParser((RewardConfig, ModelConfig, RewardModelingArguments))
@@ -94,10 +118,8 @@ if __name__ == "__main__":
             " Make sure to pass --lora_task_type SEQ_CLS when using this script."
         )
 
-    ################
-    # Dataset
-    ################
-    raw_datasets = load_dataset("argilla/ultrafeedback-binarized-preferences-cleaned")
+    # Dataset - currently hardcoded.
+    raw_datasets = load_dataset(reward_config.dataset_name)
     # Tokenize chosen/rejected pairs of inputs
     # Adapt this section to your needs for custom datasets
 
@@ -133,7 +155,7 @@ if __name__ == "__main__":
     ################
     # Training
     ################
-    trainer = RewardTrainer(
+    trainer = RewardTrainerScheduler(
         model=model,
         tokenizer=tokenizer,
         args=config,

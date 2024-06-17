@@ -333,10 +333,12 @@ class DataCollatorForCausalLMSeq2Seq:
                 SEP = list(self.LLAMA_SEP)
             else:
                 raise ValueError("Unrecognized tokenizer.name_or_path")
-
-        input_target = [
-            input + SEP + target for input, target in zip(input_ids, labels)
-        ]
+            input_target = [
+                input + SEP + target for input, target in zip(input_ids, labels)
+            ]
+        else:
+            input_target = [input + target for input, target in zip(input_ids, labels)]
+        
         features = self.tokenizer.pad(
             {"input_ids": input_target},
             padding=self.padding,
