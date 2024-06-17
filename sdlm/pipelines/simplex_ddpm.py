@@ -325,6 +325,7 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
         use_gumbel_softmax: bool = False,
         do_hard_sample: bool = False,
         softmax_temperature: float = 1.0,
+        use_ddim_sampling: bool = False,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         # check for classifier guidance
         use_classifier_guidance = self.classifier is not None and guidance_scale > 0.0
@@ -339,6 +340,7 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
         # idk why i have the bsz argument.
         batch_size = batch["input_ids"].shape[0]
         simplex_shape = (batch_size, seq_length, vocab_size)
+        # simplex ~ N(0, kI)
         simplex = self.simplex_value * torch.randn(
             simplex_shape, generator=generator, device=self.device
         )
@@ -346,6 +348,7 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
             previous_pred = torch.zeros(
                 (batch_size, seq_length, vocab_size), device=self.device
             )
+        # logits -> hard sampled k / -k
         logits_projection_fct = lambda x: logits_projection(  # noqa: E731
             x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
         )
@@ -418,15 +421,9 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
                     logits_projection_fct,
                 )
 
-            # Projection.
-            projected_logits = logits_projection_fct(model_output_logits)
-
             old_simplex = simplex
 
             # 2. compute previous logits: x_t -> x_t-1
-            noise = self.simplex_value * torch.randn(
-                simplex_shape, generator=generator, device=self.device
-            )
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
                 token_inputs = torch.where(
@@ -443,13 +440,42 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
                 prev_t = torch.clamp(prev_t, min=0, max=len(self.scheduler) - 1)
             else:
                 prev_t = original_t - 1
-            simplex = self.scheduler.step(
-                projected_logits,
-                t,
-                prev_t,
-                noise,
-                generator=generator,
-            ).prev_sample
+
+            if not use_ddim_sampling:
+                # normal tess
+                noise = self.simplex_value * torch.randn(
+                    simplex_shape, generator=generator, device=self.device
+                )
+                # Projection.
+                projected_logits = logits_projection_fct(model_output_logits)
+                simplex = self.scheduler.step(
+                    projected_logits,
+                    t,
+                    prev_t,
+                    noise,
+                    generator=generator,
+                ).prev_sample
+            else:
+                # input: noisy k / -k
+                # output: clean k / -k
+                x_t = old_simplex
+                x_0_hat = (
+                    2 * self.simplex_value * torch.softmax(model_output_logits, dim=-1)
+                    - self.simplex_value
+                )
+                alpha_prod_t = self.scheduler.alphas_cumprod[t[0, 0].item()]
+                sqrt_alpha_prod_t = torch.sqrt(alpha_prod_t)
+                sqrt_one_minus_alpha_prod_t = torch.sqrt(1 - alpha_prod_t)
+                noise = (
+                    x_t - sqrt_alpha_prod_t * x_0_hat
+                ) / sqrt_one_minus_alpha_prod_t
+                simplex = self.scheduler.step(
+                    x_0_hat,
+                    t,
+                    prev_t,
+                    noise,
+                    generator=generator,
+                ).prev_sample
 
             # keep loss for logging
             losses.append(model_output.loss.detach().cpu())
