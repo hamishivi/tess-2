@@ -352,7 +352,9 @@ class DataCollatorForCausalLMSeq2Seq:
         pad_lengths = []
         context_lengths = []
         for input, label in zip(input_ids, labels):
-            context_length = len(input) + len(SEP)
+            context_length = len(input)
+            if self.use_sep:
+                context_length += len(SEP)
             label_length = len(label)
             pad_length = batch_length - context_length - label_length
             if self.tokenizer.padding_side == "right":

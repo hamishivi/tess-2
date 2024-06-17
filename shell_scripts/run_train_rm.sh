@@ -14,6 +14,7 @@ python -m sdlm.train_reward_model \
     --evaluation_strategy="no" \
     --max_length=512 \
     --gradient_checkpointing \
+    --bf16 \
     --include_padding=False \
     --use_tulu_chat_template=True \
     --use_flash_attention2=True \

@@ -11,6 +11,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, set_seed
 from transformers.trainer_utils import get_last_checkpoint
 import alpaca_eval
+from transformers import DataCollatorForSeq2Seq
 
 from .arguments import get_args
 from .data.data_collator import DataCollatorForCausalLMSeq2Seq
@@ -205,7 +206,7 @@ def main():
         return metrics
 
     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForCausalLMSeq2Seq(  # noqa: E731
+    data_collator = lambda mode: DataCollatorForSeq2Seq(  # noqa: E731
         tokenizer,
         # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
         padding="max_length" if data_args.pad_to_max_length else True,
