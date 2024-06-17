@@ -13,10 +13,10 @@ python -m sdlm.train_reward_model \
     --save_total_limit 1 \
     --evaluation_strategy="no" \
     --max_length=512 \
-    --attn_implementation=flash_attention_2 \
     --gradient_checkpointing \
     --include_padding=False \
     --use_tulu_chat_template=True \
+    --use_flash_attention2=True \
 "
 
 if [ ! -z "${BEAKER}" ]; then

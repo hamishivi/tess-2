@@ -70,6 +70,7 @@ class RewardModelingArguments:
     use_tulu_chat_template: bool = False  # if true, we use the tulu chat template for the input_ids.
     end_lr: float = 1e-6  # final learning rate for the learning rate scheduler.
     dataset_name: str = "argilla/ultrafeedback-binarized-preferences-cleaned"  # dataset to use for reward modeling.
+    use_flash_attention2: bool = False  # if true, we use the flash attention2 implementation.
 
 if __name__ == "__main__":
     parser = HfArgumentParser((RewardConfig, ModelConfig, RewardModelingArguments))
@@ -90,6 +91,9 @@ if __name__ == "__main__":
         trust_remote_code=model_config.trust_remote_code,
         device_map=get_kbit_device_map() if quantization_config is not None else None,
         quantization_config=quantization_config,
+        attn_implementation="flash_attention_2"
+            if reward_config.use_flash_attention2
+            else "eager",
     )
     tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path, use_fast=True)
     if not tokenizer.pad_token_id:
