@@ -3,7 +3,7 @@
 
 CMD="
 accelerate launch
-    --mixed_precision bf16 sdlm.run_tulu \
+    --mixed_precision bf16 -m sdlm.run_tulu \
     --dataset_name allenai/tulu-v2-sft-mixture \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \
