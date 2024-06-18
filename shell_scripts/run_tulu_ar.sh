@@ -2,7 +2,7 @@
 # WARNING: eval uses alpaca eval. this costs $$.
 
 CMD="
-python -m sdlm.run_tulu_ar \
+accelerate launch -m sdlm.run_tulu_ar \
     --dataset_name allenai/tulu-v2-sft-mixture \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \

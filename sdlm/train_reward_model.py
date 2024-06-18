@@ -173,6 +173,7 @@ if __name__ == "__main__":
     )
     trainer.train()
     trainer.save_model(config.output_dir)
-    metrics = trainer.evaluate()
-    trainer.log_metrics("eval", metrics)
-    print(metrics)
+    # currently dont have an eval set uhhh
+    # metrics = trainer.evaluate()
+    # trainer.log_metrics("eval", metrics)
+    # print(metrics)
