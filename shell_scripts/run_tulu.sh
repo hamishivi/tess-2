@@ -2,7 +2,8 @@
 # WARNING: eval uses alpaca eval. this costs $$.
 
 CMD="
-python -m sdlm.run_tulu \
+accelerate launch
+    --mixed_precision bf16 sdlm.run_tulu \
     --dataset_name allenai/tulu-v2-sft-mixture \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \
@@ -59,6 +60,7 @@ python -m sdlm.run_tulu \
 #         --max_eval_samples 1000 \
 #         --gradient_accumulation_steps 16 \
 #         --num_inference_diffusion_steps 50 100 200 \
+#         --overwrite_output_dir false \
 #         --beaker \
 #         --output_dir /results
 # else
@@ -69,7 +71,8 @@ python -m sdlm.run_tulu \
 #         --max_eval_samples 16 \
 #         --gradient_accumulation_steps 1 \
 #         --num_inference_diffusion_steps 10 \
-#         --output_dir outputs/test
+#         --output_dir outputs/test \
+#         --overwrite_output_dir true
 # fi
 
 # for ai2/jupiter-cirrascale-2 cluster
