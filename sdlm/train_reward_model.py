@@ -129,6 +129,8 @@ if __name__ == "__main__":
 
     # Dataset loading
     raw_datasets = load_dataset(reward_config.dataset_name)
+    # use reward bench for validation.
+    eval_dataset = load_dataset("allenai/reward-bench", split="filtered")
     # Tokenize chosen/rejected pairs of inputs
     # Adapt this section to your needs for custom datasets
 
@@ -141,6 +143,26 @@ if __name__ == "__main__":
         }
         for chosen, rejected in zip(examples["chosen"], examples["rejected"]):
             # flatten from 2d to 1d
+            tokenized_chosen = tokenizer.apply_chat_template(chosen, return_tensors="pt").flatten()
+            tokenized_rejected = tokenizer.apply_chat_template(rejected, return_tensors="pt").flatten()
+            new_examples["input_ids_chosen"].append(tokenized_chosen)
+            new_examples["attention_mask_chosen"].append(torch.ones_like(tokenized_chosen))
+            new_examples["input_ids_rejected"].append(tokenized_rejected)
+            new_examples["attention_mask_rejected"].append(torch.ones_like(tokenized_rejected))
+        return new_examples
+    
+    def preprocess_function_no_list(examples):
+        new_examples = {
+            "input_ids_chosen": [],
+            "attention_mask_chosen": [],
+            "input_ids_rejected": [],
+            "attention_mask_rejected": [],
+        }
+        for prompt, chosen, rejected in zip(examples["prompt"], examples["chosen"], examples["rejected"]):
+            # construct lists
+            chosen = [{"role": "user", "content": prompt}, {"role": "assistant", "content": chosen}]
+            rejected = [{"role": "user", "content": prompt}, {"role": "assistant", "content": rejected}]
+            # same as above
             tokenized_chosen = tokenizer.apply_chat_template(chosen, return_tensors="pt").flatten()
             tokenized_rejected = tokenizer.apply_chat_template(rejected, return_tensors="pt").flatten()
             new_examples["input_ids_chosen"].append(tokenized_chosen)
@@ -160,6 +182,11 @@ if __name__ == "__main__":
         lambda x: len(x["input_ids_chosen"]) <= config.max_length and len(x["input_ids_rejected"]) <= config.max_length
     )
     train_dataset = raw_datasets["train"]
+    eval_dataset = eval_dataset.map(preprocess_function_no_list, batched=True, num_proc=4)
+    eval_dataset = eval_dataset.filter(
+        lambda x: len(x["input_ids_chosen"]) <= config.max_length and len(x["input_ids_rejected"]) <= config.max_length
+    )
+
 
     ################
     # Training
@@ -169,11 +196,11 @@ if __name__ == "__main__":
         tokenizer=tokenizer,
         args=config,
         train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         peft_config=get_peft_config(model_config),
     )
     trainer.train()
     trainer.save_model(config.output_dir)
-    # currently dont have an eval set uhhh
-    # metrics = trainer.evaluate()
-    # trainer.log_metrics("eval", metrics)
-    # print(metrics)
+    metrics = trainer.evaluate()
+    trainer.log_metrics("eval", metrics)
+    print(metrics)

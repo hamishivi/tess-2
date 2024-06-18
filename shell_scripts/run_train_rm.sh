@@ -1,7 +1,7 @@
 CMD="
 python -m sdlm.train_reward_model \
     --dataset_name argilla/ultrafeedback-binarized-preferences-cleaned \
-    --model_name_or_path mistralai/Mistral-7B-v0.1 \
+     \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --remove_unused_columns=False \
@@ -12,7 +12,7 @@ python -m sdlm.train_reward_model \
     --logging_steps=50 \
     --save_total_limit 1 \
     --optim adamw_torch_fused \
-    --evaluation_strategy="no" \
+    --evaluation_strategy="steps" \
     --max_length=512 \
     --gradient_checkpointing \
     --bf16 \
@@ -21,6 +21,7 @@ python -m sdlm.train_reward_model \
     --use_flash_attention2=True \
 "
 
+# on beaker, load from niklas' trained mistral model.
 if [ ! -z "${BEAKER}" ]; then
     gantry run -y -n mistral_rm_train -t mistral_rm_train --allow-dirty \
         --workspace ai2/tess2 \
@@ -30,18 +31,22 @@ if [ ! -z "${BEAKER}" ]; then
         --cluster ai2/jupiter-cirrascale-2 \
         --env 'HF_HOME=/net/nfs.cirrascale/allennlp/jaket/.hf' \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
+        --dataset '01J0PF0NKZP7SD8TMRH2PD0NFK:/model' \
         --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
         --env-secret HF_TOKEN=HF_TOKEN \
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
+        --model_name_or_path /model \
         --eval_steps 200 \
         --save_steps 400 \
         --gradient_accumulation_steps 128 \
         --output_dir /results
 else
     ${CMD} \
+        --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --eval_steps 1 \
+        --eval_steps 5 \
         --save_steps 5 \
         --gradient_accumulation_steps 1 \
         --output_dir outputs/test
