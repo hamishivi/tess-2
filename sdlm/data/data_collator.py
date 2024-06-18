@@ -333,10 +333,12 @@ class DataCollatorForCausalLMSeq2Seq:
                 SEP = list(self.LLAMA_SEP)
             else:
                 raise ValueError("Unrecognized tokenizer.name_or_path")
-
-        input_target = [
-            input + SEP + target for input, target in zip(input_ids, labels)
-        ]
+            input_target = [
+                input + SEP + target for input, target in zip(input_ids, labels)
+            ]
+        else:
+            input_target = [input + target for input, target in zip(input_ids, labels)]
+        
         features = self.tokenizer.pad(
             {"input_ids": input_target},
             padding=self.padding,
@@ -350,7 +352,9 @@ class DataCollatorForCausalLMSeq2Seq:
         pad_lengths = []
         context_lengths = []
         for input, label in zip(input_ids, labels):
-            context_length = len(input) + len(SEP)
+            context_length = len(input)
+            if self.use_sep:
+                context_length += len(SEP)
             label_length = len(label)
             pad_length = batch_length - context_length - label_length
             if self.tokenizer.padding_side == "right":
@@ -397,4 +401,35 @@ class DataCollatorForMultiTurnSeq2Seq:
         )["input_ids"]
         # true wherever we have an actual label
         features["span_mask"] = torch.where(label_features == -100, False, True)
+        return features
+
+# custom collator for the multi-turn input format with causal 
+@dataclass
+class DataCollatorForCausalMultiTurnSeq2Seq:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        input_ids = [feature["input_ids"] for feature in features]
+        labels = [feature["labels"] for feature in features]
+        features = self.tokenizer.pad(
+            {"input_ids": input_ids},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )
+        # pad labels out for easy mask
+        label_features = self.tokenizer.pad(
+            {"input_ids": labels},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )["input_ids"]
+        features['labels'] = label_features
         return features
