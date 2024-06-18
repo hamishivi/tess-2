@@ -166,7 +166,7 @@ class SpanInfillingDataCollator:
             tokens = self.tokenizer(
                 texts,
                 # TODO: remove hard-coded params
-                padding="longest",
+                padding="max_length",
                 truncation=True,
                 max_length=self.max_length,
                 return_attention_mask=False,
