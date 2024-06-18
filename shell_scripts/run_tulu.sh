@@ -11,7 +11,6 @@ python -m sdlm.run_tulu \
     --do_eval \
     --num_train_epochs 2 \
     --report_to tensorboard \
-    --overwrite_output_dir \
     --max_seq_length 512 \
     --simplex_value 5 \
     --num_diffusion_steps 5000 \
@@ -97,6 +96,7 @@ if [ ! -z "${BEAKER}" ]; then
         --max_eval_samples 1000 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 100 \
+        --overwrite_output_dir false \
         --beaker \
         --output_dir /results
 else
@@ -107,7 +107,8 @@ else
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
-        --output_dir outputs/test
+        --output_dir outputs/test \
+        --overwrite_output_dir true
 fi
 
 # using roberta (tess setup)
