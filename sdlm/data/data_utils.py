@@ -20,6 +20,8 @@ def load_data(data_args, model_args):
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
             streaming=data_args.streaming,
+            # added to suppress noisy warning
+            trust_remote_code=True,
         )
     else:
         data_files = {}
