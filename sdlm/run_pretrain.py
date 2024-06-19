@@ -4,7 +4,7 @@ import sys
 
 import datasets
 import transformers
-from datasets import Dataset, load_from_disk
+from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
@@ -164,23 +164,20 @@ def main():
     ]
 
     if data_args.tokenized_data_path:
-        tokenized_datasets = load_from_disk(data_args.tokenized_data_path)
+        raise NotImplementedError
     else:
         raw_datasets = load_data(data_args, model_args)
-        tokenized_datasets = tokenize_data_new(
-            data_args, tokenizer, raw_datasets, training_args
-        )
 
     if training_args.do_train:
-        if "train" not in tokenized_datasets:
+        if "train" not in raw_datasets:
             raise ValueError("--do_train requires a train dataset")
-        train_dataset = tokenized_datasets["train"]
+        train_dataset = raw_datasets["train"]
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
     if training_args.do_eval:
-        if "validation" not in tokenized_datasets:
+        if "validation" not in raw_datasets:
             # default to c4
             c4_raw_dataset = datasets.IterableDatasetDict(
                 {
@@ -199,7 +196,7 @@ def main():
             )
             eval_dataset = c4_tokenized_datasets["validation"]
         else:
-            eval_dataset = tokenized_datasets["validation"]
+            eval_dataset = raw_datasets["validation"]
         # convert eval dataset to regular dataset
         if isinstance(eval_dataset, datasets.IterableDataset):
 
