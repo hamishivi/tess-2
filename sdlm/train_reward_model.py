@@ -163,6 +163,7 @@ if __name__ == "__main__":
 
     # make sure the model knows the pad token id
     model.config.pad_token_id = tokenizer.pad_token_id
+    tokenizer.padding_side = "right"
 
     if model_config.lora_task_type != "SEQ_CLS":
         warnings.warn(
