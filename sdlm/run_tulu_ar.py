@@ -169,9 +169,6 @@ def main():
                 lambda x: any([y != -100 for y in x["labels"]])
             )
 
-    def preprocess_logits_for_metrics(logits):
-        return logits.argmax(dim=-1)
-
     if data_args.max_seq_length > tokenizer.model_max_length:
         logger.warning(
             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
@@ -180,15 +177,14 @@ def main():
 
     # Metric
     def compute_metrics(results):
-        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
         eval_data = load_dataset("tatsu-lab/alpaca_eval")["eval"]
-        for key in keys:
-            decoded_preds = (
-                process_text(results[key])
-                if not data_args.skip_special_tokens
-                else results[key]
-            )
+        # assume we stopped at eos
+        decoded_preds = []
+        for prediction in results.predictions:
+            decoded_preds.append(tokenizer.decode(
+                prediction, skip_special_tokens=True
+            ))
         # for each decoded sample, format into alpacaeval setup
         decoded_preds = [
             {"output": y, "instruction": x["instruction"], "generator": "tess2"}

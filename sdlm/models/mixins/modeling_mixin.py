@@ -146,13 +146,16 @@ class CausalLMForSeq2SeqMixin:
         # labels not needed for generation
         del kwargs["labels"]
         input_ids = kwargs.pop("input_ids")
-        pad_lengths = kwargs.pop("pad_lengths")
-        context_lengths = kwargs.pop("context_lengths")
-        for input_id, pad_length, context_length in zip(
-            input_ids, pad_lengths, context_lengths
-        ):
-            # grab non-padding context, without labels
-            context_tokens.append(input_id[pad_length : pad_length + context_length])
+        if "pad_lengths" in kwargs:
+            pad_lengths = kwargs.pop("pad_lengths")
+            context_lengths = kwargs.pop("context_lengths")
+            for input_id, pad_length, context_length in zip(
+                input_ids, pad_lengths, context_lengths
+            ):
+                # grab non-padding context, without labels
+                context_tokens.append(input_id[pad_length : pad_length + context_length])
+        else:
+            context_tokens = input_ids
         input_ids = pad_sequence(
             context_tokens,
             padding_value=self.config.pad_token_id,
