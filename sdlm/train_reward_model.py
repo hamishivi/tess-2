@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from functools import partial
 
 import torch
+import torch.nn as nn
 from torch.optim.lr_scheduler import LambdaLR
 from datasets import load_dataset
 from tqdm import tqdm
@@ -67,6 +68,46 @@ class RewardTrainerScheduler(RewardTrainer):
             self.lr_scheduler = get_linear_schedule_with_warmup(optimizer, self.args.warmup_steps, num_training_steps, end_lr_ratio=0.1)
             self._created_lr_scheduler = True
         return self.lr_scheduler
+    
+    # hacky override to set cache to false
+    # required to fix FA2 + mistral issues
+    # see https://github.com/huggingface/trl/issues/1217
+    def compute_loss(
+            self,
+            model,
+            inputs,
+            return_outputs=False,
+        ):
+            if not self.use_reward_data_collator:
+                warnings.warn(
+                    "The current compute_loss is implemented for RewardDataCollatorWithPadding,"
+                    " if you are using a custom data collator make sure you know what you are doing or"
+                    " implement your own compute_loss method."
+                )
+            rewards_chosen = model(
+                input_ids=inputs["input_ids_chosen"],
+                attention_mask=inputs["attention_mask_chosen"],
+                return_dict=True,
+                use_cache=False,
+            )["logits"]
+            rewards_rejected = model(
+                input_ids=inputs["input_ids_rejected"],
+                attention_mask=inputs["attention_mask_rejected"],
+                return_dict=True,
+                use_cache=False,
+            )["logits"]
+            # calculate loss, optionally modulate with margin
+            if "margin" in inputs:
+                loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - inputs["margin"]).mean()
+            else:
+                loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
+
+            if return_outputs:
+                return loss, {
+                    "rewards_chosen": rewards_chosen,
+                    "rewards_rejected": rewards_rejected,
+                }
+            return loss
 
 @dataclass
 class RewardModelingArguments:
@@ -119,7 +160,9 @@ if __name__ == "__main__":
     vocab_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) > vocab_size:
         model.resize_token_embeddings(len(tokenizer))
-        model.config.pad_token_id = tokenizer.pad_token_id
+
+    # make sure the model knows the pad token id
+    model.config.pad_token_id = tokenizer.pad_token_id
 
     if model_config.lora_task_type != "SEQ_CLS":
         warnings.warn(
@@ -143,8 +186,14 @@ if __name__ == "__main__":
         }
         for chosen, rejected in zip(examples["chosen"], examples["rejected"]):
             # flatten from 2d to 1d
-            tokenized_chosen = tokenizer.apply_chat_template(chosen, return_tensors="pt").flatten()
-            tokenized_rejected = tokenizer.apply_chat_template(rejected, return_tensors="pt").flatten()
+            tokenize_func = lambda x: tokenizer.apply_chat_template(
+                x,
+                return_tensors="pt",
+                max_length=config.max_length,
+                padding=reward_config.include_padding,
+            ).flatten()
+            tokenized_chosen = tokenize_func(chosen)
+            tokenized_rejected = tokenize_func(rejected)
             new_examples["input_ids_chosen"].append(tokenized_chosen)
             new_examples["attention_mask_chosen"].append(torch.ones_like(tokenized_chosen))
             new_examples["input_ids_rejected"].append(tokenized_rejected)
@@ -163,8 +212,14 @@ if __name__ == "__main__":
             chosen = [{"role": "user", "content": prompt}, {"role": "assistant", "content": chosen}]
             rejected = [{"role": "user", "content": prompt}, {"role": "assistant", "content": rejected}]
             # same as above
-            tokenized_chosen = tokenizer.apply_chat_template(chosen, return_tensors="pt").flatten()
-            tokenized_rejected = tokenizer.apply_chat_template(rejected, return_tensors="pt").flatten()
+            tokenize_func = lambda x: tokenizer.apply_chat_template(
+                x,
+                return_tensors="pt",
+                max_length=config.max_length,
+                padding=reward_config.include_padding,
+            ).flatten()
+            tokenized_chosen = tokenize_func(chosen)
+            tokenized_rejected = tokenize_func(rejected)
             new_examples["input_ids_chosen"].append(tokenized_chosen)
             new_examples["attention_mask_chosen"].append(torch.ones_like(tokenized_chosen))
             new_examples["input_ids_rejected"].append(tokenized_rejected)
@@ -186,7 +241,6 @@ if __name__ == "__main__":
     eval_dataset = eval_dataset.filter(
         lambda x: len(x["input_ids_chosen"]) <= config.max_length and len(x["input_ids_rejected"]) <= config.max_length
     )
-
 
     ################
     # Training

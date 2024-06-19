@@ -71,5 +71,5 @@ class MistralForDiffusionLM(DiffusionModelMixin, MistralPreTrainedModel):
 class MistralForSeq2SeqLM(CausalLMForSeq2SeqMixin, MistralForCausalLM):
     pass
 
-class MistralforSequenceClassificationWithPadding(MistralForSequenceClassification, PaddingIncludedSequenceClassificationMixin):
+class MistralforSequenceClassificationWithPadding(PaddingIncludedSequenceClassificationMixin, MistralForSequenceClassification):
     pass
