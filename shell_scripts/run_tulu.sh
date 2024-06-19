@@ -1,6 +1,8 @@
 # tulu command.
 # WARNING: eval uses alpaca eval. this costs $$.
 
+checkpoint_mount="01J0RVYZFM8SGTDPKWBDK6YG2H"
+
 CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_tulu \
@@ -16,13 +18,13 @@ accelerate launch
     --simplex_value 5 \
     --num_diffusion_steps 5000 \
     --lr_scheduler_type cosine \
-    --learning_rate 1e-5 \
+    --learning_rate 2e-5 \
     --pad_to_max_length \
     --beta_schedule squaredcos_improved_ddpm \
     --top_p 0.99 \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
-    --save_total_limit 1 \
+    --save_total_limit 2 \
     --save_strategy steps \
     --conditional_generation seq2seq \
     --self_condition "logits_mean" \
@@ -42,7 +44,7 @@ accelerate launch
 #     gantry run -y -n tulu_mistral_dolma_adapt -t tulu_mistral_dolma_adapt --allow-dirty \
 #         --workspace ai2/tess2 \
 #         --nfs \
-#         --gpus 1 \
+#         --gpus 8 \
 #         --priority normal \
 #         --budget ai2/allennlp \
 #         --cluster ai2/allennlp-cirrascale \
@@ -54,12 +56,12 @@ accelerate launch
 #         --venv 'base' \
 #         --pip requirements.txt \
 #         -- ${CMD} \
-#         --model_name_or_path /net/nfs.cirrascale/allennlp/jaket/simplex-diffusion/outputs/dolma_mistral/checkpoint-22000 \
+#         --model_name_or_path /model/checkpoint-200000 \
 #         --eval_steps 1000 \
-#         --save_steps 500 \
+#         --save_steps 1000 \
 #         --max_eval_samples 1000 \
-#         --gradient_accumulation_steps 16 \
-#         --num_inference_diffusion_steps 50 100 200 \
+#         --gradient_accumulation_steps 1 \
+#         --num_inference_diffusion_steps 100 \
 #         --overwrite_output_dir false \
 #         --beaker \
 #         --output_dir /results
@@ -77,7 +79,7 @@ accelerate launch
 
 # for ai2/jupiter-cirrascale-2 cluster
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n tulu_mistral_dolma_adapt_100k -t tulu_mistral_dolma_adapt_100k --allow-dirty \
+    gantry run -y -n tulu_mistral_dolma_512_adapt_200k_lr -t tulu_mistral_dolma_512_adapt_200k_lr --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 8 \
         --priority normal \
@@ -90,10 +92,11 @@ if [ ! -z "${BEAKER}" ]; then
         --env 'IS_ALPACA_EVAL_2=False' \
         --env-secret OPENAI_API_KEY=OPENAI_API_KEY \
         --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
+        --dataset "${checkpoint_mount}:/model" \
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --model_name_or_path outputs/dolma_mistral_512/100k/checkpoint-100000 \
+        --model_name_or_path /model \
         --eval_steps 1000 \
         --save_steps 1000 \
         --max_eval_samples 1000 \
