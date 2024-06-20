@@ -529,7 +529,7 @@ class DataTrainingArguments:
         },
     )
     shuffle: bool = field(
-        default=False,
+        default=True,
         metadata={"help": "If set, we will shuffle the data before training."},
     )
     min_eval_seq_length: Optional[int] = field(
