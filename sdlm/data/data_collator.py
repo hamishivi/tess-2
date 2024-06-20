@@ -156,6 +156,25 @@ class SpanInfillingDataCollator:
             )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if "text" in features[0]:
+            # adpated from sdlm/data/data_utils.py (`tokenize_data_new`)
+            texts = [
+                feature["text"]
+                for feature in features
+                if len(feature["text"]) > 0 and not feature["text"].isspace()
+            ]
+            tokens = self.tokenizer(
+                texts,
+                # TODO: remove hard-coded params
+                padding="max_length",
+                truncation=True,
+                max_length=self.max_length,
+                return_attention_mask=False,
+                return_special_tokens_mask=False,
+            )
+            # below code expects this format
+            features = [{"input_ids": token} for token in tokens["input_ids"]]
+
         if self.extra_padding_ratio:
             # Inserting random tokens uniformly, we do not modify start and end of
             # sequence tokens.
@@ -237,14 +256,24 @@ class SpanInfillingDataCollator:
                     eval_context_size=self.eval_context_size,
                 )
             }
-        batch = self.tokenizer.pad(
-            features,
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors=self.return_tensors,
-            return_attention_mask=False,
-        )
+        try:
+            # reformat
+            batch = {
+                "input_ids": torch.tensor(
+                    [feature["input_ids"] for feature in features]
+                )
+            }
+        except:  # noqa
+            batch = self.tokenizer.pad(
+                features,
+                padding=self.padding,
+                max_length=self.max_length,
+                pad_to_multiple_of=self.pad_to_multiple_of,
+                return_tensors=self.return_tensors,
+                return_attention_mask=False,
+            )
+            # we just need input_ids
+            batch = {"input_ids": batch["input_ids"]}
         return {**batch, **masks}
 
 
@@ -333,10 +362,12 @@ class DataCollatorForCausalLMSeq2Seq:
                 SEP = list(self.LLAMA_SEP)
             else:
                 raise ValueError("Unrecognized tokenizer.name_or_path")
-
-        input_target = [
-            input + SEP + target for input, target in zip(input_ids, labels)
-        ]
+            input_target = [
+                input + SEP + target for input, target in zip(input_ids, labels)
+            ]
+        else:
+            input_target = [input + target for input, target in zip(input_ids, labels)]
+        
         features = self.tokenizer.pad(
             {"input_ids": input_target},
             padding=self.padding,
@@ -350,7 +381,9 @@ class DataCollatorForCausalLMSeq2Seq:
         pad_lengths = []
         context_lengths = []
         for input, label in zip(input_ids, labels):
-            context_length = len(input) + len(SEP)
+            context_length = len(input)
+            if self.use_sep:
+                context_length += len(SEP)
             label_length = len(label)
             pad_length = batch_length - context_length - label_length
             if self.tokenizer.padding_side == "right":
@@ -397,4 +430,35 @@ class DataCollatorForMultiTurnSeq2Seq:
         )["input_ids"]
         # true wherever we have an actual label
         features["span_mask"] = torch.where(label_features == -100, False, True)
+        return features
+
+# custom collator for the multi-turn input format with causal 
+@dataclass
+class DataCollatorForCausalMultiTurnSeq2Seq:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        input_ids = [feature["input_ids"] for feature in features]
+        labels = [feature["labels"] for feature in features]
+        features = self.tokenizer.pad(
+            {"input_ids": input_ids},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )
+        # pad labels out for easy mask
+        label_features = self.tokenizer.pad(
+            {"input_ids": labels},
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )["input_ids"]
+        features['labels'] = label_features
         return features

@@ -5,12 +5,14 @@ from transformers.models.mistral.modeling_mistral import (
     MistralForCausalLM,
     MistralModel,
     MistralPreTrainedModel,
+    MistralForSequenceClassification
 )
 from transformers.utils import logging
 
 from sdlm.models.mixins.modeling_mixin import (
     CausalLMForSeq2SeqMixin,
     DiffusionModelMixin,
+    PaddingIncludedSequenceClassificationMixin
 )
 
 logger = logging.get_logger(__name__)
@@ -67,4 +69,7 @@ class MistralForDiffusionLM(DiffusionModelMixin, MistralPreTrainedModel):
 
 
 class MistralForSeq2SeqLM(CausalLMForSeq2SeqMixin, MistralForCausalLM):
+    pass
+
+class MistralforSequenceClassificationWithPadding(PaddingIncludedSequenceClassificationMixin, MistralForSequenceClassification):
     pass

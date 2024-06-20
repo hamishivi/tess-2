@@ -1,128 +1,33 @@
-"""
-Fine-tuning the library models for sequence to sequence.
-Specifically for instruction tuning.
-Runs alpacaEval as an intermediate set.
-"""
+""" Finetuning the library models for sequence classification on GLUE."""
 
 import logging
 import os
+import random
 import sys
 
-import alpaca_eval
 import datasets
-import torch
 import transformers
 from datasets import load_dataset
-from transformers import set_seed
-from transformers.trainer_callback import TrainerState
+from transformers import AutoTokenizer, set_seed
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version
-from transformers.utils.versions import require_version
+import alpaca_eval
 
 from .arguments import get_args
-from .data.data_collator import DataCollatorForMultiTurnSeq2Seq
-from .data.data_utils import load_data
+from .data.data_collator import DataCollatorForCausalMultiTurnSeq2Seq
 from .inference.inference_utils import process_text
 from .models import load_model
-from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainers.trainer_diffusion import DiffusionTrainer
+from .trainers.trainer_ar import ARTrainer
+from .run_tulu import encode_with_messages_format
+from .data.data_utils import load_data
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.25.0")
-require_version("datasets>=1.8.0")
 logger = logging.getLogger(__name__)
-
-
-# from the open-instruct codebase.
-def encode_with_messages_format(
-    example, tokenizer, max_seq_length, return_string=False
-):
-    """
-    Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
-    We concatenate all messages with the roles as delimiters and tokenize them together.
-    """
-    # we only take the first two messages, since multi-turn is a little more complex
-    messages = example["messages"][:2]
-    if len(messages) == 0:
-        raise ValueError("messages field is empty.")
-
-    def _concat_messages(messages):
-        message_text = ""
-        for message in messages:
-            if message["role"] == "system":
-                message_text += "<|system|>\n" + message["content"].strip() + "\n"
-            elif message["role"] == "user":
-                message_text += "<|user|>\n" + message["content"].strip() + "\n"
-            elif message["role"] == "assistant":
-                message_text += (
-                    "<|assistant|>\n"
-                    + message["content"].strip()
-                    + tokenizer.eos_token
-                    + "\n"
-                )
-            else:
-                raise ValueError("Invalid role: {}".format(message["role"]))
-        return message_text
-
-    example_text = tokenizer.bos_token + _concat_messages(messages).strip()
-    tokenized_example = tokenizer(
-        example_text,
-        add_special_tokens=False,
-        return_tensors="pt",
-        max_length=max_seq_length,
-        truncation=True,
-    )
-    input_ids = tokenized_example.input_ids
-    labels = input_ids.clone()
-    if return_string:
-        return example_text
-
-    # mask the non-assistant part for avoiding loss
-    for message_idx, message in enumerate(messages):
-        if message["role"] != "assistant":
-            if message_idx == 0:
-                message_start_idx = 0
-            else:
-                message_start_idx = tokenizer(
-                    _concat_messages(messages[:message_idx]),
-                    return_tensors="pt",
-                    max_length=max_seq_length,
-                    truncation=True,
-                ).input_ids.shape[1]
-            if (
-                message_idx < len(messages) - 1
-                and messages[message_idx + 1]["role"] == "assistant"
-            ):
-                # here we also ignore the role of the assistant
-                messages_so_far = (
-                    _concat_messages(messages[: message_idx + 1]) + "<|assistant|>\n"
-                )
-            else:
-                messages_so_far = _concat_messages(messages[: message_idx + 1])
-            message_end_idx = tokenizer(
-                messages_so_far,
-                return_tensors="pt",
-                max_length=max_seq_length,
-                truncation=True,
-                add_special_tokens=False,
-            ).input_ids.shape[1]
-            # we replace with pad token id,
-            labels[:, message_start_idx:message_end_idx] = -100
-
-            if message_end_idx >= max_seq_length:
-                break
-
-    attention_mask = torch.ones_like(input_ids)
-    return {
-        "input_ids": input_ids.flatten(),
-        "labels": labels.flatten(),
-        "attention_mask": attention_mask.flatten(),
-    }
-
 
 def main():
     # parse args
     model_args, data_args, training_args, diffusion_args = get_args()
+    assert data_args.dataset_name is not None
+    data_args.dataset_name = data_args.dataset_name.lower()
+
 
     # Setup logging
     logging.basicConfig(
@@ -130,6 +35,7 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
     log_level = training_args.get_process_log_level()
     logger.setLevel(log_level)
     datasets.utils.logging.set_verbosity(log_level)
@@ -152,35 +58,41 @@ def main():
         and not training_args.overwrite_output_dir
     ):
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        # if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
-        #     raise ValueError(
-        #         f"Output directory ({training_args.output_dir}) already exists and is not empty. "
-        #         "Use --overwrite_output_dir to overcome."
-        #     )
-        if last_checkpoint is not None and training_args.resume_from_checkpoint is None:
+        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+            raise ValueError(
+                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+                "Use --overwrite_output_dir to overcome."
+            )
+        elif (
+            last_checkpoint is not None and training_args.resume_from_checkpoint is None
+        ):
             logger.info(
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
 
-    # Set seed before initializing model.
-    set_seed(training_args.seed)
-
-    # load data
+    # load dataset
     raw_datasets = load_data(data_args, model_args)
     eval_dataset = load_dataset("tatsu-lab/alpaca_eval")["eval"]
 
+    # Set seed before initializing model.
+    set_seed(training_args.seed)
+
+    # load tokenizer early
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.tokenizer_name
+        if model_args.tokenizer_name
+        else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        use_fast=model_args.use_fast_tokenizer,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+        padding_side=model_args.tokenizer_padding_side,
+    )
     # load model
     tokenizer, model = load_model(
         model_args, data_args, training_args, diffusion_args, logger
     )
-    tokenizer.add_eos_token = False  # since the chat template adds it
-
-    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    vocab_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > vocab_size:
-        model.resize_token_embeddings(len(tokenizer))
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -257,49 +169,22 @@ def main():
                 lambda x: any([y != -100 for y in x["labels"]])
             )
 
-    def preprocess_logits_for_metrics(logits):
-        return logits.argmax(dim=-1)
-
-    # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
-    data_collator = lambda mode: DataCollatorForMultiTurnSeq2Seq(  # noqa: E731
-        tokenizer,
-        # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
-        padding="max_length" if data_args.pad_to_max_length else True,
-        max_length=data_args.max_seq_length,
-        pad_to_multiple_of=8 if training_args.fp16 else None,
-    )
-
-    noise_scheduler = TokenWiseSimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-        # multiply_factor=diffusion_args.multiply_factor,
-    )
-    inference_noise_schedulers = [
-        TokenWiseSimplexDDPMScheduler(
-            num_train_timesteps=timesteps,
-            beta_schedule=diffusion_args.beta_schedule,
-            simplex_value=diffusion_args.simplex_value,
-            clip_sample=diffusion_args.clip_sample,
-            device=training_args.device,
-            # multiply_factor=diffusion_args.multiply_factor,
+    if data_args.max_seq_length > tokenizer.model_max_length:
+        logger.warning(
+            f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
+            f"model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
         )
-        for timesteps in diffusion_args.num_inference_diffusion_steps
-    ]
 
     # Metric
     def compute_metrics(results):
-        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
         metrics = {}
         eval_data = load_dataset("tatsu-lab/alpaca_eval")["eval"]
-        for key in keys:
-            decoded_preds = (
-                process_text(results[key])
-                if not data_args.skip_special_tokens
-                else results[key]
-            )
+        # assume we stopped at eos
+        decoded_preds = []
+        for prediction in results.predictions:
+            decoded_preds.append(tokenizer.decode(
+                prediction, skip_special_tokens=True
+            ))
         # for each decoded sample, format into alpacaeval setup
         decoded_preds = [
             {"output": y, "instruction": x["instruction"], "generator": "tess2"}
@@ -315,8 +200,17 @@ def main():
         metrics.update(key_metrics)
         return metrics
 
+     # Data collator. To be consistent with the run_mlm.py we need to add `mode`.
+    data_collator = lambda mode: DataCollatorForCausalMultiTurnSeq2Seq(  # noqa: E731
+        tokenizer,
+        # Note that if you do not use `pad_to_max_length`, this becomes very slow on multi-gpus.
+        padding="max_length" if data_args.pad_to_max_length else True,
+        max_length=data_args.max_seq_length,
+        pad_to_multiple_of=8 if training_args.fp16 else None,
+    )
+
     # Initialize our Trainer
-    trainer = DiffusionTrainer(
+    trainer = ARTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
@@ -326,13 +220,6 @@ def main():
         compute_metrics=compute_metrics
         if (training_args.do_eval or training_args.do_predict)
         else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics
-        if (training_args.do_eval or training_args.do_predict)
-        else None,
-        noise_scheduler=noise_scheduler,
-        diffusion_args=diffusion_args,
-        data_args=data_args,
-        inference_noise_schedulers=inference_noise_schedulers,
     )
 
     # Training
@@ -343,8 +230,6 @@ def main():
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
-        trainer.save_model()  # Saves the tokenizer too for easy upload
-
         metrics = train_result.metrics
         max_train_samples = (
             data_args.max_train_samples
@@ -353,27 +238,13 @@ def main():
         )
         metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
+        trainer.save_model()  # Saves the tokenizer too for easy upload
+
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
-    # We will load the best model here to avoid an issue when do_train is not set.
-    if training_args.load_states_in_eval_from_model_path and not training_args.do_train:
-        trainer.state = TrainerState.load_from_json(
-            os.path.join(model_args.model_name_or_path, "trainer_state.json")
-        )
-        if (
-            training_args.load_best_model_at_end
-            and trainer.state.best_model_checkpoint is not None
-        ):
-            checkpoint_path = trainer.state.best_model_checkpoint
-        else:
-            checkpoint_path = model_args.model_name_or_path
-        trainer._load_from_checkpoint(checkpoint_path)
-        trainer._load_rng_state(checkpoint_path)
-
     # Evaluation
-    results = {}
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
@@ -385,7 +256,6 @@ def main():
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
-    return results
 
 
 if __name__ == "__main__":
