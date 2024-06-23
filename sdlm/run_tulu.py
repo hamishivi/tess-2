@@ -291,22 +291,25 @@ def main():
 
     # Metric
     def compute_metrics(results):
-        keys = ["pred_texts_from_simplex_masked", "pred_texts_from_logits_masked"]
+        # grab the instructions from the prefixes key
+        eval_data = [
+            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip() for x in results["prefixes"]
+        ]
+        # then grab from logits masked.
+        decoded_preds = (
+            process_text(results["pred_texts_from_logits_masked"])
+            if not data_args.skip_special_tokens
+            else results["pred_texts_from_logits_masked"]
+        )
+        decoded_preds = [x.strip() for x in decoded_preds]
         metrics = {}
-        eval_data = load_dataset("tatsu-lab/alpaca_eval")["eval"]
-        for key in keys:
-            decoded_preds = (
-                process_text(results[key])
-                if not data_args.skip_special_tokens
-                else results[key]
-            )
         # for each decoded sample, format into alpacaeval setup
         decoded_preds = [
-            {"output": y, "instruction": x["instruction"], "generator": "tess2"}
+            {"output": y, "instruction": x, "generator": "tess2"}
             for x, y in zip(eval_data, decoded_preds)
         ]
         df_leaderboard, _ = alpaca_eval.evaluate(
-            decoded_preds,
+            model_outputs=decoded_preds,
             is_overwrite_leaderboard=True,
             is_return_instead_of_print=True,
         )
