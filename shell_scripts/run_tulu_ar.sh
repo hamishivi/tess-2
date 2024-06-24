@@ -31,6 +31,7 @@ accelerate launch -m sdlm.run_tulu_ar \
     --gradient_checkpointing \
     --num_diffusion_steps 0 \
     --tokenizer_padding_side "left" \
+    --include_inputs_for_metrics \
 "
 
 # for ai2/jupiter-cirrascale-2 cluster
@@ -60,8 +61,8 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
-        --eval_steps 3 \
-        --save_steps 5 \
+        --eval_steps 10 \
+        --save_steps 10 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
