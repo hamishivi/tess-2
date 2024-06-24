@@ -1,7 +1,7 @@
 # tulu command.
 # WARNING: eval uses alpaca eval. this costs $$.
 
-checkpoint_mount="01J0RVYZFM8SGTDPKWBDK6YG2H"
+checkpoint_mount="01J11ENYVX5T6JSBJ5XKAEF0HW"
 
 CMD="
 accelerate launch
@@ -12,20 +12,20 @@ accelerate launch
     --evaluation_strategy steps \
     --do_train \
     --do_eval \
-    --num_train_epochs 2 \
+    --num_train_epochs 3 \
     --report_to tensorboard \
     --max_seq_length 512 \
     --simplex_value 5 \
     --num_diffusion_steps 5000 \
     --lr_scheduler_type cosine \
-    --learning_rate 2e-5 \
+    --learning_rate 1e-5 \
     --pad_to_max_length \
     --beta_schedule squaredcos_improved_ddpm \
     --top_p 0.99 \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
     --save_total_limit 2 \
-    --save_strategy steps \
+    --save_strategy epoch \
     --conditional_generation seq2seq \
     --self_condition "logits_mean" \
     --self_condition_mix_before_weights \
@@ -79,7 +79,7 @@ accelerate launch
 
 # for ai2/jupiter-cirrascale-2 cluster
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n tulu_mistral_dolma_512_adapt_200k_lr -t tulu_mistral_dolma_512_adapt_200k_lr --allow-dirty \
+    gantry run -y -n tulu_mistral_512_constant -t tulu_mistral_512_constant --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 8 \
         --priority normal \
@@ -96,9 +96,8 @@ if [ ! -z "${BEAKER}" ]; then
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --model_name_or_path /model \
+        --model_name_or_path /model/checkpoint-200000 \
         --eval_steps 1000 \
-        --save_steps 1000 \
         --max_eval_samples 1000 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 100 \
