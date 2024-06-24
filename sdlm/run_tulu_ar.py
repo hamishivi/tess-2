@@ -184,6 +184,8 @@ def main():
         # assume we stopped at eos
         decoded_preds = []
         for prediction in results.predictions:
+            # sometimes we get out of range somehow?? guard against it.
+            prediction = [x for x in prediction if x > 0 and x < tokenizer.vocab_size]
             decoded_preds.append(tokenizer.decode(
                 prediction, skip_special_tokens=True
             ))
