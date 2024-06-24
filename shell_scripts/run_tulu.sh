@@ -1,7 +1,7 @@
 # tulu command.
 # WARNING: eval uses alpaca eval. this costs $$.
 
-checkpoint_mount="01J11ENYVX5T6JSBJ5XKAEF0HW"
+checkpoint_mount="01J0YBXA2FDHA54J4VAM83N31V"
 
 CMD="
 accelerate launch
@@ -9,7 +9,7 @@ accelerate launch
     --dataset_name allenai/tulu-v2-sft-mixture \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \
-    --evaluation_strategy steps \
+    --evaluation_strategy epoch \
     --do_train \
     --do_eval \
     --num_train_epochs 3 \
@@ -79,7 +79,7 @@ accelerate launch
 
 # for ai2/jupiter-cirrascale-2 cluster
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n tulu_mistral_512_constant -t tulu_mistral_512_constant --allow-dirty \
+    gantry run -y -n tulu_mistral_512 -t tulu_mistral_512 --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 8 \
         --priority normal \
@@ -97,7 +97,6 @@ if [ ! -z "${BEAKER}" ]; then
         --pip requirements.txt \
         -- ${CMD} \
         --model_name_or_path /model/checkpoint-200000 \
-        --eval_steps 1000 \
         --max_eval_samples 1000 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 100 \
