@@ -451,6 +451,8 @@ class DataCollatorForCausalMultiTurnSeq2Seq:
             return_tensors="pt",
             return_attention_mask=False,
         )
+        # reinstate attention mask
+        features['attention_mask'] = (features['input_ids'] != self.tokenizer.pad_token_id)
         # pad labels out for easy mask
         label_features = self.tokenizer.pad(
             {"input_ids": labels},

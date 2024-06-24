@@ -178,7 +178,9 @@ def main():
     # Metric
     def compute_metrics(results):
         metrics = {}
-        eval_data = load_dataset("tatsu-lab/alpaca_eval")["eval"]
+        eval_data = [
+            tokenizer.decode(x, skip_special_tokens=True).replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip() for x in results.inputs
+        ]
         # assume we stopped at eos
         decoded_preds = []
         for prediction in results.predictions:
@@ -187,11 +189,11 @@ def main():
             ))
         # for each decoded sample, format into alpacaeval setup
         decoded_preds = [
-            {"output": y, "instruction": x["instruction"], "generator": "tess2"}
+            {"output": y, "instruction": x, "generator": "tess2"}
             for x, y in zip(eval_data, decoded_preds)
         ]
         df_leaderboard, _ = alpaca_eval.evaluate(
-            decoded_preds,
+            model_outputs=decoded_preds,
             is_overwrite_leaderboard=True,
             is_return_instead_of_print=True,
         )
