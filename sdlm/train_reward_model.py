@@ -142,8 +142,8 @@ if __name__ == "__main__":
         torch_dtype=get_torch_dtype(config),
     )
     tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path, use_fast=True)
-    if not tokenizer.pad_token_id:
-        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    # just always add the pad token.
+    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     # make sure the pad token is set correctly.
     tokenizer.pad_token = "[PAD]"
     tokenizer.pad_token_id = 32000
