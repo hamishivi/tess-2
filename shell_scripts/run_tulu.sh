@@ -1,7 +1,7 @@
 # tulu command.
 # WARNING: eval uses alpaca eval. this costs $$.
 
-checkpoint_mount="01J0YBXA2FDHA54J4VAM83N31V"
+checkpoint_mount="01J11ENYVX5T6JSBJ5XKAEF0HW"
 
 CMD="
 accelerate launch
@@ -12,7 +12,7 @@ accelerate launch
     --evaluation_strategy epoch \
     --do_train \
     --do_eval \
-    --num_train_epochs 3 \
+    --num_train_epochs 5 \
     --report_to tensorboard \
     --max_seq_length 512 \
     --simplex_value 5 \
@@ -24,7 +24,7 @@ accelerate launch
     --top_p 0.99 \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
-    --save_total_limit 2 \
+    --save_total_limit 3 \
     --save_strategy epoch \
     --conditional_generation seq2seq \
     --self_condition "logits_mean" \
@@ -79,7 +79,7 @@ accelerate launch
 
 # for ai2/jupiter-cirrascale-2 cluster
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n tulu_mistral_512 -t tulu_mistral_512 --allow-dirty \
+    gantry run -y -n tulu_mistral_512_constant_5 -t tulu_mistral_512_constant_5 --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 8 \
         --priority normal \
