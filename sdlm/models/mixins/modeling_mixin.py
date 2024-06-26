@@ -164,7 +164,9 @@ class CDCDDiffusionModelMixin(DiffusionModelMixin):
             **kwargs,
         )
         loss = output.loss
-        if self.training:
+        # NOTE: need inference mode check to prevent cdf loss computation
+        # for prev generation in self-conditioning
+        if self.training and not torch.is_inference_mode_enabled():
             # then we learn the cdf from the losses
             # only in train mode, since in eval we just apply the warping.
             new_timesteps_clone = timesteps.clone()
