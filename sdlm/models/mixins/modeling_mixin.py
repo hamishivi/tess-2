@@ -114,7 +114,7 @@ class DiffusionModelMixin:
 class CDCDDiffusionModelMixin(DiffusionModelMixin):
     def __init__(self, config):
         super().__init__(config)
-        self.cdf = LossCDF(100)
+        self.cdf = LossCDF(config.n_bins)
 
     def warp_timesteps(
         self,
