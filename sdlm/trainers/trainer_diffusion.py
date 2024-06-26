@@ -1075,7 +1075,7 @@ class DiffusionTrainer(Trainer):
                     if (
                         n in decay_parameters
                         and p.requires_grad
-                        and not ("timestep_embed" in n)
+                        and not ("timestep_embed" in n or "cdf" in n)
                     )
                 ],
                 "weight_decay": self.args.weight_decay,
@@ -1088,7 +1088,7 @@ class DiffusionTrainer(Trainer):
                     if (
                         n not in decay_parameters
                         and p.requires_grad
-                        and not ("timestep_embed" in n)
+                        and not ("timestep_embed" in n or "cdf" in n)
                     )
                 ],
                 "weight_decay": 0.0,
@@ -1102,6 +1102,15 @@ class DiffusionTrainer(Trainer):
                 ],
                 "weight_decay": 0.0,
                 "lr": self.args.timestep_embed_lr or self.args.learning_rate,
+            },
+            {
+                "params": [
+                    p
+                    for n, p in opt_model.named_parameters()
+                    if (("cdf" in n) and p.requires_grad)
+                ],
+                "weight_decay": 0.0,
+                "lr": 1e-3,
             },
         ]
 
