@@ -1,12 +1,17 @@
-from typing import Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 import torch
-from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
+from torch import autograd
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn import functional as F
-from transformers.modeling_outputs import MaskedLMOutput, SequenceClassifierOutputWithPast
 from transformers.cache_utils import Cache
+from transformers.modeling_outputs import (
+    MaskedLMOutput,
+    SequenceClassifierOutputWithPast,
+)
 
 from sdlm.data.data_utils import pad_sequence
+from sdlm.models.cdcd.cdf import LossCDF
 from sdlm.utils import mix_values_based_on_self_condition
 
 
@@ -106,6 +111,92 @@ class DiffusionModelMixin:
         )
 
 
+class CDCDDiffusionModelMixin(DiffusionModelMixin):
+    def __init__(self, config):
+        super().__init__(config)
+        self.cdf = LossCDF(100)
+
+    def warp_timesteps(
+        self,
+        timesteps: torch.FloatTensor,
+        token_input=None,
+        t_min=0,
+        t_max=1,
+        **kwargs,
+    ):
+        # u has to be in normalized range...
+        if t_max - t_min > 0:
+            timesteps = (timesteps - t_min) / (t_max - t_min)
+        else:
+            # weird case, only really happens with 1 diffusion steps (tmin=0,tmax=0)
+            # in this case, we just set timesteps to 0
+            timesteps = timesteps - t_min
+            t_max = 1  # just to avoid div by 0
+        # warp timesteps. sep. call so we can pass to scheduler
+        # detach so we don't backprop through this
+        return self.cdf(u=timesteps, normalized=True, t_min=t_min, t_max=t_max).detach()
+
+    def forward(
+        self,
+        timesteps: torch.FloatTensor,
+        input_ids: torch.LongTensor,
+        simplex: torch.FloatTensor,
+        span_mask: Optional[torch.FloatTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        previous_pred: Optional[torch.FloatTensor] = None,
+        reduce_loss: str = "mean",
+        **kwargs,
+    ):
+        output = super().forward(
+            timesteps=timesteps,
+            input_ids=input_ids,
+            simplex=simplex,
+            span_mask=span_mask,
+            position_ids=position_ids,
+            labels=labels,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            previous_pred=previous_pred,
+            reduce_loss=reduce_loss,
+            **kwargs,
+        )
+        loss = output.loss
+        if self.training:
+            # then we learn the cdf from the losses
+            # only in train mode, since in eval we just apply the warping.
+            new_timesteps_clone = timesteps.clone()
+            new_timesteps_clone.requires_grad = True
+            with torch.enable_grad():
+                # grab the predictions for the loss values - note at this point timesteps
+                # are normalised to [0, 1]
+                xent_pred = self.cdf(t=new_timesteps_clone, normalized=False, t_max=1)
+                # importance weights -> reciprocal of grad of CDF.
+                imp_weights = (
+                    1.0 / autograd.grad(xent_pred.sum(), [new_timesteps_clone])[0]
+                )[:, 0]
+            imp_weights = imp_weights.detach() * 1e-5
+            # just one index of timesteps since all are the same. required for compat with tokenwise
+            cdf_loss = (
+                imp_weights
+                * (
+                    self.cdf(t=timesteps, normalized=False, t_max=1)[:, 0]
+                    - loss.detach()
+                ).pow(2)
+            ).mean()
+            loss = loss.mean() + cdf_loss  # upweight cdf loss as its too small :(
+        else:
+            loss = loss.mean()
+        return MaskedLMOutput(
+            loss=loss,
+            logits=output.logits,
+            hidden_states=output.hidden_states,
+            attentions=output.attentions,
+        )
+
+
 class CausalLMForSeq2SeqMixin:
     def forward(
         self,
@@ -153,7 +244,9 @@ class CausalLMForSeq2SeqMixin:
                 input_ids, pad_lengths, context_lengths
             ):
                 # grab non-padding context, without labels
-                context_tokens.append(input_id[pad_length : pad_length + context_length])
+                context_tokens.append(
+                    input_id[pad_length : pad_length + context_length]
+                )
         else:
             context_tokens = input_ids
         input_ids = pad_sequence(
@@ -194,7 +287,9 @@ class PaddingIncludedSequenceClassificationMixin:
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         transformer_outputs = self.model(
             input_ids,
@@ -219,7 +314,9 @@ class PaddingIncludedSequenceClassificationMixin:
         # this is the only change from the original implementation
         sequence_lengths = -1
 
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+        pooled_logits = logits[
+            torch.arange(batch_size, device=logits.device), sequence_lengths
+        ]
 
         loss = None
         if labels is not None:
@@ -227,7 +324,9 @@ class PaddingIncludedSequenceClassificationMixin:
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                elif self.num_labels > 1 and (
+                    labels.dtype == torch.long or labels.dtype == torch.int
+                ):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -240,7 +339,9 @@ class PaddingIncludedSequenceClassificationMixin:
                     loss = loss_fct(pooled_logits, labels)
             elif self.config.problem_type == "single_label_classification":
                 loss_fct = CrossEntropyLoss()
-                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
+                loss = loss_fct(
+                    pooled_logits.view(-1, self.num_labels), labels.view(-1)
+                )
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
                 loss = loss_fct(pooled_logits, labels)
