@@ -1066,7 +1066,7 @@ class DiffusionTrainer(Trainer):
             self.args
         )
 
-        # override to apply higher lr to timestep_embed
+        # override to apply higher lr to timestep_embed and cdcd cdf
         optimizer_grouped_parameters = [
             {
                 "params": [
