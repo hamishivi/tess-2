@@ -18,8 +18,16 @@ from .confidence_tracker.confidence_tracker_model import (
 )
 from .llama.configuration_llama import LlamaDiffusionConfig
 from .llama.modeling_llama import LlamaForDiffusionLM, LlamaForSeq2SeqLM
-from .mistral.configuration_mistral import MistralDiffusionConfig
-from .mistral.modeling_mistral import MistralForDiffusionLM, MistralForSeq2SeqLM
+from .mistral.configuration_mistral import (
+    CDCDMistralDiffusionConfig,
+    MistralDiffusionConfig,
+)
+from .mistral.modeling_mistral import (
+    CDCDMistralForDiffusionLM,
+    MistralForDiffusionLM,
+    MistralForSeq2SeqLM,
+)
+from .mixins.modeling_mixin import CDCDDiffusionModelMixin
 from .roberta.configuration_roberta import RobertaDiffusionConfig
 
 
@@ -36,6 +44,8 @@ def model_config_helper(
     if "mistral" in model_name_or_path.lower():
         if conditional_generation == "seq2seq" and not is_diffusion:
             return MistralDiffusionConfig, MistralForSeq2SeqLM
+        if use_model == "cdcd":
+            return CDCDMistralDiffusionConfig, CDCDMistralForDiffusionLM
         return MistralDiffusionConfig, MistralForDiffusionLM
     if "roberta" in model_name_or_path and use_model == "cdcd":
         return CDCDRobertaConfig, CDCDRobertaForDiffusionLM
@@ -53,6 +63,11 @@ def model_config_helper(
     elif "roberta" in model_name_or_path and use_model == "cdcdgar":
         return CDCDRobertaConfig, CDCDGARRobertaForDiffusionLM
     # default to mistral
+    if use_model == "cdcd":
+        print(
+            f"Using CDCDMistralDiffusionConfig and CDCDMistralForDiffusionLM for {model_name_or_path}"
+        )
+        return CDCDMistralDiffusionConfig, CDCDMistralForDiffusionLM
     print(
         f"Using MistralDiffusionConfig and MistralForDiffusionLM for {model_name_or_path}"
     )
@@ -61,7 +76,9 @@ def model_config_helper(
 
 def is_cdcd_check(model):
     return (
-        isinstance(model, CDCDRobertaForDiffusionLM)
+        isinstance(model, CDCDDiffusionModelMixin)
+        or isinstance(model, CDCDMistralForDiffusionLM)
+        or isinstance(model, CDCDRobertaForDiffusionLM)
         or isinstance(model, TokenwiseCDCDRobertaForDiffusionLM)
         or isinstance(model, PositionwiseCDCDRobertaForDiffusionLM)
         or isinstance(model, GARDiffusionLM)
