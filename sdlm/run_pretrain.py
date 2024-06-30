@@ -110,13 +110,15 @@ def main():
     logger.info(f"Training/evaluation parameters {training_args}")
 
     # Detecting last checkpoint.
-    last_checkpoint = None
+    last_checkpoint = training_args.resume_from_checkpoint
     if (
         os.path.isdir(training_args.output_dir)
         and training_args.do_train
         and not training_args.overwrite_output_dir
     ):
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        potential_last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        if potential_last_checkpoint is not None:
+            last_checkpoint = potential_last_checkpoint
         if (
             last_checkpoint is None
             and len(os.listdir(training_args.output_dir)) > 0
@@ -126,13 +128,8 @@ def main():
                 f"Output directory ({training_args.output_dir}) already exists and is not empty. "
                 "Use --overwrite_output_dir to overcome."
             )
-        elif (
-            last_checkpoint is not None and training_args.resume_from_checkpoint is None
-        ):
-            logger.info(
-                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
+        elif last_checkpoint is not None:
+            logger.info(f"Checkpoint detected, resuming training at {last_checkpoint}.")
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
