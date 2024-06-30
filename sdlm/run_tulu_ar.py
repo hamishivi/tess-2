@@ -138,37 +138,20 @@ def main():
         with training_args.main_process_first(
             desc="validation dataset map pre-processing"
         ):
-            tokenized_data = []
-            for sample in eval_dataset:
-                prompt = encode_with_messages_format(
-                    sample, tokenizer, max_target_length, return_string=True
-                )
-                prompt = prompt + "\n<|assistant|>\n"
-                tokenized_data.append(prompt)
-            data = tokenizer(
-                tokenized_data,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=max_target_length,
-                add_special_tokens=False,
+            prompt_function = lambda x: encode_with_messages_format(
+                x, tokenizer, max_target_length, add_generation_prompt=True
             )
-            eval_dataset = datasets.Dataset.from_dict(data)
-            labels = []
-            # we dont assume a length on the response.
-            # so labels are -100 for for inputs, and 1 everywhere else.
-            # eval loss is meaningless here.
-            for sample in eval_dataset["input_ids"]:
-                labels.append(
-                    [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
-                )
-            eval_dataset = eval_dataset.add_column("labels", labels)
-            # filter out samples without any space for generations.
-            # for roberta (512), should just be one.
-            eval_dataset = eval_dataset.filter(
-                lambda x: any([y != -100 for y in x["labels"]])
+            # prompting
+            eval_dataset = eval_dataset.map(
+                prompt_function,
+                batched=False,
+                num_proc=data_args.preprocessing_num_workers,
+                load_from_cache_file=not data_args.overwrite_cache,
+                remove_columns=["instruction", "dataset", "generator", "messages", "output"],
+                desc="Running tokenizer on validation dataset",
             )
-
+            eval_dataset.set_format("pt")
+            eval_dataset.remove_columns(["labels"])
     if data_args.max_seq_length > tokenizer.model_max_length:
         logger.warning(
             f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
@@ -178,20 +161,24 @@ def main():
     # Metric
     def compute_metrics(results):
         metrics = {}
-        eval_data = load_dataset("tatsu-lab/alpaca_eval")["eval"]
+        eval_data = [
+            tokenizer.decode(x, skip_special_tokens=True).replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip() for x in results.inputs
+        ]
         # assume we stopped at eos
         decoded_preds = []
         for prediction in results.predictions:
+            # sometimes we get out of range somehow?? guard against it.
+            prediction = [x for x in prediction if x > 0 and x < tokenizer.vocab_size]
             decoded_preds.append(tokenizer.decode(
                 prediction, skip_special_tokens=True
             ))
         # for each decoded sample, format into alpacaeval setup
         decoded_preds = [
-            {"output": y, "instruction": x["instruction"], "generator": "tess2"}
+            {"output": y, "instruction": x, "generator": "tess2"}
             for x, y in zip(eval_data, decoded_preds)
         ]
         df_leaderboard, _ = alpaca_eval.evaluate(
-            decoded_preds,
+            model_outputs=decoded_preds,
             is_overwrite_leaderboard=True,
             is_return_instead_of_print=True,
         )
@@ -221,7 +208,6 @@ def main():
         if (training_args.do_eval or training_args.do_predict)
         else None,
     )
-
     # Training
     if training_args.do_train:
         checkpoint = None

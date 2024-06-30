@@ -261,8 +261,8 @@ class CausalLMForSeq2SeqMixin:
         kwargs["attention_mask"] = ~(kwargs["input_ids"] == self.config.pad_token_id)
         # need to set to false due to flash attention
         kwargs["use_cache"] = False
-        # TODO: remove hard coded values
-        kwargs["max_new_tokens"] = 128
+        kwargs["max_new_tokens"] = kwargs.get("max_length", 512)
+        kwargs.pop("max_length", None)
         outputs = super().generate(*args, **kwargs)
         seq_len = input_ids.size(1)
         output_ids = outputs[:, seq_len:]

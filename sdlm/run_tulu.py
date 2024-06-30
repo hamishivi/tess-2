@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # from the open-instruct codebase.
 def encode_with_messages_format(
-    example, tokenizer, max_seq_length, return_string=False
+    example, tokenizer, max_seq_length, return_string=False, add_generation_prompt=False
 ):
     """
     Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
@@ -65,6 +65,8 @@ def encode_with_messages_format(
         return message_text
 
     example_text = tokenizer.bos_token + _concat_messages(messages).strip()
+    if add_generation_prompt:
+        example_text += '\n<|assistant|>\n'
     tokenized_example = tokenizer(
         example_text,
         add_special_tokens=False,
