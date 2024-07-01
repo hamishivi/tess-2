@@ -47,9 +47,15 @@ def encode_with_messages_format(
     if len(messages == 3):
         # open orca fix
         messages = messages[1:]
+    else:
+        messages = messages[:2]
 
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
+    # quick sanity checks
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user"
+    assert messages[1]["role"] == "assistant"
 
     def _concat_messages(messages):
         message_text = ""
@@ -137,6 +143,9 @@ def encode_with_messages_format_v2(example, tokenizer, max_seq_length):
 
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
+    # quick sanity checks on first two
+    assert messages[0]["role"] == "user"
+    assert messages[1]["role"] == "assistant"
 
     # double check tokenizer config
     tokenizer.add_bos_token = True
@@ -202,6 +211,9 @@ def encode_with_messages_format_v3(example, tokenizer, max_seq_length):
 
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
+    # quick sanity checks on first two
+    assert messages[0]["role"] == "user"
+    assert messages[1]["role"] == "assistant"
 
     # double check tokenizer config
     tokenizer.add_bos_token = True
