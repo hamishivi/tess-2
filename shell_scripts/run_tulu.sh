@@ -37,7 +37,7 @@ accelerate launch
     --line_by_line true \
     --mask_padding_in_loss false \
     --skip_special_tokens false \
-    --preprocessing_num_workers 64 \
+    --preprocessing_num_workers 32 \
 "
 
 # for ai2/allennlp-cirrascale cluster

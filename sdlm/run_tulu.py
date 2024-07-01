@@ -44,7 +44,7 @@ def encode_with_messages_format(
     """
     # we only take the first two messages, since multi-turn is a little more complex
     messages = example["messages"]
-    if len(messages == 3):
+    if len(messages) == 3:
         # open orca fix
         messages = messages[1:]
     else:
@@ -76,6 +76,8 @@ def encode_with_messages_format(
     example_text = tokenizer.bos_token + _concat_messages(messages).strip()
     if add_generation_prompt:
         example_text += "\n<|assistant|>\n"
+    if return_string:
+        return example_text
     tokenized_example = tokenizer(
         example_text,
         add_special_tokens=False,
@@ -85,8 +87,6 @@ def encode_with_messages_format(
     )
     input_ids = tokenized_example.input_ids
     labels = input_ids.clone()
-    if return_string:
-        return example_text
 
     # mask the non-assistant part for avoiding loss
     for message_idx, message in enumerate(messages):
@@ -135,7 +135,6 @@ def encode_with_messages_prefix_accumulating_format(
     messages,
     tokenizer,
     max_seq_length: int,
-    return_attention_mask: bool = False,
 ):
     """
     `encode_with_messages_format`, but with prefix-accumulating multiturn format
@@ -159,9 +158,9 @@ def encode_with_messages_prefix_accumulating_format(
             message_text += "<|user|>\n" + message["content"].strip() + "\n"
         elif message["role"] == "assistant":
             # tokenize message so far as context
-            # TODO: check add_special_tokens
+            # add generation prompt to mask out from loss
             tokenized_context = tokenizer(
-                message_text,
+                message_text + "<|assistant|>\n",
                 truncation=False,
                 padding=False,
             )
@@ -174,7 +173,7 @@ def encode_with_messages_prefix_accumulating_format(
             message_text += "<|assistant|>\n" + message["content"].strip()
 
             # tokenize full message text
-            # TODO: check add_special_tokens
+            # add eos and pad
             tokenized_example = tokenizer(
                 (message_text + tokenizer.eos_token).strip(),
                 truncation=True,
@@ -195,8 +194,6 @@ def encode_with_messages_prefix_accumulating_format(
         return result
     result["input_ids"] = torch.stack(result["input_ids"])
     result["labels"] = torch.stack(result["labels"])
-    if return_attention_mask:
-        result["attention_mask"] = torch.ones_like(result["input_ids"])
     return result
 
 
@@ -204,11 +201,8 @@ def encode_with_messages_prefix_accumulating_format_batch(
     batch,
     tokenizer,
     max_seq_length: int,
-    return_attention_mask: bool = False,
 ):
     result = {"input_ids": [], "labels": []}
-    if return_attention_mask:
-        result["attention_mask"] = []
     for messages in batch["messages"]:
         if len(messages) == 3:
             # NOTE: open orca (system - user - assistant format)
@@ -218,7 +212,6 @@ def encode_with_messages_prefix_accumulating_format_batch(
             messages=messages,
             tokenizer=tokenizer,
             max_seq_length=max_seq_length,
-            return_attention_mask=return_attention_mask,
         )
         for key, value in encoded.items():
             result[key].append(value)
@@ -336,9 +329,12 @@ def main():
             tokenized_data = []
             for sample in eval_dataset:
                 prompt = encode_with_messages_format(
-                    sample, tokenizer, max_target_length, return_string=True
+                    sample,
+                    tokenizer,
+                    max_target_length,
+                    return_string=True,
+                    add_generation_prompt=True,
                 )
-                prompt = prompt + "\n<|assistant|>\n"
                 tokenized_data.append(prompt)
             data = tokenizer(
                 tokenized_data,
