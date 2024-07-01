@@ -163,3 +163,91 @@ def lmap(f: Callable, x: Iterable) -> List:
 
 def pad_data(data_list, tokenizer):
     return tokenizer.pad({"input_ids": data_list}, padding=True)["input_ids"]
+
+# from the open-instruct codebase.
+def encode_with_messages_format(
+    example, tokenizer, max_seq_length, return_string=False, add_generation_prompt=False
+):
+    """
+    Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
+    We concatenate all messages with the roles as delimiters and tokenize them together.
+    """
+    # we only take the first two messages, since multi-turn is a little more complex
+    messages = example["messages"][:2]
+    if len(messages) == 0:
+        raise ValueError("messages field is empty.")
+
+    def _concat_messages(messages):
+        message_text = ""
+        for message in messages:
+            if message["role"] == "system":
+                message_text += "<|system|>\n" + message["content"].strip() + "\n"
+            elif message["role"] == "user":
+                message_text += "<|user|>\n" + message["content"].strip() + "\n"
+            elif message["role"] == "assistant":
+                message_text += (
+                    "<|assistant|>\n"
+                    + message["content"].strip()
+                    + tokenizer.eos_token
+                    + "\n"
+                )
+            else:
+                raise ValueError("Invalid role: {}".format(message["role"]))
+        return message_text
+
+    example_text = tokenizer.bos_token + _concat_messages(messages).strip()
+    if add_generation_prompt:
+        example_text += '\n<|assistant|>\n'
+    tokenized_example = tokenizer(
+        example_text,
+        add_special_tokens=False,
+        return_tensors="pt",
+        max_length=max_seq_length,
+        truncation=True,
+    )
+    input_ids = tokenized_example.input_ids
+    labels = input_ids.clone()
+    if return_string:
+        return example_text
+
+    # mask the non-assistant part for avoiding loss
+    for message_idx, message in enumerate(messages):
+        if message["role"] != "assistant":
+            if message_idx == 0:
+                message_start_idx = 0
+            else:
+                message_start_idx = tokenizer(
+                    _concat_messages(messages[:message_idx]),
+                    return_tensors="pt",
+                    max_length=max_seq_length,
+                    truncation=True,
+                ).input_ids.shape[1]
+            if (
+                message_idx < len(messages) - 1
+                and messages[message_idx + 1]["role"] == "assistant"
+            ):
+                # here we also ignore the role of the assistant
+                messages_so_far = (
+                    _concat_messages(messages[: message_idx + 1]) + "<|assistant|>\n"
+                )
+            else:
+                messages_so_far = _concat_messages(messages[: message_idx + 1])
+            message_end_idx = tokenizer(
+                messages_so_far,
+                return_tensors="pt",
+                max_length=max_seq_length,
+                truncation=True,
+                add_special_tokens=False,
+            ).input_ids.shape[1]
+            # we replace with pad token id,
+            labels[:, message_start_idx:message_end_idx] = -100
+
+            if message_end_idx >= max_seq_length:
+                break
+
+    attention_mask = torch.ones_like(input_ids)
+    return {
+        "input_ids": input_ids.flatten(),
+        "labels": labels.flatten(),
+        "attention_mask": attention_mask.flatten(),
+    }

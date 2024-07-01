@@ -10,7 +10,6 @@ accelerate launch
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \
     --evaluation_strategy steps \
-    --do_train \
     --do_eval \
     --num_train_epochs 2 \
     --report_to tensorboard \
@@ -107,12 +106,12 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /results
 else
     ${CMD} \
-        --model_name_or_path mistralai/Mistral-7B-v0.1 \
+        --model_name_or_path tulu_mistral_diffusion_200k \
         --eval_steps 3 \
         --save_steps 5 \
-        --max_eval_samples 16 \
+        --max_eval_samples 1000 \
         --gradient_accumulation_steps 1 \
-        --num_inference_diffusion_steps 10 \
+        --num_inference_diffusion_steps 100 \
         --output_dir outputs/test \
         --overwrite_output_dir true
 fi
