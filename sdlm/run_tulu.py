@@ -131,19 +131,19 @@ def encode_with_messages_format(
     }
 
 
-def encode_with_messages_format_v2(example, tokenizer, max_seq_length):
+def encode_with_messages_prefix_accumulating_format(
+    messages,
+    tokenizer,
+    max_seq_length: int,
+    return_attention_mask: bool = False,
+):
     """
     `encode_with_messages_format`, but with prefix-accumulating multiturn format
     ex) input_ids: (a1, b1, a2, b2, a3), labels: (b3)
     """
-    messages = example["messages"]
-    if len(messages == 3):
-        # open orca fix
-        messages = messages[1:]
-
+    # quick sanity checks
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
-    # quick sanity checks on first two
     assert messages[0]["role"] == "user"
     assert messages[1]["role"] == "assistant"
 
@@ -171,102 +171,58 @@ def encode_with_messages_format_v2(example, tokenizer, max_seq_length):
                 break
 
             # append label
-            message_text += (
-                "<|assistant|>\n"
-                + message["content"].strip()
-                + tokenizer.eos_token
-                + "\n"
-            )
+            message_text += "<|assistant|>\n" + message["content"].strip()
 
             # tokenize full message text
             # TODO: check add_special_tokens
             tokenized_example = tokenizer(
-                message_text.strip(),
+                (message_text + tokenizer.eos_token).strip(),
                 truncation=True,
                 padding="max_length",
-                max_seq_length=max_seq_length,
+                max_length=max_seq_length,
                 return_tensors="pt",
             )
-            input_ids = tokenized_example["input_ids"]
+            input_ids = tokenized_example["input_ids"].squeeze()
             labels = input_ids.clone()
             labels[:context_length] = -100
             result["input_ids"].append(input_ids)
             result["labels"].append(labels)
 
-        result["input_ids"] = torch.tensor(result["input_ids"])
-        result["labels"] = torch.tensor(result["labels"])
-        result["attention_mask"] = torch.ones_like(result["input_ids"])
+            # add newline for next turn
+            message_text += "\n"
+
+    if not result:
         return result
-
-
-def encode_with_messages_format_v3(example, tokenizer, max_seq_length):
-    """
-    `encode_with_messages_format`, but with sliding window multiturn format
-    ex) input_ids: (part_of_b1, a2, b2, a3), labels: (b3) (a1 and part of b1 truncated)
-    """
-    messages = example["messages"]
-    if len(messages == 3):
-        # open orca fix
-        messages = messages[1:]
-
-    if len(messages) == 0:
-        raise ValueError("messages field is empty.")
-    # quick sanity checks on first two
-    assert messages[0]["role"] == "user"
-    assert messages[1]["role"] == "assistant"
-
-    # double check tokenizer config
-    tokenizer.add_bos_token = True
-    tokenizer.add_eos_token = False
-    tokenizer.padding_side = "right"
-    tokenizer.truncation_side = "left"
-
-    message_text = ""
-    result = defaultdict(list)
-    for message in messages:
-        if message["role"] == "user":
-            message_text += "<|user|>\n" + message["content"].strip() + "\n"
-        elif message["role"] == "assistant":
-            assistant_message = (
-                "<|assistant|>\n"
-                + message["content"].strip()
-                + tokenizer.eos_token
-                + "\n"
-            )
-
-            # tokenize assistant message
-            tokenized_label = tokenizer(
-                assistant_message.strip(),
-                truncation=False,
-                padding=False,
-            )
-            label_length = len(tokenized_label["input_ids"])
-
-            if label_length >= max_seq_length:
-                break
-
-            # append label
-            message_text += assistant_message
-
-            # tokenize full message text
-            # TODO: check add_special_tokens
-            tokenized_example = tokenizer(
-                message_text.strip(),
-                truncation=True,
-                padding="max_length",
-                max_seq_length=max_seq_length,
-                return_tensors="pt",
-            )
-            input_ids = tokenized_example["input_ids"]
-            labels = input_ids.clone()
-            labels[:-label_length] = -100
-            result["input_ids"].append(input_ids)
-            result["labels"].append(labels)
-
-        result["input_ids"] = torch.tensor(result["input_ids"])
-        result["labels"] = torch.tensor(result["labels"])
+    result["input_ids"] = torch.stack(result["input_ids"])
+    result["labels"] = torch.stack(result["labels"])
+    if return_attention_mask:
         result["attention_mask"] = torch.ones_like(result["input_ids"])
-        return result
+    return result
+
+
+def encode_with_messages_prefix_accumulating_format_batch(
+    batch,
+    tokenizer,
+    max_seq_length: int,
+    return_attention_mask: bool = False,
+):
+    result = {"input_ids": [], "labels": []}
+    if return_attention_mask:
+        result["attention_mask"] = []
+    for messages in batch["messages"]:
+        if len(messages) == 3:
+            # NOTE: open orca (system - user - assistant format)
+            # truncate to (user - assistant)
+            messages = messages[1:]
+        encoded = encode_with_messages_prefix_accumulating_format(
+            messages=messages,
+            tokenizer=tokenizer,
+            max_seq_length=max_seq_length,
+            return_attention_mask=return_attention_mask,
+        )
+        for key, value in encoded.items():
+            result[key].append(value)
+    return result
 
 
 def main():
@@ -350,8 +306,10 @@ def main():
         with training_args.main_process_first(desc="train dataset map pre-processing"):
             # we assume the data is in the tulu format
             train_dataset = train_dataset.map(
-                lambda x: encode_with_messages_format(x, tokenizer, max_target_length),
-                batched=False,
+                lambda x: encode_with_messages_prefix_accumulating_format_batch(
+                    x, tokenizer, max_target_length
+                ),
+                batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 load_from_cache_file=not data_args.overwrite_cache,
                 remove_columns=train_column_names,
