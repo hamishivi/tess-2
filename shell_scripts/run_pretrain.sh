@@ -1,7 +1,8 @@
+checkpoint_mount="01J11ENYVX5T6JSBJ5XKAEF0HW"
+
 CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_pretrain \
-    --model_name_or_path mistralai/Mistral-7B-v0.1 \
     --per_device_train_batch_size 8  \
     --per_device_eval_batch_size 8 \
     --do_train \
@@ -13,14 +14,13 @@ accelerate launch
     --min_eval_seq_length 350 \
     --simplex_value 5 \
     --num_diffusion_steps 5000  \
-    --lr_scheduler_type cosine \
+    --lr_scheduler_type constant \
     --learning_rate 1e-5 \
     --pad_to_max_length \
     --beta_schedule squaredcos_improved_ddpm \
     --weight_decay 0.01 \
     --top_p 0.99 \
-    --max_steps 200000 \
-    --warmup_ratio 0.025 \
+    --max_steps 400000 \
     --logging_steps 50 \
     --save_total_limit 1 \
     --conditional_generation ul2 \
@@ -39,10 +39,11 @@ accelerate launch
     --dataloader_num_workers 8 \
     --remove_unused_columns false \
     --dispatch_batches false \
+    --shuffle true \
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n dolma_mistral_4096_h100x8 -t dolma_mistral_4096_h100x8 --allow-dirty \
+    gantry run -y -n dolma_mistral_512_constant_400k -t dolma_mistral_512_constant_400k --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 8 \
         --priority normal \
@@ -55,9 +56,12 @@ if [ ! -z "${BEAKER}" ]; then
         --env-secret HF_TOKEN=HF_TOKEN \
         --weka oe-data-default:/data/input \
         --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
+        --dataset "${checkpoint_mount}:/model" \
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
+        --model_name_or_path /model/checkpoint-200000 \
+        --resume_from_checkpoint /model/checkpoint-200000 \
         --eval_steps 1000 \
         --save_steps 1000 \
         --max_eval_samples 200 \
@@ -68,11 +72,13 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /results
 else
     ${CMD} \
+        --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --eval_steps 10 \
         --save_steps 50 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
         --output_dir outputs/test \
-        --overwrite_output_dir true
+        --overwrite_output_dir true \
+        --use_model cdcd
 fi
