@@ -7,6 +7,7 @@ Runs alpacaEval as an intermediate set.
 import logging
 import os
 import sys
+from collections import defaultdict
 
 import alpaca_eval
 import datasets
@@ -42,16 +43,18 @@ def encode_with_messages_format(
     We concatenate all messages with the roles as delimiters and tokenize them together.
     """
     # we only take the first two messages, since multi-turn is a little more complex
-    messages = example["messages"][:2]
+    messages = example["messages"]
+    if len(messages == 3):
+        # open orca fix
+        messages = messages[1:]
+
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
 
     def _concat_messages(messages):
         message_text = ""
         for message in messages:
-            if message["role"] == "system":
-                message_text += "<|system|>\n" + message["content"].strip() + "\n"
-            elif message["role"] == "user":
+            if message["role"] == "user":
                 message_text += "<|user|>\n" + message["content"].strip() + "\n"
             elif message["role"] == "assistant":
                 message_text += (
@@ -66,7 +69,7 @@ def encode_with_messages_format(
 
     example_text = tokenizer.bos_token + _concat_messages(messages).strip()
     if add_generation_prompt:
-        example_text += '\n<|assistant|>\n'
+        example_text += "\n<|assistant|>\n"
     tokenized_example = tokenizer(
         example_text,
         add_special_tokens=False,
@@ -120,6 +123,138 @@ def encode_with_messages_format(
         "labels": labels.flatten(),
         "attention_mask": attention_mask.flatten(),
     }
+
+
+def encode_with_messages_format_v2(example, tokenizer, max_seq_length):
+    """
+    `encode_with_messages_format`, but with prefix-accumulating multiturn format
+    ex) input_ids: (a1, b1, a2, b2, a3), labels: (b3)
+    """
+    messages = example["messages"]
+    if len(messages == 3):
+        # open orca fix
+        messages = messages[1:]
+
+    if len(messages) == 0:
+        raise ValueError("messages field is empty.")
+
+    # double check tokenizer config
+    tokenizer.add_bos_token = True
+    tokenizer.add_eos_token = False
+    tokenizer.padding_side = "right"
+
+    message_text = ""
+    result = defaultdict(list)
+    for message in messages:
+        if message["role"] == "user":
+            message_text += "<|user|>\n" + message["content"].strip() + "\n"
+        elif message["role"] == "assistant":
+            # tokenize message so far as context
+            # TODO: check add_special_tokens
+            tokenized_context = tokenizer(
+                message_text,
+                truncation=False,
+                padding=False,
+            )
+            context_length = len(tokenized_context["input_ids"])
+
+            if context_length >= max_seq_length:
+                break
+
+            # append label
+            message_text += (
+                "<|assistant|>\n"
+                + message["content"].strip()
+                + tokenizer.eos_token
+                + "\n"
+            )
+
+            # tokenize full message text
+            # TODO: check add_special_tokens
+            tokenized_example = tokenizer(
+                message_text.strip(),
+                truncation=True,
+                padding="max_length",
+                max_seq_length=max_seq_length,
+                return_tensors="pt",
+            )
+            input_ids = tokenized_example["input_ids"]
+            labels = input_ids.clone()
+            labels[:context_length] = -100
+            result["input_ids"].append(input_ids)
+            result["labels"].append(labels)
+
+        result["input_ids"] = torch.tensor(result["input_ids"])
+        result["labels"] = torch.tensor(result["labels"])
+        result["attention_mask"] = torch.ones_like(result["input_ids"])
+        return result
+
+
+def encode_with_messages_format_v3(example, tokenizer, max_seq_length):
+    """
+    `encode_with_messages_format`, but with sliding window multiturn format
+    ex) input_ids: (part_of_b1, a2, b2, a3), labels: (b3) (a1 and part of b1 truncated)
+    """
+    messages = example["messages"]
+    if len(messages == 3):
+        # open orca fix
+        messages = messages[1:]
+
+    if len(messages) == 0:
+        raise ValueError("messages field is empty.")
+
+    # double check tokenizer config
+    tokenizer.add_bos_token = True
+    tokenizer.add_eos_token = False
+    tokenizer.padding_side = "right"
+    tokenizer.truncation_side = "left"
+
+    message_text = ""
+    result = defaultdict(list)
+    for message in messages:
+        if message["role"] == "user":
+            message_text += "<|user|>\n" + message["content"].strip() + "\n"
+        elif message["role"] == "assistant":
+            assistant_message = (
+                "<|assistant|>\n"
+                + message["content"].strip()
+                + tokenizer.eos_token
+                + "\n"
+            )
+
+            # tokenize assistant message
+            tokenized_label = tokenizer(
+                assistant_message.strip(),
+                truncation=False,
+                padding=False,
+            )
+            label_length = len(tokenized_label["input_ids"])
+
+            if label_length >= max_seq_length:
+                break
+
+            # append label
+            message_text += assistant_message
+
+            # tokenize full message text
+            # TODO: check add_special_tokens
+            tokenized_example = tokenizer(
+                message_text.strip(),
+                truncation=True,
+                padding="max_length",
+                max_seq_length=max_seq_length,
+                return_tensors="pt",
+            )
+            input_ids = tokenized_example["input_ids"]
+            labels = input_ids.clone()
+            labels[:-label_length] = -100
+            result["input_ids"].append(input_ids)
+            result["labels"].append(labels)
+
+        result["input_ids"] = torch.tensor(result["input_ids"])
+        result["labels"] = torch.tensor(result["labels"])
+        result["attention_mask"] = torch.ones_like(result["input_ids"])
+        return result
 
 
 def main():
@@ -295,7 +430,8 @@ def main():
     def compute_metrics(results):
         # grab the instructions from the prefixes key
         eval_data = [
-            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip() for x in results["prefixes"]
+            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip()
+            for x in results["prefixes"]
         ]
         # then grab from logits masked.
         decoded_preds = (
