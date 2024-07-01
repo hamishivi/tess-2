@@ -147,9 +147,9 @@ def encode_with_messages_prefix_accumulating_format(
     assert messages[1]["role"] == "assistant"
 
     # double check tokenizer config
-    tokenizer.add_bos_token = True
-    tokenizer.add_eos_token = False
-    tokenizer.padding_side = "right"
+    assert tokenizer.add_bos_token
+    assert not tokenizer.add_eos_token
+    assert tokenizer.padding_side == "right"
 
     message_text = ""
     result = defaultdict(list)
