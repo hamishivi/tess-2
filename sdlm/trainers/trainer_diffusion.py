@@ -1103,16 +1103,21 @@ class DiffusionTrainer(Trainer):
                 "weight_decay": 0.0,
                 "lr": self.args.timestep_embed_lr or self.args.learning_rate,
             },
-            {
-                "params": [
-                    p
-                    for n, p in opt_model.named_parameters()
-                    if (("cdf" in n) and p.requires_grad)
-                ],
-                "weight_decay": 0.0,
-                "lr": 1e-3,
-            },
         ]
+        # check cdcd
+        cdf_params = [
+            p
+            for n, p in opt_model.named_parameters()
+            if (("cdf" in n) and p.requires_grad)
+        ]
+        if cdf_params:
+            optimizer_grouped_parameters.append(
+                {
+                    "params": cdf_params,
+                    "weight_decay": 0.0,
+                    "lr": 1e-3,
+                }
+            )
 
         optimizer_kwargs.pop("lr")
 
