@@ -155,7 +155,7 @@ class GSM8kEval():
         # why 3-shot? 512 context length means we cant fit 8 
         global GSM_EXEMPLARS
         demonstrations = []
-        for example in GSM_EXEMPLARS[:1]:
+        for example in GSM_EXEMPLARS[:3]:
             demonstrations.append(
                 "Question: " + example["question"] + "\n" + "Answer: " + example["cot_answer"]
             )
@@ -202,9 +202,9 @@ class GSM8kEval():
         # we dont assume a length on the response.
         # so labels are -100 for for inputs, and 1 everywhere else.
         # eval loss is meaningless here.
-        for sample, sample_labelled in zip(eval_dataset["input_ids"], eval_labelled_dataset["input_ids"]):
+        for sample in eval_dataset["input_ids"]:
             labels.append(
-                [-100 if x == y else y for x, y in zip(sample, sample_labelled)]
+                [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
             )
         eval_dataset = eval_dataset.add_column("labels", labels)
         # filter out samples without any space for generations.
