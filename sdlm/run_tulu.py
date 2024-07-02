@@ -42,20 +42,19 @@ def encode_with_messages_format(
     Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
     We concatenate all messages with the roles as delimiters and tokenize them together.
     """
+    # filter (open orca)
+    messages = [
+        message
+        for message in example["messages"]
+        if message["role"] in {"user", "assistant"}
+    ]
     # we only take the first two messages, since multi-turn is a little more complex
-    messages = example["messages"]
-    if len(messages) == 3:
-        # open orca fix
-        messages = messages[1:]
-    else:
-        messages = messages[:2]
+    messages = messages[:2]
 
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
     # quick sanity checks
-    assert len(messages) == 2
     assert messages[0]["role"] == "user"
-    assert messages[1]["role"] == "assistant"
 
     def _concat_messages(messages):
         message_text = ""
@@ -204,10 +203,10 @@ def encode_with_messages_prefix_accumulating_format_batch(
 ):
     result = {"input_ids": [], "labels": []}
     for messages in batch["messages"]:
-        if len(messages) == 3:
-            # NOTE: open orca (system - user - assistant format)
-            # truncate to (user - assistant)
-            messages = messages[1:]
+        # filter (open orca)
+        messages = [
+            message for message in messages if message["role"] in {"user", "assistant"}
+        ]
         encoded = encode_with_messages_prefix_accumulating_format(
             messages=messages,
             tokenizer=tokenizer,
@@ -215,6 +214,9 @@ def encode_with_messages_prefix_accumulating_format_batch(
         )
         for key, value in encoded.items():
             result[key].append(value)
+    if result["input_ids"]:
+        result["input_ids"] = torch.cat(result["input_ids"], dim=0)
+        result["labels"] = torch.cat(result["labels"], dim=0)
     return result
 
 
