@@ -115,7 +115,7 @@ class GSM8kEval():
             answer = re.sub(r"(\d),(\d)", r"\1\2",answer)
             question_to_answer[example["question"]] = answer
         # final, get ground truth by matching the question
-        gold_texts = [question_to_answer[x] for x in eval_data]
+        gold_texts = [question_to_answer.get(x, "") for x in eval_data]
         # then grab from logits masked.
         decoded_preds = (
             process_text(results["pred_texts_from_logits_masked"])
@@ -132,6 +132,9 @@ class GSM8kEval():
             else:
                 predictions.append(output)
         metrics = {}
+        # filter out empty gold texts and their corresponding eval data
+        predictions = [x for x, y in zip(predictions, gold_texts) if y]
+        gold_texts = [x for x in gold_texts if x]
         # now calculate the metrics
         em_score = exact_match.compute(
             predictions=predictions,
@@ -239,7 +242,7 @@ class CodexHumanEval():
         decoded_preds = [" " + x for x in decoded_preds]
         # cut the preds off in the same way we do stop seqs in the AR setting
         stop_sequences = ["\nclass", "\ndef", "\n#", "\nif", "\nprint", "\n```"]
-        for i, pred in enumerate(decoded_preds):
+        for i, _ in enumerate(decoded_preds):
             for stop_seq in stop_sequences:
                 if stop_seq in decoded_preds[i]:
                     decoded_preds[i] = decoded_preds[i].split(stop_seq)[0]
@@ -263,7 +266,7 @@ class CodexHumanEval():
         # only pass through problems we actually evaluate on.
         metrics = evaluate_functional_correctness(
             sample_file=prediction_save_path,
-            k=[1],
+            k=[1, 10],
             problems={example["task_id"]: example for example in original_data if example["task_id"] in generated_solutions},
             n_workers=64
         )
@@ -313,6 +316,12 @@ class CodexHumanEval():
         eval_dataset = eval_dataset.filter(
             lambda x: any([y != -100 for y in x["labels"]])
         )
+        # finally, duplicate each example 20 times - this is the number of samples we will generate.
+        new_eval_dataset = []
+        for example in eval_dataset:
+            for _ in range(20):
+                new_eval_dataset.append(example)
+        eval_dataset = Dataset.from_list(new_eval_dataset)
         return eval_dataset
 
 EVAL_MAPPING = {
