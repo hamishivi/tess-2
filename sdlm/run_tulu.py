@@ -150,7 +150,7 @@ def encode_with_messages_prefix_accumulating_format(
     assert not tokenizer.add_eos_token
     assert tokenizer.padding_side == "right"
 
-    message_text = ""
+    message_text = tokenizer.bos_token
     result = defaultdict(list)
     for message in messages:
         if message["role"] == "user":
@@ -162,6 +162,7 @@ def encode_with_messages_prefix_accumulating_format(
                 message_text + "<|assistant|>\n",
                 truncation=False,
                 padding=False,
+                add_special_tokens=False,
             )
             context_length = len(tokenized_context["input_ids"])
 
@@ -179,6 +180,7 @@ def encode_with_messages_prefix_accumulating_format(
                 padding="max_length",
                 max_length=max_seq_length,
                 return_tensors="pt",
+                add_special_tokens=False,
             )
             input_ids = tokenized_example["input_ids"].squeeze()
             labels = input_ids.clone()
