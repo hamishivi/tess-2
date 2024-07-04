@@ -12,7 +12,7 @@ accelerate launch
     --evaluation_strategy epoch \
     --do_train \
     --do_eval \
-    --num_train_epochs 5 \
+    --num_train_epochs 3 \
     --report_to tensorboard \
     --max_seq_length 512 \
     --simplex_value 5 \
@@ -24,7 +24,7 @@ accelerate launch
     --top_p 0.99 \
     --warmup_ratio 0.03 \
     --logging_steps 50 \
-    --save_total_limit 3 \
+    --save_total_limit 2 \
     --save_strategy epoch \
     --conditional_generation seq2seq \
     --self_condition "logits_mean" \
@@ -78,17 +78,17 @@ accelerate launch
 #         --overwrite_output_dir true
 # fi
 
-# for ai2/jupiter-cirrascale-2 cluster
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n tulu_mistral_512_constant_5 -t tulu_mistral_512_constant_5 --allow-dirty \
+    gantry run -y -n tulu_mistral_512_multiturn -t tulu_mistral_512_multiturn --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 8 \
         --priority normal \
         --budget ai2/allennlp \
         --preemptible \
         --no-nfs \
+        --cluster ai2/general-cirrascale-a100-80g-ib \
         --cluster ai2/jupiter-cirrascale-2 \
-        --env 'HF_HOME=/net/weka/reviz/jaket/.hf' \
+        --cluster ai2/allennlp-cirrascale \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
         --env 'IS_ALPACA_EVAL_2=False' \
         --env-secret OPENAI_API_KEY=OPENAI_API_KEY \
@@ -107,6 +107,7 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
+        --model_revision 26bca36bde8333b5d7f72e9ed20ccda6a618af24 \
         --eval_steps 3 \
         --save_steps 5 \
         --max_eval_samples 16 \
