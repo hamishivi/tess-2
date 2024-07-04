@@ -130,7 +130,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
                 # warp timesteps based on cdf
                 # we are in inference mode, anything in span_mask is to gen.
                 token_inputs = torch.where(
-                    batch["span_mask"], 50264, batch["input_ids"]
+                    batch["span_mask"], self.tokenizer.pad_token_id, batch["input_ids"]
                 )
                 t = self.model.warp_timesteps(
                     original_t,
@@ -213,7 +213,7 @@ class SimplexDDPMPipeline(DiffusionPipeline):
             if is_cdcd_check(self.model):
                 # warp timesteps based on cdf
                 token_inputs = torch.where(
-                    batch["span_mask"], 50264, batch["input_ids"]
+                    batch["span_mask"], self.tokenizer.pad_token_id, batch["input_ids"]
                 )
                 prev_t = self.model.warp_timesteps(
                     original_t - 1,

@@ -73,11 +73,12 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
-        --eval_steps 100 \
-        --save_steps 500 \
+        --eval_steps 10 \
+        --save_steps 50 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \
         --output_dir outputs/test \
-        --overwrite_output_dir true
+        --overwrite_output_dir true \
+        --use_model cdcd
 fi
