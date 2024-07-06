@@ -15,7 +15,6 @@ import transformers
 from datasets import load_dataset
 from transformers import set_seed
 from transformers.trainer_callback import TrainerState
-from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
@@ -26,6 +25,7 @@ from .inference.inference_utils import process_text
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainers.trainer_diffusion import DiffusionTrainer
+from .utils import get_last_checkpoint_with_beaker_preemption
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -66,7 +66,7 @@ def encode_with_messages_format(
 
     example_text = tokenizer.bos_token + _concat_messages(messages).strip()
     if add_generation_prompt:
-        example_text += '\n<|assistant|>\n'
+        example_text += "\n<|assistant|>\n"
     tokenized_example = tokenizer(
         example_text,
         add_special_tokens=False,
@@ -147,23 +147,7 @@ def main():
     logger.info(f"Training/evaluation parameters {training_args}")
 
     # Detecting last checkpoint.
-    last_checkpoint = None
-    if (
-        os.path.isdir(training_args.output_dir)
-        and training_args.do_train
-        and not training_args.overwrite_output_dir
-    ):
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        # if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
-        #     raise ValueError(
-        #         f"Output directory ({training_args.output_dir}) already exists and is not empty. "
-        #         "Use --overwrite_output_dir to overcome."
-        #     )
-        if last_checkpoint is not None and training_args.resume_from_checkpoint is None:
-            logger.info(
-                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
+    last_checkpoint = get_last_checkpoint_with_beaker_preemption(training_args)
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
@@ -295,7 +279,8 @@ def main():
     def compute_metrics(results):
         # grab the instructions from the prefixes key
         eval_data = [
-            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip() for x in results["prefixes"]
+            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip()
+            for x in results["prefixes"]
         ]
         # then grab from logits masked.
         decoded_preds = (

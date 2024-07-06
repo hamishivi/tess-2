@@ -1,13 +1,10 @@
 """Defines the utilities used during the training/infernece of diffusion language models."""
 import os
-import re
-import shutil
-from pathlib import Path
 from typing import Callable, Iterable, List
 
-import numpy as np
 import torch
 import torch.nn.functional as F
+from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
@@ -32,79 +29,6 @@ def tokenwise_timestep(position, timestep, max_length, max_timesteps):
     t_s = min(max(timestep - max_length, 0), max_timesteps)
     token_timestep = ((t_e - t_s) / (n_e - n_s)) * (position - n_s) + t_s
     return round(min(max(0, token_timestep), max_timesteps))
-
-
-def get_last_checkpoint(folder, prefix_checkpoint_dir="step"):
-    re_checkpoint = re.compile(r"^" + prefix_checkpoint_dir + r"\_(\d+)$")
-    content = os.listdir(folder)
-    checkpoints = [
-        path
-        for path in content
-        if re_checkpoint.search(path) is not None
-        and os.path.isdir(os.path.join(folder, path))
-    ]
-    if len(checkpoints) == 0:
-        return
-    return os.path.join(
-        folder, max(checkpoints, key=lambda x: int(re_checkpoint.search(x).groups()[0]))
-    )
-
-
-def remove_checkpoints(output_dir, checkpoint_prefix="step"):
-    checkpoints = [
-        str(x)
-        for x in Path(output_dir).glob(f"{checkpoint_prefix}_*")
-        if os.path.isdir(x)
-    ]
-    for checkpoint in checkpoints:
-        logger.info(
-            f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
-        )
-        shutil.rmtree(checkpoint)
-
-
-def get_norm_stats(model):
-    # Gradient norm of word embeddings and lm_head.
-    input_embed_grad_norm = 0
-    if model.roberta.embeddings.word_embeddings.weight.grad is not None:
-        input_embed_grad_norm = (
-            model.roberta.embeddings.word_embeddings.weight.grad.detach()
-            .data.norm(2)
-            .item()
-        )
-
-    output_embed_grad_norm = 0.0
-    if model.lm_head.decoder.weight.grad is not None:
-        output_embed_grad_norm = (
-            model.lm_head.decoder.weight.grad.detach().data.norm(2).item()
-        )
-
-    """
-    total_grad_norm = 0.0
-    for p in model.parameters():
-        grad_norm = 0.0
-        if  p.grad is not None:
-            grad_norm = p.grad.detach().data.norm(2).item()
-        total_grad_norm += grad_norm ** 2
-    total_grad_norm = total_grad_norm ** 0.5
-
-    # Norms of word embeddings and lm_head.
-    input_embed_norm = model.roberta.embeddings.word_embeddings.weight.detach().data.norm(2).item()
-    output_embed_norm = model.lm_head.decoder.weight.detach().data.norm(2).item()
-    total_param_norm = 0.0
-    for p in model.parameters():
-        param_norm = p.detach().data.norm(2)
-        total_param_norm += param_norm.item() ** 2
-    total_param_norm = total_param_norm ** 0.5
-    """
-    return {
-        "input_embed_grad_norm": input_embed_grad_norm,
-        "output_embed_grad_norm": output_embed_grad_norm,
-        # "total_grad_norm": total_grad_norm,
-        # "input_embed_norm": input_embed_norm,
-        # "output_embed_norm": output_embed_norm,
-        # "total_param_norm": total_param_norm
-    }
 
 
 def self_condition_preds(self_condition, logits, logits_projection=None):
@@ -140,22 +64,6 @@ def mix_values_based_on_self_condition(self_condition_type, value_1, value_2):
     return mixed_values
 
 
-def round_stsb_target(label):
-    """STSB maps two sentences to a floating point number between 1 and 5
-    representing their semantic similarity. Since we are treating all tasks as
-    text-to-text tasks we need to convert this floating point number to a string.
-    The vast majority of the similarity score labels in STSB are in the set
-    [0, 0.2, 0.4, ..., 4.8, 5.0]. So, we first round the number to the closest
-    entry in this set, and then we convert the result to a string (literally e.g.
-    "3.4"). This converts STSB roughly into a 26-class classification dataset.
-    Args:
-      label: original label.
-    Returns:
-      A preprocessed label.
-    """
-    return np.round((label * 5) / 5, decimals=1)
-
-
 def lmap(f: Callable, x: Iterable) -> List:
     """list(map(f, x))"""
     return list(map(f, x))
@@ -163,3 +71,30 @@ def lmap(f: Callable, x: Iterable) -> List:
 
 def pad_data(data_list, tokenizer):
     return tokenizer.pad({"input_ids": data_list}, padding=True)["input_ids"]
+
+
+def get_last_checkpoint_with_beaker_preemption(training_args) -> str:
+    last_checkpoint = None
+    if (
+        os.path.isdir(training_args.output_dir)
+        and training_args.do_train
+        and not training_args.overwrite_output_dir
+    ):
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        if (
+            last_checkpoint is None
+            and len(os.listdir(training_args.output_dir)) > 0
+            and not training_args.beaker
+        ):
+            raise ValueError(
+                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+                "Use --overwrite_output_dir to overcome."
+            )
+        elif (
+            last_checkpoint is not None and training_args.resume_from_checkpoint is None
+        ):
+            logger.info(
+                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
+            )
+    return last_checkpoint

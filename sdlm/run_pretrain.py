@@ -6,7 +6,6 @@ import datasets
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
 from transformers.trainer_callback import TrainerState
-from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
@@ -17,6 +16,7 @@ from .inference.inference_utils import evaluate_generation
 from .models import get_torch_dtype, load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainers.trainer_diffusion import DiffusionTrainer
+from .utils import get_last_checkpoint_with_beaker_preemption
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -109,29 +109,7 @@ def main():
     logger.info(f"Training/evaluation parameters {training_args}")
 
     # Detecting last checkpoint.
-    last_checkpoint = None
-    if (
-        os.path.isdir(training_args.output_dir)
-        and training_args.do_train
-        and not training_args.overwrite_output_dir
-    ):
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if (
-            last_checkpoint is None
-            and len(os.listdir(training_args.output_dir)) > 0
-            and not training_args.beaker
-        ):
-            raise ValueError(
-                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
-                "Use --overwrite_output_dir to overcome."
-            )
-        elif (
-            last_checkpoint is not None and training_args.resume_from_checkpoint is None
-        ):
-            logger.info(
-                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
+    last_checkpoint = get_last_checkpoint_with_beaker_preemption(training_args)
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
@@ -155,9 +133,10 @@ def main():
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
-        train_dataset = train_dataset.filter(
-            filter_by_length(min_len, max_len, model.config.pad_token_id)
-        )
+        if min_len != 0 and max_len != float("inf"):
+            train_dataset = train_dataset.filter(
+                filter_by_length(min_len, max_len, model.config.pad_token_id)
+            )
         if data_args.shuffle and data_args.streaming:
             train_dataset = train_dataset.shuffle(
                 seed=training_args.seed, buffer_size=10_000
@@ -182,10 +161,11 @@ def main():
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
-        eval_dataset = eval_dataset.filter(
-            filter_by_length(min_len, max_len, model.config.pad_token_id),
-            num_proc=data_args.preprocessing_num_workers,
-        )
+        if min_len != 0 and max_len != float("inf"):
+            eval_dataset = eval_dataset.filter(
+                filter_by_length(min_len, max_len, model.config.pad_token_id),
+                num_proc=data_args.preprocessing_num_workers,
+            )
 
         def preprocess_logits_for_metrics(logits):
             return logits.argmax(dim=-1)
