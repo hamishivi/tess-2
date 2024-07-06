@@ -4,7 +4,6 @@ import sys
 
 import datasets
 import transformers
-from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.trainer_utils import get_last_checkpoint
@@ -142,6 +141,78 @@ def main():
         model_args, data_args, training_args, diffusion_args, logger
     )
 
+    # sequence lengths for filtering
+    min_len = data_args.min_sample_seq_length or 0
+    max_len = data_args.max_sample_seq_length or float("inf")
+    assert 0 <= min_len <= max_len
+    assert model.config.pad_token_id is not None
+
+    if training_args.do_train:
+        raw_datasets = load_data(data_args, model_args)
+        train_dataset = tokenize_data_new(
+            data_args, tokenizer, raw_datasets, training_args
+        )["train"]
+        if data_args.max_train_samples is not None:
+            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+            train_dataset = train_dataset.select(range(max_train_samples))
+        train_dataset = train_dataset.filter(
+            filter_by_length(min_len, max_len, model.config.pad_token_id)
+        )
+        if data_args.shuffle and data_args.streaming:
+            train_dataset = train_dataset.shuffle(
+                seed=training_args.seed, buffer_size=10_000
+            )
+        elif data_args.shuffle:
+            train_dataset = train_dataset.shuffle(seed=training_args.seed)
+
+    if training_args.do_eval:
+        # default to c4
+        c4_raw_dataset = datasets.IterableDatasetDict(
+            {
+                "validation": datasets.load_dataset(
+                    "json",
+                    data_files="/data/input/jaket/c4_subset/c4-validation.00000-of-00008.json",
+                )["train"]
+            }
+        )
+        c4_tokenized_datasets = tokenize_data_new(
+            data_args, tokenizer, c4_raw_dataset, training_args
+        )
+        eval_dataset = c4_tokenized_datasets["validation"]
+        if data_args.max_eval_samples is not None:
+            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+            eval_dataset = eval_dataset.select(range(max_eval_samples))
+        eval_dataset = eval_dataset.filter(
+            filter_by_length(min_len, max_len, model.config.pad_token_id),
+            num_proc=data_args.preprocessing_num_workers,
+        )
+
+        def preprocess_logits_for_metrics(logits):
+            return logits.argmax(dim=-1)
+
+    # Data collator
+    # TODO: fix lambda max_seq_length, extra_padding_ratio:
+    pad_to_multiple_of_8 = (
+        data_args.line_by_line
+        and training_args.fp16
+        and not data_args.pad_to_max_length
+    )
+    data_collator = lambda mode: SpanInfillingDataCollator(  # noqa: E731
+        mode=mode,
+        data_args=data_args,
+        tokenizer=tokenizer,
+        padding="max_length" if data_args.pad_to_max_length else True,
+        max_length=data_args.max_seq_length,
+        seed=training_args.seed,
+        pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
+        eval_context_size=data_args.eval_context_size,
+    )
+
+    compute_metrics = None
+    if training_args.do_eval and not training_args.without_compute_metrics:
+        # call only when necessary
+        compute_metrics = get_compute_metrics(data_args, training_args, model_args)
+
     # init schedulers
     noise_scheduler = TokenWiseSimplexDDPMScheduler(
         num_train_timesteps=diffusion_args.num_diffusion_steps,
@@ -162,95 +233,6 @@ def main():
         )
         for timesteps in diffusion_args.num_inference_diffusion_steps
     ]
-
-    if data_args.tokenized_data_path:
-        raise NotImplementedError
-    else:
-        raw_datasets = load_data(data_args, model_args)
-
-    if training_args.do_train:
-        if "train" not in raw_datasets:
-            raise ValueError("--do_train requires a train dataset")
-        train_dataset = raw_datasets["train"]
-        if data_args.max_train_samples is not None:
-            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-            train_dataset = train_dataset.select(range(max_train_samples))
-
-    if training_args.do_eval:
-        if "validation" not in raw_datasets:
-            # default to c4
-            c4_raw_dataset = datasets.IterableDatasetDict(
-                {
-                    "validation": datasets.load_dataset(
-                        "allenai/c4",
-                        "en",
-                        model_args.cache_dir,
-                        split="validation",
-                        use_auth_token=True if model_args.use_auth_token else None,
-                        streaming=data_args.streaming,
-                    )
-                }
-            )
-            c4_tokenized_datasets = tokenize_data_new(
-                data_args, tokenizer, c4_raw_dataset, training_args
-            )
-            eval_dataset = c4_tokenized_datasets["validation"]
-        else:
-            eval_dataset = raw_datasets["validation"]
-        # convert eval dataset to regular dataset
-        if isinstance(eval_dataset, datasets.IterableDataset):
-
-            def iterable_generator():
-                for x in eval_dataset:
-                    yield x
-
-            eval_dataset = Dataset.from_generator(iterable_generator)
-        if data_args.min_eval_seq_length is not None or data_args.max_eval_seq_length:
-            # filter out examples based on specified eval lengths
-            # eval_dataset is a list at this point
-            min_len = data_args.min_eval_seq_length or 0
-            max_len = data_args.max_eval_seq_length or data_args.max_seq_length
-            assert 0 <= min_len <= max_len <= data_args.max_seq_length
-            assert model.config.pad_token_id is not None
-
-            eval_dataset = eval_dataset.filter(
-                filter_by_length(min_len, max_len, model.config.pad_token_id)
-            )
-        if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
-
-        def preprocess_logits_for_metrics(logits):
-            return logits.argmax(dim=-1)
-
-    # Data collator
-    # TODO: fix lambda max_seq_length, extra_padding_ratio:
-    pad_to_multiple_of_8 = (
-        data_args.line_by_line
-        and training_args.fp16
-        and not data_args.pad_to_max_length
-    )
-    data_collator = lambda mode: SpanInfillingDataCollator(  # noqa: E731
-        mode=mode,
-        data_args=data_args,
-        tokenizer=tokenizer,
-        max_length=data_args.max_seq_length,
-        seed=training_args.seed,
-        pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
-        eval_context_size=data_args.eval_context_size,
-    )
-
-    compute_metrics = None
-    if training_args.do_eval and not training_args.without_compute_metrics:
-        # call only when necessary
-        compute_metrics = get_compute_metrics(data_args, training_args, model_args)
-
-    if data_args.shuffle and data_args.streaming:
-        train_dataset = train_dataset.shuffle(
-            seed=training_args.seed, buffer_size=10_000
-        )
-    elif data_args.shuffle:
-        train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
