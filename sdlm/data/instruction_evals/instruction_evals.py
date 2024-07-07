@@ -46,6 +46,17 @@ class AlpacaEval():
             {"output": y, "instruction": x, "generator": "tess2"}
             for x, y in zip(eval_data, decoded_preds)
         ]
+        # sometimes in multi-process envs we get a few extra samples.
+        if len(decoded_preds) > 805:
+            # keep only unique instructions
+            unique_instructions = set()
+            unique_preds = []
+            for pred in decoded_preds:
+                if pred["instruction"] not in unique_instructions:
+                    unique_instructions.add(pred["instruction"])
+                    unique_preds.append(pred)
+            decoded_preds = unique_preds
+        
         df_leaderboard, _ = alpaca_eval.evaluate(
             model_outputs=decoded_preds,
             is_overwrite_leaderboard=True,
