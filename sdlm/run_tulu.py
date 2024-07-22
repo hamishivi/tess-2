@@ -7,6 +7,7 @@ Runs alpacaEval as an intermediate set.
 import logging
 import os
 import sys
+from collections import defaultdict
 
 import alpaca_eval
 import datasets
@@ -41,17 +42,24 @@ def encode_with_messages_format(
     Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
     We concatenate all messages with the roles as delimiters and tokenize them together.
     """
+    # filter (open orca)
+    messages = [
+        message
+        for message in example["messages"]
+        if message["role"] in {"user", "assistant"}
+    ]
     # we only take the first two messages, since multi-turn is a little more complex
-    messages = example["messages"][:2]
+    messages = messages[:2]
+
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
+    # quick sanity checks
+    assert messages[0]["role"] == "user"
 
     def _concat_messages(messages):
         message_text = ""
         for message in messages:
-            if message["role"] == "system":
-                message_text += "<|system|>\n" + message["content"].strip() + "\n"
-            elif message["role"] == "user":
+            if message["role"] == "user":
                 message_text += "<|user|>\n" + message["content"].strip() + "\n"
             elif message["role"] == "assistant":
                 message_text += (
@@ -67,6 +75,8 @@ def encode_with_messages_format(
     example_text = tokenizer.bos_token + _concat_messages(messages).strip()
     if add_generation_prompt:
         example_text += "\n<|assistant|>\n"
+    if return_string:
+        return example_text
     tokenized_example = tokenizer(
         example_text,
         add_special_tokens=False,
@@ -76,8 +86,6 @@ def encode_with_messages_format(
     )
     input_ids = tokenized_example.input_ids
     labels = input_ids.clone()
-    if return_string:
-        return example_text
 
     # mask the non-assistant part for avoiding loss
     for message_idx, message in enumerate(messages):
@@ -120,6 +128,98 @@ def encode_with_messages_format(
         "labels": labels.flatten(),
         "attention_mask": attention_mask.flatten(),
     }
+
+
+def encode_with_messages_prefix_accumulating_format(
+    messages,
+    tokenizer,
+    max_seq_length: int,
+):
+    """
+    `encode_with_messages_format`, but with prefix-accumulating multiturn format
+    ex) input_ids: (a1, b1, a2, b2, a3), labels: (b3)
+    """
+    # quick sanity checks
+    if len(messages) == 0:
+        raise ValueError("messages field is empty.")
+    assert messages[0]["role"] == "user"
+    assert messages[1]["role"] == "assistant"
+
+    # double check tokenizer config
+    assert tokenizer.add_bos_token
+    assert not tokenizer.add_eos_token
+    assert tokenizer.padding_side == "right"
+
+    message_text = tokenizer.bos_token
+    result = defaultdict(list)
+    for message in messages:
+        if message["role"] == "user":
+            message_text += "<|user|>\n" + message["content"].strip() + "\n"
+        elif message["role"] == "assistant":
+            # tokenize message so far as context
+            # add generation prompt to mask out from loss
+            tokenized_context = tokenizer(
+                message_text + "<|assistant|>\n",
+                truncation=False,
+                padding=False,
+                add_special_tokens=False,
+            )
+            context_length = len(tokenized_context["input_ids"])
+
+            if context_length >= max_seq_length:
+                break
+
+            # append label
+            message_text += "<|assistant|>\n" + message["content"].strip()
+
+            # tokenize full message text
+            # add eos and pad
+            tokenized_example = tokenizer(
+                (message_text + tokenizer.eos_token).strip(),
+                truncation=True,
+                padding="max_length",
+                max_length=max_seq_length,
+                return_tensors="pt",
+                add_special_tokens=False,
+            )
+            input_ids = tokenized_example["input_ids"].squeeze()
+            labels = input_ids.clone()
+            labels[:context_length] = -100
+            result["input_ids"].append(input_ids)
+            result["labels"].append(labels)
+
+            # add newline for next turn
+            message_text += "\n"
+
+    if not result:
+        return result
+    result["input_ids"] = torch.stack(result["input_ids"])
+    result["labels"] = torch.stack(result["labels"])
+    return result
+
+
+def encode_with_messages_prefix_accumulating_format_batch(
+    batch,
+    tokenizer,
+    max_seq_length: int,
+):
+    result = {"input_ids": [], "labels": []}
+    for messages in batch["messages"]:
+        # filter (open orca)
+        messages = [
+            message for message in messages if message["role"] in {"user", "assistant"}
+        ]
+        encoded = encode_with_messages_prefix_accumulating_format(
+            messages=messages,
+            tokenizer=tokenizer,
+            max_seq_length=max_seq_length,
+        )
+        for key, value in encoded.items():
+            result[key].append(value)
+    if result["input_ids"]:
+        result["input_ids"] = torch.cat(result["input_ids"], dim=0)
+        result["labels"] = torch.cat(result["labels"], dim=0)
+    return result
 
 
 def main():
@@ -187,8 +287,10 @@ def main():
         with training_args.main_process_first(desc="train dataset map pre-processing"):
             # we assume the data is in the tulu format
             train_dataset = train_dataset.map(
-                lambda x: encode_with_messages_format(x, tokenizer, max_target_length),
-                batched=False,
+                lambda x: encode_with_messages_prefix_accumulating_format_batch(
+                    x, tokenizer, max_target_length
+                ),
+                batched=True,
                 num_proc=data_args.preprocessing_num_workers,
                 load_from_cache_file=not data_args.overwrite_cache,
                 remove_columns=train_column_names,
@@ -215,9 +317,12 @@ def main():
             tokenized_data = []
             for sample in eval_dataset:
                 prompt = encode_with_messages_format(
-                    sample, tokenizer, max_target_length, return_string=True
+                    sample,
+                    tokenizer,
+                    max_target_length,
+                    return_string=True,
+                    add_generation_prompt=True,
                 )
-                prompt = prompt + "\n<|assistant|>\n"
                 tokenized_data.append(prompt)
             data = tokenizer(
                 tokenized_data,
