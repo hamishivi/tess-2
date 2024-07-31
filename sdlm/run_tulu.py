@@ -222,6 +222,32 @@ def encode_with_messages_prefix_accumulating_format_batch(
     return result
 
 
+def encode_with_messages_pair_format_batch(
+    batch,
+    tokenizer,
+    max_seq_length: int,
+):
+    result = defaultdict(list)
+    for messages in batch["messages"]:
+        # filter (open orca)
+        messages = [
+            message for message in messages if message["role"] in {"user", "assistant"}
+        ]
+        max_message_idx = len(messages) - 1
+        for i in range(0, max_message_idx, 2):
+            # take intermediate turns as pairs
+            encoded = encode_with_messages_format(
+                # a bit hacky, but need to repackage data
+                # as `encode_with_messages_format` expects
+                examples={"messages": messages[i : i + 2]},
+                tokenizer=tokenizer,
+                max_seq_length=max_seq_length,
+            )
+            for key, value in encoded.items():
+                result[key].append(value)
+    return result
+
+
 def main():
     # parse args
     model_args, data_args, training_args, diffusion_args = get_args()
@@ -284,6 +310,12 @@ def main():
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
+        map_kwargs = {
+            "num_proc": data_args.preprocessing_num_workers,
+            "load_from_cache_file": not data_args.overwrite_cache,
+            "remove_columns": train_column_names,
+            "desc": "Running tokenizer on train dataset",
+        }
         with training_args.main_process_first(desc="train dataset map pre-processing"):
             # we assume the data is in the tulu format
             if training_args.is_tulu_multiturn:
@@ -292,10 +324,15 @@ def main():
                         x, tokenizer, max_target_length
                     ),
                     batched=True,
-                    num_proc=data_args.preprocessing_num_workers,
-                    load_from_cache_file=not data_args.overwrite_cache,
-                    remove_columns=train_column_names,
-                    desc="Running tokenizer on train dataset",
+                    **map_kwargs,
+                )
+            elif training_args.is_tulu_pair:
+                train_dataset = train_dataset.map(
+                    lambda x: encode_with_messages_pair_format_batch(
+                        x, tokenizer, max_target_length
+                    ),
+                    batched=True,
+                    **map_kwargs,
                 )
             else:
                 train_dataset = train_dataset.map(
@@ -303,10 +340,7 @@ def main():
                         x, tokenizer, max_target_length
                     ),
                     batched=False,
-                    num_proc=data_args.preprocessing_num_workers,
-                    load_from_cache_file=not data_args.overwrite_cache,
-                    remove_columns=train_column_names,
-                    desc="Running tokenizer on train dataset",
+                    **map_kwargs,
                 )
             train_dataset.set_format("pt")
             train_dataset = train_dataset.filter(lambda x: (x["labels"] != -100).any())
