@@ -286,16 +286,28 @@ def main():
             train_dataset = train_dataset.select(range(max_train_samples))
         with training_args.main_process_first(desc="train dataset map pre-processing"):
             # we assume the data is in the tulu format
-            train_dataset = train_dataset.map(
-                lambda x: encode_with_messages_prefix_accumulating_format_batch(
-                    x, tokenizer, max_target_length
-                ),
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                load_from_cache_file=not data_args.overwrite_cache,
-                remove_columns=train_column_names,
-                desc="Running tokenizer on train dataset",
-            )
+            if training_args.is_tulu_multiturn:
+                train_dataset = train_dataset.map(
+                    lambda x: encode_with_messages_prefix_accumulating_format_batch(
+                        x, tokenizer, max_target_length
+                    ),
+                    batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    remove_columns=train_column_names,
+                    desc="Running tokenizer on train dataset",
+                )
+            else:
+                train_dataset = train_dataset.map(
+                    lambda x: encode_with_messages_format(
+                        x, tokenizer, max_target_length
+                    ),
+                    batched=False,
+                    num_proc=data_args.preprocessing_num_workers,
+                    load_from_cache_file=not data_args.overwrite_cache,
+                    remove_columns=train_column_names,
+                    desc="Running tokenizer on train dataset",
+                )
             train_dataset.set_format("pt")
             train_dataset = train_dataset.filter(lambda x: (x["labels"] != -100).any())
 

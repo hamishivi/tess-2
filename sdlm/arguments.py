@@ -313,6 +313,10 @@ class DataTrainingArguments:
     glue_split_seed: int = field(
         default=42, metadata={"help": "Seed to split the glue data."}
     )
+    is_tulu_multiturn: bool = field(
+        default=False,
+        metadata={"help": "Whether to use multiturn preprocessing for TULU."},
+    )
     tokenized_data_path: Optional[str] = field(
         default=None, metadata={"help": "If set, reads a tokenized train data."}
     )
