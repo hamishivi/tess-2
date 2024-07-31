@@ -16,7 +16,10 @@ from .inference.inference_utils import evaluate_generation
 from .models import get_torch_dtype, load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainers.trainer_diffusion import DiffusionTrainer
-from .utils import get_last_checkpoint_with_beaker_preemption
+from .utils import (
+    get_last_checkpoint_with_beaker_preemption,
+    resolve_last_checkpoint_vs_resume_from_checkpoint,
+)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -235,12 +238,10 @@ def main():
 
     # Training
     if training_args.do_train:
-        checkpoint = None
-        # prioritize last_checkpoint over resume_from_checkpoint
-        if last_checkpoint is not None:
-            checkpoint = last_checkpoint
-        elif training_args.resume_from_checkpoint is not None:
-            checkpoint = training_args.resume_from_checkpoint
+        checkpoint = resolve_last_checkpoint_vs_resume_from_checkpoint(
+            last_checkpoint,
+            training_args.resume_from_checkpoint,
+        )
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
         metrics = train_result.metrics

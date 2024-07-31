@@ -32,6 +32,8 @@ accelerate launch -m sdlm.run_tulu_ar \
     --num_diffusion_steps 0 \
     --tokenizer_padding_side "left" \
     --include_inputs_for_metrics \
+    --preprocessing_num_workers 16 \
+    --model_revision 26bca36bde8333b5d7f72e9ed20ccda6a618af24 \
 "
 
 # for ai2/jupiter-cirrascale-2 cluster

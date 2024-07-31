@@ -313,13 +313,19 @@ class DataTrainingArguments:
     glue_split_seed: int = field(
         default=42, metadata={"help": "Seed to split the glue data."}
     )
+    is_tulu_pair: bool = field(
+        default=False,
+        metadata={"help": "Whether to use pair preprocessing for TULU."},
+    )
     is_tulu_multiturn: bool = field(
         default=False,
         metadata={"help": "Whether to use multiturn preprocessing for TULU."},
     )
-    is_tulu_pair: bool = field(
+    is_tulu_sliding_window_multiturn: bool = field(
         default=False,
-        metadata={"help": "Whether to use pair preprocessing for TULU."},
+        metadata={
+            "help": "Whether to use sliding window multiturn preprocessing for TULU."
+        },
     )
     tokenized_data_path: Optional[str] = field(
         default=None, metadata={"help": "If set, reads a tokenized train data."}
@@ -586,9 +592,13 @@ class DataTrainingArguments:
                 "ul2_variable",
             ]
 
-        if self.is_tulu_multiturn or self.is_tulu_pair:
-            # cannot have both set to true
-            assert not (self.is_tulu_multiturn and self.is_tulu_pair)
+        tulu_flags = (
+            self.is_tulu_pair,
+            self.is_tulu_multiturn,
+            self.is_tulu_sliding_window_multiturn,
+        )
+        # can only have at most 1 option toggled true
+        assert sum(tulu_flags) < 2
 
 
 @dataclass

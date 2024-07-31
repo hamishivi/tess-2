@@ -26,7 +26,10 @@ from .inference.inference_utils import process_text
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainers.trainer_diffusion import DiffusionTrainer
-from .utils import get_last_checkpoint_with_beaker_preemption
+from .utils import (
+    get_last_checkpoint_with_beaker_preemption,
+    resolve_last_checkpoint_vs_resume_from_checkpoint,
+)
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -35,7 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 # from the open-instruct codebase.
-def encode_with_messages_format(
+# NOTE: this is only used for eval and ar training
+def encode_with_messages_format_v1(
     example, tokenizer, max_seq_length, return_string=False, add_generation_prompt=False
 ):
     """
@@ -130,7 +134,9 @@ def encode_with_messages_format(
     }
 
 
-def encode_with_messages_prefix_accumulating_format(
+# fixes some newline issues in v1
+# NOTE: this is only used for training
+def encode_with_messages_format_v2(
     messages,
     tokenizer,
     max_seq_length: int,
@@ -198,53 +204,43 @@ def encode_with_messages_prefix_accumulating_format(
     return result
 
 
-def encode_with_messages_prefix_accumulating_format_batch(
+# batched version of encode_with_messages_format_v2
+def encode_with_messages_format_v2_batch(
     batch,
     tokenizer,
     max_seq_length: int,
+    is_tulu_pair: bool = False,
+    is_tulu_multiturn: bool = False,
+    is_tulu_sliding_window_multiturn: bool = False,
 ):
     result = {"input_ids": [], "labels": []}
-    for messages in batch["messages"]:
-        # filter (open orca)
-        messages = [
-            message for message in messages if message["role"] in {"user", "assistant"}
-        ]
-        encoded = encode_with_messages_prefix_accumulating_format(
+
+    def _helper(messages):
+        encoded = encode_with_messages_format_v2(
             messages=messages,
             tokenizer=tokenizer,
             max_seq_length=max_seq_length,
         )
         for key, value in encoded.items():
             result[key].append(value)
-    if result["input_ids"]:
-        result["input_ids"] = torch.cat(result["input_ids"], dim=0)
-        result["labels"] = torch.cat(result["labels"], dim=0)
-    return result
 
-
-def encode_with_messages_pair_format_batch(
-    batch,
-    tokenizer,
-    max_seq_length: int,
-):
-    result = defaultdict(list)
     for messages in batch["messages"]:
         # filter (open orca)
         messages = [
             message for message in messages if message["role"] in {"user", "assistant"}
         ]
-        max_message_idx = len(messages) - 1
-        for i in range(0, max_message_idx, 2):
-            # take intermediate turns as pairs
-            encoded = encode_with_messages_format(
-                # a bit hacky, but need to repackage data
-                # as `encode_with_messages_format` expects
-                examples={"messages": messages[i : i + 2]},
-                tokenizer=tokenizer,
-                max_seq_length=max_seq_length,
-            )
-            for key, value in encoded.items():
-                result[key].append(value)
+        if is_tulu_multiturn:
+            _helper(messages)
+        elif is_tulu_sliding_window_multiturn:
+            for i in range(0, len(messages) - 1, 2):
+                _helper(messages[i:])
+        else:
+            max_message_idx = len(messages) - 1 if is_tulu_pair else 2
+            for i in range(0, max_message_idx, 2):
+                _helper(messages[i : i + 2])
+    if result["input_ids"]:
+        result["input_ids"] = torch.cat(result["input_ids"], dim=0)
+        result["labels"] = torch.cat(result["labels"], dim=0)
     return result
 
 
@@ -310,38 +306,26 @@ def main():
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
-        map_kwargs = {
-            "num_proc": data_args.preprocessing_num_workers,
-            "load_from_cache_file": not data_args.overwrite_cache,
-            "remove_columns": train_column_names,
-            "desc": "Running tokenizer on train dataset",
-        }
         with training_args.main_process_first(desc="train dataset map pre-processing"):
             # we assume the data is in the tulu format
-            if training_args.is_tulu_multiturn:
-                train_dataset = train_dataset.map(
-                    lambda x: encode_with_messages_prefix_accumulating_format_batch(
-                        x, tokenizer, max_target_length
-                    ),
-                    batched=True,
-                    **map_kwargs,
-                )
-            elif training_args.is_tulu_pair:
-                train_dataset = train_dataset.map(
-                    lambda x: encode_with_messages_pair_format_batch(
-                        x, tokenizer, max_target_length
-                    ),
-                    batched=True,
-                    **map_kwargs,
-                )
-            else:
-                train_dataset = train_dataset.map(
-                    lambda x: encode_with_messages_format(
-                        x, tokenizer, max_target_length
-                    ),
-                    batched=False,
-                    **map_kwargs,
-                )
+            train_dataset = train_dataset.map(
+                lambda x: encode_with_messages_format_v2_batch(
+                    x,
+                    tokenizer=tokenizer,
+                    max_seq_length=max_target_length,
+                    is_tulu_pair=data_args.is_tulu_pair,
+                    is_tulu_multiturn=data_args.is_tulu_multiturn,
+                    is_tulu_sliding_window_multiturn=data_args.is_tulu_sliding_window_multiturn,
+                ),
+                batched=True,
+                # NOTE: uncomment to use v1
+                # lambda x: encode_with_messages_format_v1(x, tokenizer, max_target_length),
+                # batched=False,
+                num_proc=data_args.preprocessing_num_workers,
+                load_from_cache_file=not data_args.overwrite_cache,
+                remove_columns=train_column_names,
+                desc="Running tokenizer on train dataset",
+            )
             train_dataset.set_format("pt")
             train_dataset = train_dataset.filter(lambda x: (x["labels"] != -100).any())
 
@@ -362,7 +346,7 @@ def main():
         ):
             tokenized_data = []
             for sample in eval_dataset:
-                prompt = encode_with_messages_format(
+                prompt = encode_with_messages_format_v1(
                     sample,
                     tokenizer,
                     max_target_length,
@@ -478,11 +462,10 @@ def main():
 
     # Training
     if training_args.do_train:
-        checkpoint = None
-        if training_args.resume_from_checkpoint is not None:
-            checkpoint = training_args.resume_from_checkpoint
-        elif last_checkpoint is not None:
-            checkpoint = last_checkpoint
+        checkpoint = resolve_last_checkpoint_vs_resume_from_checkpoint(
+            last_checkpoint,
+            training_args.resume_from_checkpoint,
+        )
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 

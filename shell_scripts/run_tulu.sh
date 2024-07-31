@@ -41,6 +41,9 @@ accelerate launch
     --fsdp_transformer_layer_cls_to_wrap MistralDecoderLayer \
     --preprocessing_num_workers 16 \
     --model_revision 26bca36bde8333b5d7f72e9ed20ccda6a618af24 \
+    --is_tulu_pair false \
+    --is_tulu_multiturn false \
+    --is_tulu_sliding_window_multiturn false \
 "
 
 if [ ! -z "${BEAKER}" ]; then

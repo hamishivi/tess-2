@@ -98,3 +98,20 @@ def get_last_checkpoint_with_beaker_preemption(training_args) -> str:
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
     return last_checkpoint
+
+
+def resolve_last_checkpoint_vs_resume_from_checkpoint(
+    last_checkpoint, resume_from_checkpoint
+):
+    """
+    Prioritizes last_checkpoint over resume_from_checkpoint.
+    When a job configured with `resume_from_checkpoint` is preempted and restarted,
+    it needs to start from the last checkpoint in the beaker dataset, not the checkpoint
+    specified via `resume_from_checkpoint`; otherwise we lose all progress made in the previous job.
+    """
+    checkpoint = None
+    if last_checkpoint is not None:
+        checkpoint = last_checkpoint
+    elif resume_from_checkpoint is not None:
+        checkpoint = resume_from_checkpoint
+    return checkpoint
