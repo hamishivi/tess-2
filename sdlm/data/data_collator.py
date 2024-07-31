@@ -87,6 +87,7 @@ class SpanInfillingDataCollator:
         self.return_tensors = return_tensors
         self.conditional_generation = data_args.conditional_generation
         self.extra_padding_ratio = data_args.extra_padding_ratio
+        self.ul2_max_mask_ratio = data_args.ul2_max_mask_ratio
         self.rng = np.random.default_rng(seed)
         self.eval_context_size = eval_context_size
         self.mode = mode
@@ -215,7 +216,7 @@ class SpanInfillingDataCollator:
                 # Here we assume the length is the same for all data in a batch.
                 length = len(features[0]["input_ids"])
                 min_ratio = 1.0 / length
-                mask_ratio = random.uniform(min_ratio, 1.0)
+                mask_ratio = random.uniform(min_ratio, self.ul2_max_mask_ratio)
                 mean_mask_span_length = int(random.uniform(1, mask_ratio * length))
                 masks = {
                     "span_mask": self.mask_generator[objective](

@@ -327,6 +327,10 @@ class DataTrainingArguments:
             "help": "Whether to use sliding window multiturn preprocessing for TULU."
         },
     )
+    ul2_max_mask_ratio: float = field(
+        default=0.5,
+        metadata={"help": "UL2 variable maximum mask ratio."},
+    )
     tokenized_data_path: Optional[str] = field(
         default=None, metadata={"help": "If set, reads a tokenized train data."}
     )
