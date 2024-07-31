@@ -233,7 +233,7 @@ class DiffusionTrainer(Trainer):
                     }
                 )
                 # we don't backprop through this.
-                with torch.inference_mode():
+                with torch.no_grad():
                     outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(  # noqa: E731
                     x,
@@ -306,7 +306,7 @@ class DiffusionTrainer(Trainer):
     def light_prediction_step(
         self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        with torch.inference_mode():
+        with torch.no_grad():
             inputs = self._prepare_inputs(inputs)
             # Truncate the length if needed.
             if self.data_args.truncation_length > 0:
@@ -428,7 +428,7 @@ class DiffusionTrainer(Trainer):
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         inputs = self._prepare_inputs(inputs)
         # full inference.
-        with torch.inference_mode():
+        with torch.no_grad():
             with self.compute_loss_context_manager():
                 for i, x in enumerate(
                     pipeline(
