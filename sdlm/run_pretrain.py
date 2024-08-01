@@ -149,14 +149,26 @@ def main():
 
     if training_args.do_eval:
         # default to c4
-        c4_raw_dataset = datasets.IterableDatasetDict(
-            {
-                "validation": datasets.load_dataset(
-                    "json",
-                    data_files="/data/input/jaket/c4_subset/c4-validation.00000-of-00008.json",
-                )["train"]
-            }
-        )
+        try:
+            # jupiter (weka)
+            c4_raw_dataset = datasets.IterableDatasetDict(
+                {
+                    "validation": datasets.load_dataset(
+                        "json",
+                        data_files="/data/input/jaket/c4_subset/c4-validation.00000-of-00008.json",
+                    )["train"]
+                }
+            )
+        except FileNotFoundError:
+            # allennlp/a100 (nfs)
+            c4_raw_dataset = datasets.IterableDatasetDict(
+                {
+                    "validation": datasets.load_dataset(
+                        "json",
+                        data_files="/net/nfs.cirrascale/allennlp/jaket/simplex-diffusion/c4_subset/c4-validation.00000-of-00008.json",
+                    )["train"]
+                }
+            )
         c4_tokenized_datasets = tokenize_data_new(
             data_args, tokenizer, c4_raw_dataset, training_args
         )

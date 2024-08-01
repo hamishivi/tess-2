@@ -2,6 +2,7 @@
 outputs
 raw
 .conda
+c4_subset
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
