@@ -38,13 +38,11 @@ set_hf_home()
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
-def filter_by_length(min_len: int, max_len: int, pad_token_id: int) -> bool:
+def filter_by_length(min_len: int, pad_token_id: int) -> bool:
     """hashable filter function for hf dataset library"""
 
     def func(x):
-        return (
-            min_len <= len([i for i in x["input_ids"] if i != pad_token_id]) <= max_len
-        )
+        return min_len <= len([i for i in x["input_ids"] if i != pad_token_id])
 
     return func
 
@@ -126,11 +124,6 @@ def main():
     tokenizer, model = load_model(
         model_args, data_args, training_args, diffusion_args, logger
     )
-
-    # sequence lengths for filtering
-    min_len = data_args.min_sample_seq_length or 0
-    max_len = data_args.max_sample_seq_length or float("inf")
-    assert 0 <= min_len <= max_len
     assert model.config.pad_token_id is not None
 
     if training_args.do_train:
@@ -141,9 +134,11 @@ def main():
         if data_args.max_train_samples is not None:
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
-        if min_len != 0 and max_len != float("inf"):
+        if data_args.min_train_seq_length != 0:
             train_dataset = train_dataset.filter(
-                filter_by_length(min_len, max_len, model.config.pad_token_id)
+                filter_by_length(
+                    data_args.min_train_seq_length, model.config.pad_token_id
+                )
             )
         if data_args.shuffle and data_args.streaming:
             train_dataset = train_dataset.shuffle(
@@ -181,9 +176,11 @@ def main():
         if data_args.max_eval_samples is not None:
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
-        if min_len != 0 and max_len != float("inf"):
+        if data_args.min_eval_seq_length != 0:
             eval_dataset = eval_dataset.filter(
-                filter_by_length(min_len, max_len, model.config.pad_token_id),
+                filter_by_length(
+                    data_args.min_eval_seq_length, model.config.pad_token_id
+                ),
                 num_proc=data_args.preprocessing_num_workers,
             )
 

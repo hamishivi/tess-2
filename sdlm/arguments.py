@@ -550,13 +550,13 @@ class DataTrainingArguments:
         default=True,
         metadata={"help": "If set, we will shuffle the data before training."},
     )
-    min_sample_seq_length: Optional[int] = field(
-        default=None,
-        metadata={"help": "Minimum sequence length for train and eval samples."},
+    min_train_seq_length: int = field(
+        default=0,
+        metadata={"help": "Minimum sequence length for train samples."},
     )
-    max_sample_seq_length: Optional[int] = field(
-        default=None,
-        metadata={"help": "Maximuim sequence length train and eval samples."},
+    min_eval_seq_length: int = field(
+        default=0,
+        metadata={"help": "Minimum sequence length for eval samples."},
     )
 
     def __post_init__(self):
