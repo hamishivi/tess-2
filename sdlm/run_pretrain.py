@@ -19,6 +19,8 @@ from .trainers.trainer_diffusion import DiffusionTrainer
 from .utils import (
     get_last_checkpoint_with_beaker_preemption,
     resolve_last_checkpoint_vs_resume_from_checkpoint,
+    set_hf_home,
+    set_pretraining_dataset,
 )
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -31,6 +33,8 @@ require_version(
 
 logger = logging.getLogger(__name__)
 
+# set environment variables
+set_hf_home()
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
@@ -88,6 +92,7 @@ class EvaluateFirstStepCallback(TrainerCallback):
 def main():
     # parse args
     model_args, data_args, training_args, diffusion_args = get_args()
+    set_pretraining_dataset(data_args)
 
     # Setup logging
     logging.basicConfig(

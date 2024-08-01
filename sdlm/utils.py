@@ -115,3 +115,28 @@ def resolve_last_checkpoint_vs_resume_from_checkpoint(
     elif resume_from_checkpoint is not None:
         checkpoint = resume_from_checkpoint
     return checkpoint
+
+
+def is_weka_available() -> bool:
+    # assume mount path is /data/input
+    # jupiter
+    return os.path.isdir("/data/input")
+
+
+def is_nfs_available() -> bool:
+    # allennlp, a100, pluto
+    return os.path.isdir("/net/nfs.cirrascale")
+
+
+def set_hf_home() -> None:
+    if is_weka_available():
+        os.environ["HF_HOME"] = "/net/weka/reviz/jaket/.hf"
+    elif is_nfs_available():
+        os.environ["HF_HOME"] = "/net/nfs.cirrascale/allennlp/jaket/.hf"
+
+
+def set_pretraining_dataset(data_args) -> None:
+    if is_weka_available():
+        data_args.dataset_name = "sdlm/data/dolma/dolma_dataset.py"
+    else:
+        data_args.dataset_name = "emozilla/dolma-v1_7-305B"

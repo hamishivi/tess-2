@@ -565,9 +565,9 @@ class DataTrainingArguments:
             and self.dataset_name is None
             and (self.train_file is None and self.validation_file is None)
         ):
-            raise ValueError(
-                "Need either a task (only used for the `run_glue.py`), a dataset name or a training/validation file or a tokenized dataset path."
-            )
+            # NOTE: for pretraining, we detect whether we're on weka or nfs
+            # and automatically set the dataset
+            pass
         else:
             if self.train_file is not None:
                 extension = self.train_file.split(".")[-1]
