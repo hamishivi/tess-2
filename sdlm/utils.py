@@ -130,7 +130,7 @@ def is_nfs_available() -> bool:
 
 def set_hf_home() -> None:
     if is_weka_available():
-        os.environ["HF_HOME"] = "/net/weka/reviz/jaket/.hf"
+        os.environ["HF_HOME"] = "/data/input/jaket/.hf"
     elif is_nfs_available():
         os.environ["HF_HOME"] = "/net/nfs.cirrascale/allennlp/jaket/.hf"
 
