@@ -12,7 +12,7 @@ import evaluate
 from datasets import load_dataset, Dataset
 
 from sdlm.inference.inference_utils import process_text
-from sdlm.utils import encode_with_messages_format
+from sdlm.utils import encode_with_messages_format_v1
 from sdlm.data.instruction_evals.gsm_exemplars import EXEMPLARS as GSM_EXEMPLARS
 from sdlm.data.instruction_evals.codex_evaluation import evaluate_functional_correctness, write_jsonl
 
@@ -81,7 +81,7 @@ class AlpacaEval():
             eval_dataset = eval_dataset.select(range(max_eval_samples))
         tokenized_data = []
         for sample in eval_dataset:
-            prompt = encode_with_messages_format(
+            prompt = encode_with_messages_format_v1(
                 sample, tokenizer, max_target_length, return_string=True
             )
             prompt = prompt + "\n<|assistant|>\n"
@@ -187,7 +187,7 @@ class GSM8kEval():
         tokenized_data = []
         tokenized_and_labelled_data = []
         for sample, label in zip(eval_dataset, labels):
-            prompt = encode_with_messages_format(
+            prompt = encode_with_messages_format_v1(
                 sample, tokenizer, max_target_length, return_string=True
             )
             prompt = prompt + "\n<|assistant|>\nAnswer:"
@@ -301,7 +301,7 @@ class CodexHumanEval():
         prompts = []
         for example in eval_dataset:
             messages = [{"role": "user", "content": instructions_dict[example["task_id"]]}]
-            prompt = encode_with_messages_format(
+            prompt = encode_with_messages_format_v1(
                 {"messages": messages}, tokenizer, max_target_length, return_string=True
             )
             prompt = prompt + "\n<|assistant|>\n" + answer + example["prompt"]

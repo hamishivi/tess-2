@@ -1,6 +1,7 @@
 """Defines the utilities used during the training/infernece of diffusion language models."""
 import os
 from typing import Callable, Iterable, List
+from collections import defaultdict
 
 import torch
 import torch.nn.functional as F
@@ -73,24 +74,32 @@ def pad_data(data_list, tokenizer):
     return tokenizer.pad({"input_ids": data_list}, padding=True)["input_ids"]
 
 # from the open-instruct codebase.
-def encode_with_messages_format(
+# NOTE: this is only used for eval and ar training
+def encode_with_messages_format_v1(
     example, tokenizer, max_seq_length, return_string=False, add_generation_prompt=False
 ):
     """
     Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
     We concatenate all messages with the roles as delimiters and tokenize them together.
     """
+    # filter (open orca)
+    messages = [
+        message
+        for message in example["messages"]
+        if message["role"] in {"user", "assistant"}
+    ]
     # we only take the first two messages, since multi-turn is a little more complex
-    messages = example["messages"][:2]
+    messages = messages[:2]
+
     if len(messages) == 0:
         raise ValueError("messages field is empty.")
+    # quick sanity checks
+    assert messages[0]["role"] == "user"
 
     def _concat_messages(messages):
         message_text = ""
         for message in messages:
-            if message["role"] == "system":
-                message_text += "<|system|>\n" + message["content"].strip() + "\n"
-            elif message["role"] == "user":
+            if message["role"] == "user":
                 message_text += "<|user|>\n" + message["content"].strip() + "\n"
             elif message["role"] == "assistant":
                 message_text += (
@@ -105,7 +114,9 @@ def encode_with_messages_format(
 
     example_text = tokenizer.bos_token + _concat_messages(messages).strip()
     if add_generation_prompt:
-        example_text += '\n<|assistant|>\n'
+        example_text += "\n<|assistant|>\n"
+    if return_string:
+        return example_text
     tokenized_example = tokenizer(
         example_text,
         add_special_tokens=False,
@@ -115,8 +126,6 @@ def encode_with_messages_format(
     )
     input_ids = tokenized_example.input_ids
     labels = input_ids.clone()
-    if return_string:
-        return example_text
 
     # mask the non-assistant part for avoiding loss
     for message_idx, message in enumerate(messages):
@@ -159,6 +168,117 @@ def encode_with_messages_format(
         "labels": labels.flatten(),
         "attention_mask": attention_mask.flatten(),
     }
+
+
+# fixes some newline issues in v1
+# NOTE: this is only used for training
+def encode_with_messages_format_v2(
+    messages,
+    tokenizer,
+    max_seq_length: int,
+):
+    """
+    `encode_with_messages_format`, but with prefix-accumulating multiturn format
+    ex) input_ids: (a1, b1, a2, b2, a3), labels: (b3)
+    """
+    # quick sanity checks
+    if len(messages) == 0:
+        raise ValueError("messages field is empty.")
+    assert messages[0]["role"] == "user"
+    assert messages[1]["role"] == "assistant"
+
+    # double check tokenizer config
+    assert tokenizer.add_bos_token
+    assert not tokenizer.add_eos_token
+    assert tokenizer.padding_side == "right"
+
+    message_text = tokenizer.bos_token
+    result = defaultdict(list)
+    for message in messages:
+        if message["role"] == "user":
+            message_text += "<|user|>\n" + message["content"].strip() + "\n"
+        elif message["role"] == "assistant":
+            # tokenize message so far as context
+            # add generation prompt to mask out from loss
+            tokenized_context = tokenizer(
+                message_text + "<|assistant|>\n",
+                truncation=False,
+                padding=False,
+                add_special_tokens=False,
+            )
+            context_length = len(tokenized_context["input_ids"])
+
+            if context_length >= max_seq_length:
+                break
+
+            # append label
+            message_text += "<|assistant|>\n" + message["content"].strip()
+
+            # tokenize full message text
+            # add eos and pad
+            tokenized_example = tokenizer(
+                (message_text + tokenizer.eos_token).strip(),
+                truncation=True,
+                padding="max_length",
+                max_length=max_seq_length,
+                return_tensors="pt",
+                add_special_tokens=False,
+            )
+            input_ids = tokenized_example["input_ids"].squeeze()
+            labels = input_ids.clone()
+            labels[:context_length] = -100
+            result["input_ids"].append(input_ids)
+            result["labels"].append(labels)
+
+            # add newline for next turn
+            message_text += "\n"
+
+    if not result:
+        return result
+    result["input_ids"] = torch.stack(result["input_ids"])
+    result["labels"] = torch.stack(result["labels"])
+    return result
+
+
+# batched version of encode_with_messages_format_v2
+def encode_with_messages_format_v2_batch(
+    batch,
+    tokenizer,
+    max_seq_length: int,
+    is_tulu_pair: bool = False,
+    is_tulu_multiturn: bool = False,
+    is_tulu_sliding_window_multiturn: bool = False,
+):
+    result = {"input_ids": [], "labels": []}
+
+    def _helper(messages):
+        encoded = encode_with_messages_format_v2(
+            messages=messages,
+            tokenizer=tokenizer,
+            max_seq_length=max_seq_length,
+        )
+        for key, value in encoded.items():
+            result[key].append(value)
+
+    for messages in batch["messages"]:
+        # filter (open orca)
+        messages = [
+            message for message in messages if message["role"] in {"user", "assistant"}
+        ]
+        if is_tulu_multiturn:
+            _helper(messages)
+        elif is_tulu_sliding_window_multiturn:
+            for i in range(0, len(messages) - 1, 2):
+                _helper(messages[i:])
+        else:
+            max_message_idx = len(messages) - 1 if is_tulu_pair else 2
+            for i in range(0, max_message_idx, 2):
+                _helper(messages[i : i + 2])
+    if result["input_ids"]:
+        result["input_ids"] = torch.cat(result["input_ids"], dim=0)
+        result["labels"] = torch.cat(result["labels"], dim=0)
+    return result
+
 
 
 def get_last_checkpoint_with_beaker_preemption(training_args) -> str:
