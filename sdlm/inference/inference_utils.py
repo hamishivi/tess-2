@@ -193,7 +193,6 @@ def predict_conditional_generated(
         pred_unmasked_texts = [
             [x[0].replace("<s>", "").replace("</s>", "")] for x in pred_unmasked_texts
         ]
-
     pred_texts_marked = list(
         map(
             lambda x, y: concatenate_alternatively(x, y, mark="***"),
