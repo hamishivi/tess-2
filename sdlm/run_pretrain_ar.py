@@ -1,21 +1,25 @@
+# run_clm.py
 import logging
 import os
 import sys
 
 import datasets
 import transformers
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
+from transformers import (
+    Trainer,
+    default_data_collator,
+    is_torch_tpu_available,
+    set_seed,
+)
 from transformers.trainer_callback import TrainerState
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
+from sdlm.run_pretrain import filter_by_length
+
 from .arguments import get_args
-from .data.data_collator import SpanInfillingDataCollator
 from .data.data_utils import load_data, tokenize_data_new
-from .inference.inference_utils import evaluate_generation
-from .models import get_torch_dtype, load_model
-from .schedulers import TokenWiseSimplexDDPMScheduler
-from .trainers.trainer_diffusion import DiffusionTrainer
+from .models import load_model
 from .utils import (
     get_last_checkpoint_with_beaker_preemption,
     is_nfs_available,
@@ -40,55 +44,6 @@ set_hf_home()
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
-def filter_by_length(min_len: int, pad_token_id: int) -> bool:
-    """hashable filter function for hf dataset library"""
-
-    def func(x):
-        return min_len <= len([i for i in x["input_ids"] if i != pad_token_id])
-
-    return func
-
-
-def get_compute_metrics(data_args, training_args, model_args):
-    # Causal language model.
-    causal_model = AutoModelForCausalLM.from_pretrained(
-        model_args.autoregressive_eval_model,
-        torch_dtype=get_torch_dtype(training_args),
-        attn_implementation="flash_attention_2"
-        if model_args.use_flash_attention2
-        else "eager",
-    ).to(training_args.device)
-    causal_tokenizer = AutoTokenizer.from_pretrained(
-        model_args.autoregressive_eval_model
-    )
-    is_conditional_generation = data_args.conditional_generation is not None
-    prefix_lm_eval = data_args.conditional_generation in [
-        "prefix_lm",
-        "ul2",
-        "ul2_with_unconditional",
-        "prefix_with_unconditional",
-        "ul2_variable",
-    ]
-    compute_metrics = lambda results: evaluate_generation(  # noqa: E731
-        results,
-        data_args,
-        causal_model,
-        causal_tokenizer,
-        is_conditional_generation,
-        prefix_lm_eval=prefix_lm_eval,
-        skip_special_tokens=data_args.skip_special_tokens,
-        eval_for_all_metrics=training_args.eval_for_all_metrics,
-    )
-    return compute_metrics
-
-
-# so we evaluate on the first step, useful for checking training is working.
-class EvaluateFirstStepCallback(TrainerCallback):
-    def on_step_end(self, args, state, control, **kwargs):
-        if state.global_step == 1:
-            control.should_evaluate = True
-
-
 def main():
     # parse args
     model_args, data_args, training_args, diffusion_args = get_args()
@@ -101,6 +56,10 @@ def main():
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
+    if training_args.should_log:
+        # The default of training_args.log_level is passive, so we set log level at info here to have that default.
+        transformers.utils.logging.set_verbosity_info()
+
     log_level = training_args.get_process_log_level()
     logger.setLevel(log_level)
     datasets.utils.logging.set_verbosity(log_level)
@@ -110,23 +69,22 @@ def main():
 
     # Log on each process the small summary:
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
+        + f"distributed training: {training_args.parallel_mode.value == 'distributed'}, 16-bits training: {training_args.fp16}"
     )
-    # Set the verbosity to info of the Transformers logger (on main process only):
     logger.info(f"Training/evaluation parameters {training_args}")
 
     # Detecting last checkpoint.
     last_checkpoint = get_last_checkpoint_with_beaker_preemption(training_args)
-
-    # Set seed before initializing model.
-    set_seed(training_args.seed)
 
     # load model
     tokenizer, model = load_model(
         model_args, data_args, training_args, diffusion_args, logger
     )
     assert model.config.pad_token_id is not None
+
+    # Set seed before initializing model.
+    set_seed(training_args.seed)
 
     if training_args.do_train:
         raw_datasets = load_data(data_args, model_args)
@@ -148,6 +106,12 @@ def main():
             )
         elif data_args.shuffle:
             train_dataset = train_dataset.shuffle(seed=training_args.seed)
+
+        # NOTE: modifications for clm
+        train_dataset = train_dataset.map(
+            lambda x: {**x, "labels": x["input_ids"]},
+            remove_columns=["special_tokens_mask"],
+        )
 
     if training_args.do_eval:
         # default to c4
@@ -184,72 +148,33 @@ def main():
                 ),
                 num_proc=data_args.preprocessing_num_workers,
             )
+        # NOTE: modifications for clm
+        eval_dataset = eval_dataset.map(
+            lambda x: {**x, "labels": x["input_ids"]},
+            remove_columns=["special_tokens_mask"],
+        )
 
-        def preprocess_logits_for_metrics(logits):
+        def preprocess_logits_for_metrics(logits, labels):
+            if isinstance(logits, tuple):
+                # Depending on the model and config, logits may contain extra tensors,
+                # like past_key_values, but logits always come first
+                logits = logits[0]
             return logits.argmax(dim=-1)
 
-    # Data collator
-    # TODO: fix lambda max_seq_length, extra_padding_ratio:
-    pad_to_multiple_of_8 = (
-        data_args.line_by_line
-        and training_args.fp16
-        and not data_args.pad_to_max_length
-    )
-    data_collator = lambda mode: SpanInfillingDataCollator(  # noqa: E731
-        mode=mode,
-        data_args=data_args,
-        tokenizer=tokenizer,
-        padding="max_length" if data_args.pad_to_max_length else True,
-        max_length=data_args.max_seq_length,
-        seed=training_args.seed,
-        pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
-        eval_context_size=data_args.eval_context_size,
-    )
-
-    compute_metrics = None
-    if training_args.do_eval and not training_args.without_compute_metrics:
-        # call only when necessary
-        compute_metrics = get_compute_metrics(data_args, training_args, model_args)
-
-    # init schedulers
-    noise_scheduler = TokenWiseSimplexDDPMScheduler(
-        num_train_timesteps=diffusion_args.num_diffusion_steps,
-        beta_schedule=diffusion_args.beta_schedule,
-        simplex_value=diffusion_args.simplex_value,
-        clip_sample=diffusion_args.clip_sample,
-        device=training_args.device,
-        multiply_factor=diffusion_args.multiply_factor,
-    )
-    inference_noise_schedulers = [
-        TokenWiseSimplexDDPMScheduler(
-            num_train_timesteps=timesteps,
-            beta_schedule=diffusion_args.beta_schedule,
-            simplex_value=diffusion_args.simplex_value,
-            clip_sample=diffusion_args.clip_sample,
-            device=training_args.device,
-            multiply_factor=diffusion_args.multiply_factor,
-        )
-        for timesteps in diffusion_args.num_inference_diffusion_steps
-    ]
-
     # Initialize our Trainer
-    trainer = DiffusionTrainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
-        data_collator=data_collator,
-        compute_metrics=compute_metrics,
+        # Data collator will default to DataCollatorWithPadding, so we change it.
+        data_collator=default_data_collator,
+        compute_metrics=None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
-        if training_args.do_eval
+        if training_args.do_eval and not is_torch_tpu_available()
         else None,
-        noise_scheduler=noise_scheduler,
-        diffusion_args=diffusion_args,
-        data_args=data_args,
-        inference_noise_schedulers=inference_noise_schedulers,
     )
-    trainer.add_callback(EvaluateFirstStepCallback())
 
     # Training
     if training_args.do_train:
@@ -273,8 +198,6 @@ def main():
                 os.path.join(model_args.model_name_or_path, "trainer_state.json")
             )
             trainer._load_rng_state(model_args.model_name_or_path)
-
-        # np.save("weights.npy", model.vocab_to_hidden_dim_embed.weight.data.numpy())
 
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()

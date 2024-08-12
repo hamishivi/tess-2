@@ -4,6 +4,7 @@ from typing import Optional
 import torch
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import AutoTokenizer
+from transformers.models.mistral import MistralConfig, MistralForCausalLM
 
 from .ar_warp.ar_warper import GARDiffusionLM
 from .cdcd.ar_warper import CDCDGARRobertaForDiffusionLM
@@ -44,6 +45,8 @@ def model_config_helper(
     if "mistral" in model_name_or_path.lower():
         if conditional_generation == "seq2seq" and not is_diffusion:
             return MistralDiffusionConfig, MistralForSeq2SeqLM
+        if conditional_generation is None and not is_diffusion:
+            return MistralConfig, MistralForCausalLM
         if use_model == "cdcd":
             return CDCDMistralDiffusionConfig, CDCDMistralForDiffusionLM
         return MistralDiffusionConfig, MistralForDiffusionLM

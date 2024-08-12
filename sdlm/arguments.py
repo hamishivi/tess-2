@@ -725,3 +725,7 @@ class DiffusionArguments:
         default=1.0,
         metadata={"help": "Determines the starting noise level."},
     )
+    eval_dataset_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of the dataset to use for evaluation."},
+    )

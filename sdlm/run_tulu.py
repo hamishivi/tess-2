@@ -9,11 +9,9 @@ import os
 import sys
 from collections import defaultdict
 
-import alpaca_eval
 import datasets
 import torch
 import transformers
-from datasets import load_dataset
 from transformers import set_seed
 from transformers.trainer_callback import TrainerState
 from transformers.utils import check_min_version
@@ -22,14 +20,16 @@ from transformers.utils.versions import require_version
 from .arguments import get_args
 from .data.data_collator import DataCollatorForMultiTurnSeq2Seq
 from .data.data_utils import load_data
-from .inference.inference_utils import process_text
 from .models import load_model
 from .schedulers import TokenWiseSimplexDDPMScheduler
 from .trainers.trainer_diffusion import DiffusionTrainer
 from .utils import (
+    encode_with_messages_format_v1,
+    encode_with_messages_format_v2_batch,
     get_last_checkpoint_with_beaker_preemption,
     resolve_last_checkpoint_vs_resume_from_checkpoint,
 )
+from .data.instruction_evals.instruction_evals import EVAL_MAPPING
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.25.0")
@@ -37,216 +37,17 @@ require_version("datasets>=1.8.0")
 logger = logging.getLogger(__name__)
 
 
-# from the open-instruct codebase.
-# NOTE: this is only used for eval and ar training
-def encode_with_messages_format_v1(
-    example, tokenizer, max_seq_length, return_string=False, add_generation_prompt=False
-):
-    """
-    Here we assume each example has a 'messages' field Each message is a dict with 'role' and 'content' fields.
-    We concatenate all messages with the roles as delimiters and tokenize them together.
-    """
-    # filter (open orca)
-    messages = [
-        message
-        for message in example["messages"]
-        if message["role"] in {"user", "assistant"}
-    ]
-    # we only take the first two messages, since multi-turn is a little more complex
-    messages = messages[:2]
 
-    if len(messages) == 0:
-        raise ValueError("messages field is empty.")
-    # quick sanity checks
-    assert messages[0]["role"] == "user"
-
-    def _concat_messages(messages):
-        message_text = ""
-        for message in messages:
-            if message["role"] == "user":
-                message_text += "<|user|>\n" + message["content"].strip() + "\n"
-            elif message["role"] == "assistant":
-                message_text += (
-                    "<|assistant|>\n"
-                    + message["content"].strip()
-                    + tokenizer.eos_token
-                    + "\n"
-                )
-            else:
-                raise ValueError("Invalid role: {}".format(message["role"]))
-        return message_text
-
-    example_text = tokenizer.bos_token + _concat_messages(messages).strip()
-    if add_generation_prompt:
-        example_text += "\n<|assistant|>\n"
-    if return_string:
-        return example_text
-    tokenized_example = tokenizer(
-        example_text,
-        add_special_tokens=False,
-        return_tensors="pt",
-        max_length=max_seq_length,
-        truncation=True,
-    )
-    input_ids = tokenized_example.input_ids
-    labels = input_ids.clone()
-
-    # mask the non-assistant part for avoiding loss
-    for message_idx, message in enumerate(messages):
-        if message["role"] != "assistant":
-            if message_idx == 0:
-                message_start_idx = 0
-            else:
-                message_start_idx = tokenizer(
-                    _concat_messages(messages[:message_idx]),
-                    return_tensors="pt",
-                    max_length=max_seq_length,
-                    truncation=True,
-                ).input_ids.shape[1]
-            if (
-                message_idx < len(messages) - 1
-                and messages[message_idx + 1]["role"] == "assistant"
-            ):
-                # here we also ignore the role of the assistant
-                messages_so_far = (
-                    _concat_messages(messages[: message_idx + 1]) + "<|assistant|>\n"
-                )
-            else:
-                messages_so_far = _concat_messages(messages[: message_idx + 1])
-            message_end_idx = tokenizer(
-                messages_so_far,
-                return_tensors="pt",
-                max_length=max_seq_length,
-                truncation=True,
-                add_special_tokens=False,
-            ).input_ids.shape[1]
-            # we replace with pad token id,
-            labels[:, message_start_idx:message_end_idx] = -100
-
-            if message_end_idx >= max_seq_length:
-                break
-
-    attention_mask = torch.ones_like(input_ids)
-    return {
-        "input_ids": input_ids.flatten(),
-        "labels": labels.flatten(),
-        "attention_mask": attention_mask.flatten(),
-    }
-
-
-# fixes some newline issues in v1
-# NOTE: this is only used for training
-def encode_with_messages_format_v2(
-    messages,
-    tokenizer,
-    max_seq_length: int,
-):
-    """
-    `encode_with_messages_format`, but with prefix-accumulating multiturn format
-    ex) input_ids: (a1, b1, a2, b2, a3), labels: (b3)
-    """
-    # quick sanity checks
-    if len(messages) == 0:
-        raise ValueError("messages field is empty.")
-    assert messages[0]["role"] == "user"
-    assert messages[1]["role"] == "assistant"
-
-    # double check tokenizer config
-    assert tokenizer.add_bos_token
-    assert not tokenizer.add_eos_token
-    assert tokenizer.padding_side == "right"
-
-    message_text = tokenizer.bos_token
-    result = defaultdict(list)
-    for message in messages:
-        if message["role"] == "user":
-            message_text += "<|user|>\n" + message["content"].strip() + "\n"
-        elif message["role"] == "assistant":
-            # tokenize message so far as context
-            # add generation prompt to mask out from loss
-            tokenized_context = tokenizer(
-                message_text + "<|assistant|>\n",
-                truncation=False,
-                padding=False,
-                add_special_tokens=False,
-            )
-            context_length = len(tokenized_context["input_ids"])
-
-            if context_length >= max_seq_length:
-                break
-
-            # append label
-            message_text += "<|assistant|>\n" + message["content"].strip()
-
-            # tokenize full message text
-            # add eos and pad
-            tokenized_example = tokenizer(
-                (message_text + tokenizer.eos_token).strip(),
-                truncation=True,
-                padding="max_length",
-                max_length=max_seq_length,
-                return_tensors="pt",
-                add_special_tokens=False,
-            )
-            input_ids = tokenized_example["input_ids"].squeeze()
-            labels = input_ids.clone()
-            labels[:context_length] = -100
-            result["input_ids"].append(input_ids)
-            result["labels"].append(labels)
-
-            # add newline for next turn
-            message_text += "\n"
-
-    if not result:
-        return result
-    result["input_ids"] = torch.stack(result["input_ids"])
-    result["labels"] = torch.stack(result["labels"])
-    return result
-
-
-# batched version of encode_with_messages_format_v2
-def encode_with_messages_format_v2_batch(
-    batch,
-    tokenizer,
-    max_seq_length: int,
-    is_tulu_pair: bool = False,
-    is_tulu_multiturn: bool = False,
-    is_tulu_sliding_window_multiturn: bool = False,
-):
-    result = {"input_ids": [], "labels": []}
-
-    def _helper(messages):
-        encoded = encode_with_messages_format_v2(
-            messages=messages,
-            tokenizer=tokenizer,
-            max_seq_length=max_seq_length,
-        )
-        for key, value in encoded.items():
-            result[key].append(value)
-
-    for messages in batch["messages"]:
-        # filter (open orca)
-        messages = [
-            message for message in messages if message["role"] in {"user", "assistant"}
-        ]
-        if is_tulu_multiturn:
-            _helper(messages)
-        elif is_tulu_sliding_window_multiturn:
-            for i in range(0, len(messages) - 1, 2):
-                _helper(messages[i:])
-        else:
-            max_message_idx = len(messages) - 1 if is_tulu_pair else 2
-            for i in range(0, max_message_idx, 2):
-                _helper(messages[i : i + 2])
-    if result["input_ids"]:
-        result["input_ids"] = torch.cat(result["input_ids"], dim=0)
-        result["labels"] = torch.cat(result["labels"], dim=0)
-    return result
 
 
 def main():
     # parse args
     model_args, data_args, training_args, diffusion_args = get_args()
+
+    if diffusion_args.eval_dataset_name and diffusion_args.eval_dataset_name not in EVAL_MAPPING:\
+        raise ValueError(
+            f"Invalid eval dataset name: {diffusion_args.eval_dataset_name}. Must be one of {list(EVAL_MAPPING.keys())}"
+        )
 
     # Setup logging
     logging.basicConfig(
@@ -276,7 +77,6 @@ def main():
 
     # load data
     raw_datasets = load_data(data_args, model_args)
-    eval_dataset = load_dataset("tatsu-lab/alpaca_eval")["eval"]
 
     # load model
     tokenizer, model = load_model(
@@ -330,53 +130,9 @@ def main():
             train_dataset = train_dataset.filter(lambda x: (x["labels"] != -100).any())
 
     if training_args.do_eval:
-        logger.warn(
-            "Running evaluation. This calls GPT-4, so PLEASE MAKE SURE YOU ARE NOT RUNNING IT A TONNE"
+        eval_dataset = EVAL_MAPPING[diffusion_args.eval_dataset_name].construct_eval_dataset(
+            tokenizer, max_target_length, data_args.max_eval_samples
         )
-        max_target_length = data_args.max_seq_length
-        # put the dataset into the correct format
-        eval_dataset = eval_dataset.map(
-            lambda x: {"messages": [{"role": "user", "content": x["instruction"]}]}
-        )
-        if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
-        with training_args.main_process_first(
-            desc="validation dataset map pre-processing"
-        ):
-            tokenized_data = []
-            for sample in eval_dataset:
-                prompt = encode_with_messages_format_v1(
-                    sample,
-                    tokenizer,
-                    max_target_length,
-                    return_string=True,
-                    add_generation_prompt=True,
-                )
-                tokenized_data.append(prompt)
-            data = tokenizer(
-                tokenized_data,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=max_target_length,
-                add_special_tokens=False,
-            )
-            eval_dataset = datasets.Dataset.from_dict(data)
-            labels = []
-            # we dont assume a length on the response.
-            # so labels are -100 for for inputs, and 1 everywhere else.
-            # eval loss is meaningless here.
-            for sample in eval_dataset["input_ids"]:
-                labels.append(
-                    [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
-                )
-            eval_dataset = eval_dataset.add_column("labels", labels)
-            # filter out samples without any space for generations.
-            # for roberta (512), should just be one.
-            eval_dataset = eval_dataset.filter(
-                lambda x: any([y != -100 for y in x["labels"]])
-            )
 
     def preprocess_logits_for_metrics(logits):
         return logits.argmax(dim=-1)
@@ -410,35 +166,7 @@ def main():
         for timesteps in diffusion_args.num_inference_diffusion_steps
     ]
 
-    # Metric
-    def compute_metrics(results):
-        # grab the instructions from the prefixes key
-        eval_data = [
-            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip()
-            for x in results["prefixes"]
-        ]
-        # then grab from logits masked.
-        decoded_preds = (
-            process_text(results["pred_texts_from_logits_masked"])
-            if not data_args.skip_special_tokens
-            else results["pred_texts_from_logits_masked"]
-        )
-        decoded_preds = [x.strip() for x in decoded_preds]
-        metrics = {}
-        # for each decoded sample, format into alpacaeval setup
-        decoded_preds = [
-            {"output": y, "instruction": x, "generator": "tess2"}
-            for x, y in zip(eval_data, decoded_preds)
-        ]
-        df_leaderboard, _ = alpaca_eval.evaluate(
-            model_outputs=decoded_preds,
-            is_overwrite_leaderboard=True,
-            is_return_instead_of_print=True,
-        )
-        # grab tess2 results
-        key_metrics = df_leaderboard.loc["tess2"].to_dict()
-        metrics.update(key_metrics)
-        return metrics
+    compute_metrics = lambda x: EVAL_MAPPING[diffusion_args.eval_dataset_name].compute_metrics(x, skip_special_tokens=data_args.skip_special_tokens)  # noqa: E731
 
     # Initialize our Trainer
     trainer = DiffusionTrainer(
