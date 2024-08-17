@@ -313,6 +313,24 @@ class DataTrainingArguments:
     glue_split_seed: int = field(
         default=42, metadata={"help": "Seed to split the glue data."}
     )
+    is_tulu_pair: bool = field(
+        default=False,
+        metadata={"help": "Whether to use pair preprocessing for TULU."},
+    )
+    is_tulu_multiturn: bool = field(
+        default=False,
+        metadata={"help": "Whether to use multiturn preprocessing for TULU."},
+    )
+    is_tulu_sliding_window_multiturn: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use sliding window multiturn preprocessing for TULU."
+        },
+    )
+    ul2_max_mask_ratio: float = field(
+        default=0.5,
+        metadata={"help": "UL2 variable maximum mask ratio."},
+    )
     tokenized_data_path: Optional[str] = field(
         default=None, metadata={"help": "If set, reads a tokenized train data."}
     )
@@ -532,13 +550,13 @@ class DataTrainingArguments:
         default=True,
         metadata={"help": "If set, we will shuffle the data before training."},
     )
-    min_eval_seq_length: Optional[int] = field(
-        default=None,
-        metadata={"help": "Minimum sequence length of evaluation samples."},
+    min_train_seq_length: int = field(
+        default=0,
+        metadata={"help": "Minimum sequence length for train samples."},
     )
-    max_eval_seq_length: Optional[int] = field(
-        default=None,
-        metadata={"help": "Maximuim sequence length of evaluation samples."},
+    min_eval_seq_length: int = field(
+        default=0,
+        metadata={"help": "Minimum sequence length for eval samples."},
     )
 
     def __post_init__(self):
@@ -547,9 +565,9 @@ class DataTrainingArguments:
             and self.dataset_name is None
             and (self.train_file is None and self.validation_file is None)
         ):
-            raise ValueError(
-                "Need either a task (only used for the `run_glue.py`), a dataset name or a training/validation file or a tokenized dataset path."
-            )
+            # NOTE: for pretraining, we detect whether we're on weka or nfs
+            # and automatically set the dataset
+            pass
         else:
             if self.train_file is not None:
                 extension = self.train_file.split(".")[-1]
@@ -577,6 +595,14 @@ class DataTrainingArguments:
                 "seq2seq",
                 "ul2_variable",
             ]
+
+        tulu_flags = (
+            self.is_tulu_pair,
+            self.is_tulu_multiturn,
+            self.is_tulu_sliding_window_multiturn,
+        )
+        # can only have at most 1 option toggled true
+        assert sum(tulu_flags) < 2
 
 
 @dataclass
@@ -714,4 +740,8 @@ class DiffusionArguments:
     softmax_temperature: float = field(
         default=1.0,
         metadata={"help": "Softmax for classifier guidance."},
+    )
+    eval_dataset_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of the dataset to use for evaluation."},
     )

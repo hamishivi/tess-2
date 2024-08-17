@@ -141,9 +141,12 @@ if __name__ == "__main__":
             else "eager",
         torch_dtype=get_torch_dtype(config),
     )
-    tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path, use_fast=True)
-    if not tokenizer.pad_token_id:
-        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    tokenizer = AutoTokenizer.from_pretrained(model_config.model_name_or_path, revision=model_config.model_revision, use_fast=True)
+    # just always add the pad token.
+    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    # make sure the pad token is set correctly.
+    tokenizer.pad_token = "[PAD]"
+    tokenizer.pad_token_id = 32000
 
     if reward_config.use_tulu_chat_template:
         tokenizer.chat_template = "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"

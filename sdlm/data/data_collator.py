@@ -87,6 +87,7 @@ class SpanInfillingDataCollator:
         self.return_tensors = return_tensors
         self.conditional_generation = data_args.conditional_generation
         self.extra_padding_ratio = data_args.extra_padding_ratio
+        self.ul2_max_mask_ratio = data_args.ul2_max_mask_ratio
         self.rng = np.random.default_rng(seed)
         self.eval_context_size = eval_context_size
         self.mode = mode
@@ -156,25 +157,6 @@ class SpanInfillingDataCollator:
             )
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
-        if "text" in features[0]:
-            # adpated from sdlm/data/data_utils.py (`tokenize_data_new`)
-            texts = [
-                feature["text"]
-                for feature in features
-                if len(feature["text"]) > 0 and not feature["text"].isspace()
-            ]
-            tokens = self.tokenizer(
-                texts,
-                # TODO: remove hard-coded params
-                padding="max_length",
-                truncation=True,
-                max_length=self.max_length,
-                return_attention_mask=False,
-                return_special_tokens_mask=False,
-            )
-            # below code expects this format
-            features = [{"input_ids": token} for token in tokens["input_ids"]]
-
         if self.extra_padding_ratio:
             # Inserting random tokens uniformly, we do not modify start and end of
             # sequence tokens.
@@ -234,7 +216,7 @@ class SpanInfillingDataCollator:
                 # Here we assume the length is the same for all data in a batch.
                 length = len(features[0]["input_ids"])
                 min_ratio = 1.0 / length
-                mask_ratio = random.uniform(min_ratio, 0.5)
+                mask_ratio = random.uniform(min_ratio, self.ul2_max_mask_ratio)
                 mean_mask_span_length = int(random.uniform(1, mask_ratio * length))
                 masks = {
                     "span_mask": self.mask_generator[objective](
@@ -256,24 +238,16 @@ class SpanInfillingDataCollator:
                     eval_context_size=self.eval_context_size,
                 )
             }
-        try:
-            # reformat
-            batch = {
-                "input_ids": torch.tensor(
-                    [feature["input_ids"] for feature in features]
-                )
-            }
-        except:  # noqa
-            batch = self.tokenizer.pad(
-                features,
-                padding=self.padding,
-                max_length=self.max_length,
-                pad_to_multiple_of=self.pad_to_multiple_of,
-                return_tensors=self.return_tensors,
-                return_attention_mask=False,
-            )
-            # we just need input_ids
-            batch = {"input_ids": batch["input_ids"]}
+        batch = self.tokenizer.pad(
+            features,
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors=self.return_tensors,
+            return_attention_mask=False,
+        )
+        # we just need input_ids
+        batch = {"input_ids": batch["input_ids"]}
         return {**batch, **masks}
 
 
@@ -367,7 +341,7 @@ class DataCollatorForCausalLMSeq2Seq:
             ]
         else:
             input_target = [input + target for input, target in zip(input_ids, labels)]
-        
+
         features = self.tokenizer.pad(
             {"input_ids": input_target},
             padding=self.padding,
@@ -432,7 +406,8 @@ class DataCollatorForMultiTurnSeq2Seq:
         features["span_mask"] = torch.where(label_features == -100, False, True)
         return features
 
-# custom collator for the multi-turn input format with causal 
+
+# custom collator for the multi-turn input format with causal
 @dataclass
 class DataCollatorForCausalMultiTurnSeq2Seq:
     tokenizer: PreTrainedTokenizerBase
@@ -451,6 +426,10 @@ class DataCollatorForCausalMultiTurnSeq2Seq:
             return_tensors="pt",
             return_attention_mask=False,
         )
+        # reinstate attention mask
+        features["attention_mask"] = (
+            features["input_ids"] != self.tokenizer.pad_token_id
+        )
         # pad labels out for easy mask
         label_features = self.tokenizer.pad(
             {"input_ids": labels},
@@ -460,5 +439,5 @@ class DataCollatorForCausalMultiTurnSeq2Seq:
             return_tensors="pt",
             return_attention_mask=False,
         )["input_ids"]
-        features['labels'] = label_features
+        features["labels"] = label_features
         return features

@@ -4,8 +4,8 @@
 CMD="
 accelerate launch -m sdlm.run_tulu_ar \
     --dataset_name allenai/tulu-v2-sft-mixture \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
     --evaluation_strategy epoch \
     --do_train \
     --do_eval \
@@ -13,6 +13,7 @@ accelerate launch -m sdlm.run_tulu_ar \
     --report_to tensorboard \
     --overwrite_output_dir \
     --max_seq_length 512 \
+    --generation_max_length 512 \
     --simplex_value 5 \
     --num_diffusion_steps 5000 \
     --lr_scheduler_type cosine \
@@ -31,11 +32,14 @@ accelerate launch -m sdlm.run_tulu_ar \
     --gradient_checkpointing \
     --num_diffusion_steps 0 \
     --tokenizer_padding_side "left" \
+    --include_inputs_for_metrics \
+    --preprocessing_num_workers 16 \
+    --model_revision 26bca36bde8333b5d7f72e9ed20ccda6a618af24 \
 "
 
 # for ai2/jupiter-cirrascale-2 cluster
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n mistral_tulu_ar_baseline -t mistral_tulu_ar_baseline --allow-dirty \
+    gantry run -y -n mistral_tulu_ar_baseline_512 -t mistral_tulu_ar_baseline_512 --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 8 \
         --priority preemptible \
@@ -55,13 +59,13 @@ if [ ! -z "${BEAKER}" ]; then
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --save_steps 1000 \
         --max_eval_samples 1000 \
-        --gradient_accumulation_steps 2 \
+        --gradient_accumulation_steps 8 \
         --output_dir /results
 else
     ${CMD} \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
-        --eval_steps 3 \
-        --save_steps 5 \
+        --eval_steps 10 \
+        --save_steps 10 \
         --max_eval_samples 16 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 10 \

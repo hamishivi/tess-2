@@ -3,16 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers.models.mistral.modeling_mistral import (
     MistralForCausalLM,
+    MistralForSequenceClassification,
     MistralModel,
     MistralPreTrainedModel,
-    MistralForSequenceClassification
 )
 from transformers.utils import logging
 
 from sdlm.models.mixins.modeling_mixin import (
     CausalLMForSeq2SeqMixin,
+    CDCDDiffusionModelMixin,
     DiffusionModelMixin,
-    PaddingIncludedSequenceClassificationMixin
+    PaddingIncludedSequenceClassificationMixin,
 )
 
 logger = logging.get_logger(__name__)
@@ -68,8 +69,15 @@ class MistralForDiffusionLM(DiffusionModelMixin, MistralPreTrainedModel):
         return F.linear(input_data, self.get_input_embeddings().weight.data.T)
 
 
+class CDCDMistralForDiffusionLM(MistralForDiffusionLM, CDCDDiffusionModelMixin):
+    pass
+
+
 class MistralForSeq2SeqLM(CausalLMForSeq2SeqMixin, MistralForCausalLM):
     pass
 
-class MistralforSequenceClassificationWithPadding(PaddingIncludedSequenceClassificationMixin, MistralForSequenceClassification):
+
+class MistralforSequenceClassificationWithPadding(
+    PaddingIncludedSequenceClassificationMixin, MistralForSequenceClassification
+):
     pass

@@ -2,6 +2,8 @@
 outputs
 raw
 .conda
+c4_subset
+notebooks
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

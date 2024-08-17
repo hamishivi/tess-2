@@ -173,7 +173,9 @@ class DiffusionTrainer(Trainer):
         if is_cdcd_check(self.model):
             input_ids = inputs["input_ids"]
             span_mask = inputs["span_mask"]
-            token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
+            token_input = torch.where(
+                (input_ids * span_mask) > 1, self.tokenizer.pad_token_id, input_ids
+            )
             timesteps = self.model.warp_timesteps(
                 timesteps,
                 token_input=token_input,
@@ -210,7 +212,9 @@ class DiffusionTrainer(Trainer):
                     input_ids = inputs["input_ids"]
                     span_mask = inputs["span_mask"]
                     token_input = torch.where(
-                        (input_ids * span_mask) > 1, 50264, input_ids
+                        (input_ids * span_mask) > 1,
+                        self.tokenizer.pad_token_id,
+                        input_ids,
                     )
                     timesteps = self.model.warp_timesteps(
                         timesteps,
@@ -229,7 +233,7 @@ class DiffusionTrainer(Trainer):
                     }
                 )
                 # we don't backprop through this.
-                with torch.inference_mode():
+                with torch.no_grad():
                     outputs = model(**inputs, previous_pred=previous_pred)
                 logits_projection_fct = lambda x: logits_projection(  # noqa: E731
                     x,
@@ -267,7 +271,9 @@ class DiffusionTrainer(Trainer):
             # replace masked tokens with <mask> token.
             input_ids = inputs["input_ids"]
             span_mask = inputs["span_mask"]
-            token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
+            token_input = torch.where(
+                (input_ids * span_mask) > 1, self.tokenizer.pad_token_id, input_ids
+            )
             timesteps = self.model.warp_timesteps(
                 original_timesteps,
                 t_max=len(self.noise_scheduler) - 1,
@@ -300,7 +306,7 @@ class DiffusionTrainer(Trainer):
     def light_prediction_step(
         self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-        with torch.inference_mode():
+        with torch.no_grad():
             inputs = self._prepare_inputs(inputs)
             # Truncate the length if needed.
             if self.data_args.truncation_length > 0:
@@ -349,7 +355,9 @@ class DiffusionTrainer(Trainer):
             if is_cdcd_check(self.model):
                 input_ids = inputs["input_ids"]
                 span_mask = inputs["span_mask"]
-                token_input = torch.where((input_ids * span_mask) > 1, 50264, input_ids)
+                token_input = torch.where(
+                    (input_ids * span_mask) > 1, self.tokenizer.pad_token_id, input_ids
+                )
                 timesteps = self.model.warp_timesteps(
                     timesteps,
                     t_max=len(self.noise_scheduler) - 1,
@@ -1062,7 +1070,7 @@ class DiffusionTrainer(Trainer):
             self.args
         )
 
-        # override to apply higher lr to timestep_embed
+        # override to apply higher lr to timestep_embed and cdcd cdf
         optimizer_grouped_parameters = [
             {
                 "params": [
@@ -1071,7 +1079,7 @@ class DiffusionTrainer(Trainer):
                     if (
                         n in decay_parameters
                         and p.requires_grad
-                        and not ("timestep_embed" in n)
+                        and not ("timestep_embed" in n or "cdf" in n)
                     )
                 ],
                 "weight_decay": self.args.weight_decay,
@@ -1084,7 +1092,7 @@ class DiffusionTrainer(Trainer):
                     if (
                         n not in decay_parameters
                         and p.requires_grad
-                        and not ("timestep_embed" in n)
+                        and not ("timestep_embed" in n or "cdf" in n)
                     )
                 ],
                 "weight_decay": 0.0,
@@ -1100,6 +1108,20 @@ class DiffusionTrainer(Trainer):
                 "lr": self.args.timestep_embed_lr or self.args.learning_rate,
             },
         ]
+        # check cdcd
+        cdf_params = [
+            p
+            for n, p in opt_model.named_parameters()
+            if (("cdf" in n) and p.requires_grad)
+        ]
+        if cdf_params:
+            optimizer_grouped_parameters.append(
+                {
+                    "params": cdf_params,
+                    "weight_decay": 0.0,
+                    "lr": 1e-3,
+                }
+            )
 
         optimizer_kwargs.pop("lr")
 
