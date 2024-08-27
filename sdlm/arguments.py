@@ -140,6 +140,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to use flash attention 2."},
     )
+    use_liger_kernel: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use liger kernel."},
+    )
     is_causal: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use causal attention (for Llama)."},

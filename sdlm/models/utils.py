@@ -216,6 +216,11 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         # TODO: does this cook anything?
         model.model = get_peft_model(model.model, peft_config).base_model
 
+    # apply liger monkey patching
+    if model_args.use_liger_kernel:
+        from liger_kernel.transformers import apply_liger_kernel_to_mistral
+        apply_liger_kernel_to_mistral()
+
     return tokenizer, model
 
 
@@ -230,6 +235,8 @@ def load_classifier(classifier_model_name_or_path: str):
     # NOTE: for quick testing (reduce vram req)
     # model.model.layers = torch.nn.ModuleList([model.model.layers[0]])
     freeze(model)
+    from liger_kernel.transformers import apply_liger_kernel_to_mistral
+    apply_liger_kernel_to_mistral()
     return tokenizer, model
 
 
