@@ -235,8 +235,8 @@ def load_classifier(classifier_model_name_or_path: str):
     # NOTE: for quick testing (reduce vram req)
     # model.model.layers = torch.nn.ModuleList([model.model.layers[0]])
     freeze(model)
-    from liger_kernel.transformers import apply_liger_kernel_to_mistral
-    apply_liger_kernel_to_mistral()
+    # from liger_kernel.transformers import apply_liger_kernel_to_mistral
+    # apply_liger_kernel_to_mistral()
     return tokenizer, model
 
 
