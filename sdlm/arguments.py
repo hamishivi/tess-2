@@ -745,6 +745,10 @@ class DiffusionArguments:
         default=1.0,
         metadata={"help": "Softmax for classifier guidance."},
     )
+    num_guidance_steps: int = field(
+        default=1,
+        metadata={"help": "Number of guidance steps per guidance."},
+    )
     eval_dataset_name: Optional[str] = field(
         default=None,
         metadata={"help": "The name of the dataset to use for evaluation."},

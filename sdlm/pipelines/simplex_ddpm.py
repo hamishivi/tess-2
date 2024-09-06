@@ -289,13 +289,14 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
             check_tokenizer_equal(self.tokenizer, classifier_tokenizer)
             self.classifier = classifier.to(self.device)
 
-    @torch.enable_grad()
-    def get_classifier_guidance(
+    def get_reward(
         self,
         logits: torch.FloatTensor,
         use_gumbel_softmax: bool,
         do_hard_sample: bool,
         softmax_temperature: float,
+        one_hot: Optional[torch.Tensor] = None,
+        span_mask: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         logits = logits.to(torch.bfloat16)
         logits.requires_grad = True
@@ -305,14 +306,23 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
             )
         else:
             simplex = torch.softmax(logits / softmax_temperature, dim=-1)
+        # mask out context
+        if span_mask is not None:
+            simplex = torch.where(span_mask.unsqueeze(-1), simplex, one_hot)
+        # forcibly add eos token to the simplex
+        # eos_token = torch.nn.functional.one_hot(
+        #     torch.tensor(self.tokenizer.eos_token_id),
+        #     num_classes=self.classifier.config.vocab_size,
+        # ).to(simplex.device)
+        # eos_token = eos_token.unsqueeze(0).unsqueeze(0).expand_as(simplex)
+        # simplex = torch.cat([simplex, eos_token], dim=1)
         inputs_embeds = F.linear(
             simplex, self.classifier.model.get_input_embeddings().weight.data.T
         )
         # forward pass through reward model
         reward = self.classifier(inputs_embeds=inputs_embeds).logits
-        reward = reward.sum()
-        reward.backward()
-        return logits.grad
+        return reward
+    
 
     @torch.no_grad()
     def __call__(
@@ -326,6 +336,7 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
         do_hard_sample: bool = False,
         softmax_temperature: float = 1.0,
         use_ddim_sampling: bool = False,
+        num_guidance_steps: int = 5,
     ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
         # check for classifier guidance
         use_classifier_guidance = self.classifier is not None and guidance_scale > 0.0
@@ -357,6 +368,7 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
 
         warped_steps = []
         prev_t = 0
+        all_rewards = []
         for t in self.progress_bar(self.scheduler.timesteps):
             original_t = torch.tensor([t], device=self.device).expand(
                 batch_size, seq_length
@@ -402,16 +414,34 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
             previous_hidden = model_output.hidden_states
 
             # NOTE: classifier guidance!
+            # compute one_hot
+            span_mask = batch["span_mask"]
+            one_hot = F.one_hot(batch["input_ids"], len(self.tokenizer)).to(
+                torch.bfloat16
+            )
+            model_output_logits = model_output_logits.to(torch.bfloat16)
+
             if use_classifier_guidance:
-                classifier_guidance = self.get_classifier_guidance(
-                    logits=model_output_logits,
-                    use_gumbel_softmax=use_gumbel_softmax,
-                    do_hard_sample=do_hard_sample,
-                    softmax_temperature=softmax_temperature,
-                )
-                model_output_logits = (
-                    model_output_logits + guidance_scale * classifier_guidance
-                )
+                # use torch.optim api
+                model_output_logits = torch.nn.Parameter(model_output_logits)
+                optimizer = torch.optim.SGD([model_output_logits], lr=guidance_scale)
+                 # guidance
+                with torch.enable_grad():
+                    for _ in range(num_guidance_steps):
+                        reward = self.get_reward(
+                            logits=model_output_logits,
+                            use_gumbel_softmax=use_gumbel_softmax,
+                            do_hard_sample=do_hard_sample,
+                            softmax_temperature=softmax_temperature,
+                            one_hot=one_hot,
+                            span_mask=span_mask,
+                        )
+                        # all_rewards.append(reward.detach().cpu())
+                        reward = reward.sum().neg()
+                        reward.backward()
+                        optimizer.step()
+                        
+                model_output_logits = model_output_logits.data
 
             if self.model.config.self_condition is not None:
                 prev_output_logits = model_output_logits
@@ -486,7 +516,11 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
             )
         # we take the mean loss over all timesteps
         loss = torch.stack(losses, dim=0)
-
+        # from matplotlib import pyplot as plt
+        # all_rewardst = torch.cat(all_rewards, dim=-1)
+        # plt.plot(all_rewardst.to(torch.float32).T)
+        # plt.savefig("tmp.png")
+        # import pdb; pdb.set_trace()
         return SimplexDiffusionPipelineOutput(
             simplex=simplex, logits=model_output_logits, loss=loss
         )

@@ -445,6 +445,7 @@ class DiffusionTrainer(Trainer):
                         use_gumbel_softmax=self.diffusion_args.use_gumbel_softmax,
                         do_hard_sample=self.diffusion_args.do_hard_sample,
                         softmax_temperature=self.diffusion_args.softmax_temperature,
+                        num_guidance_steps=self.diffusion_args.num_guidance_steps,
                     )
                 ):
                     outputs = x
