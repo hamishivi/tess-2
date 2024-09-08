@@ -165,12 +165,12 @@ class RewardTrainerScheduler(RewardTrainer):
                 simplex_chosen = construct_noisy_simplex(inputs["input_ids_chosen"])
                 simplex_chosen = torch.softmax(simplex_chosen, dim=-1).to(torch.bfloat16)
                 inputs_embeds_chosen = F.linear(
-                    simplex_chosen, model.get_input_embeddings().weight.data.T
+                    simplex_chosen, model.module.get_input_embeddings().weight.data.T
                 )
                 simplex_rejected = construct_noisy_simplex(inputs["input_ids_rejected"])
                 simplex_rejected = torch.softmax(simplex_rejected, dim=-1).to(torch.bfloat16)
                 inputs_embeds_rejected = F.linear(
-                    simplex_rejected, model.get_input_embeddings().weight.data.T
+                    simplex_rejected, model.module.get_input_embeddings().weight.data.T
                 )
                 rewards_chosen = model(
                     inputs_embeds=inputs_embeds_chosen,
