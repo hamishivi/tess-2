@@ -160,17 +160,18 @@ class RewardTrainerScheduler(RewardTrainer):
                     timesteps = timesteps[:, None].expand(-1, input_ids.shape[1])
                     # Adds noise to each simplex representation (Forward diffusion process).
                     noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
-                    return noisy_simplex
+                    return noisy_simplex.detach()  # detach to avoid backpropagating through the noise
                 
                 simplex_chosen = construct_noisy_simplex(inputs["input_ids_chosen"])
                 simplex_chosen = torch.softmax(simplex_chosen, dim=-1).to(torch.bfloat16)
+                unwrapped_model = self.accelerator.unwrap_model(model)
                 inputs_embeds_chosen = F.linear(
-                    simplex_chosen, model.module.get_input_embeddings().weight.data.T
+                    simplex_chosen, unwrapped_model.get_input_embeddings().weight.data.T
                 )
                 simplex_rejected = construct_noisy_simplex(inputs["input_ids_rejected"])
                 simplex_rejected = torch.softmax(simplex_rejected, dim=-1).to(torch.bfloat16)
                 inputs_embeds_rejected = F.linear(
-                    simplex_rejected, model.module.get_input_embeddings().weight.data.T
+                    simplex_rejected, unwrapped_model.get_input_embeddings().weight.data.T
                 )
                 rewards_chosen = model(
                     inputs_embeds=inputs_embeds_chosen,
