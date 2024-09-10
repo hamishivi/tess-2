@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim.lr_scheduler import LambdaLR
 from datasets import load_dataset
 from tqdm import tqdm
@@ -164,15 +165,17 @@ class RewardTrainerScheduler(RewardTrainer):
                 
                 simplex_chosen = construct_noisy_simplex(inputs["input_ids_chosen"])
                 simplex_chosen = torch.softmax(simplex_chosen, dim=-1).to(torch.bfloat16)
-                unwrapped_model = self.accelerator.unwrap_model(model)
-                inputs_embeds_chosen = F.linear(
-                    simplex_chosen, unwrapped_model.get_input_embeddings().weight.data.T
-                )
-                simplex_rejected = construct_noisy_simplex(inputs["input_ids_rejected"])
-                simplex_rejected = torch.softmax(simplex_rejected, dim=-1).to(torch.bfloat16)
-                inputs_embeds_rejected = F.linear(
-                    simplex_rejected, unwrapped_model.get_input_embeddings().weight.data.T
-                )
+                # unwrap model for FSDP, to compute input embeddings
+                with FSDP.summon_full_params(model):
+                    embedding_weight = model.get_input_embeddings().weight.data
+                    inputs_embeds_chosen = F.linear(
+                        simplex_chosen, model.get_input_embeddings().weight.data.T
+                    )
+                    simplex_rejected = construct_noisy_simplex(inputs["input_ids_rejected"])
+                    simplex_rejected = torch.softmax(simplex_rejected, dim=-1).to(torch.bfloat16)
+                    inputs_embeds_rejected = F.linear(
+                        simplex_rejected, model.get_input_embeddings().weight.data.T
+                    )   
                 rewards_chosen = model(
                     inputs_embeds=inputs_embeds_chosen,
                     attention_mask=inputs["attention_mask_chosen"],
@@ -187,13 +190,13 @@ class RewardTrainerScheduler(RewardTrainer):
                 )["logits"]
             else:
                 rewards_chosen = model(
-                    inputs_ids=inputs["input_ids_chosen"],
+                    input_ids=inputs["input_ids_chosen"],
                     attention_mask=inputs["attention_mask_chosen"],
                     return_dict=True,
                     use_cache=False,
                 )["logits"]
                 rewards_rejected = model(
-                    inputs_ids=inputs["input_ids_rejected"],
+                    input_ids=inputs["input_ids_rejected"],
                     attention_mask=inputs["attention_mask_rejected"],
                     return_dict=True,
                     use_cache=False,
