@@ -30,7 +30,7 @@ from .mistral.modeling_mistral import (
 )
 from .mixins.modeling_mixin import CDCDDiffusionModelMixin
 from .roberta.configuration_roberta import RobertaDiffusionConfig
-
+from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 def model_config_helper(
     model_name_or_path: str,
@@ -62,7 +62,7 @@ def model_config_helper(
         print(
             f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
         )
-        return RobertaDiffusionConfig, GARDiffusionLM
+        return RobertaDiffusionConfig, RobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "cdcdgar":
         return CDCDRobertaConfig, CDCDGARRobertaForDiffusionLM
     # default to mistral
