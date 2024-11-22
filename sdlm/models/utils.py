@@ -58,7 +58,7 @@ def model_config_helper(
         return PositionwiseCDCDRobertaConfig, PositionwiseCDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "confidence":
         return RobertaDiffusionConfig, ConfidenceTrackerRobertaDiffusionLM
-    elif "roberta" in model_name_or_path and use_model == "gar":
+    elif "roberta" in model_name_or_path:
         print(
             f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
         )
