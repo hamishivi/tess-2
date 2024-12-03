@@ -3,7 +3,7 @@ from typing import Optional
 
 import torch
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import AutoTokenizer
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers.models.mistral import MistralConfig, MistralForCausalLM
 
 from .ar_warp.ar_warper import GARDiffusionLM
@@ -30,7 +30,7 @@ from .mistral.modeling_mistral import (
 )
 from .mixins.modeling_mixin import CDCDDiffusionModelMixin
 from .roberta.configuration_roberta import RobertaDiffusionConfig
-
+from .roberta.modeling_roberta import RobertaForDiffusionLM
 
 def model_config_helper(
     model_name_or_path: str,
@@ -58,11 +58,11 @@ def model_config_helper(
         return PositionwiseCDCDRobertaConfig, PositionwiseCDCDRobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "confidence":
         return RobertaDiffusionConfig, ConfidenceTrackerRobertaDiffusionLM
-    elif "roberta" in model_name_or_path and use_model == "gar":
+    elif "roberta" in model_name_or_path:
         print(
             f"Using RobertaDiffusionConfig and RobertaForDiffusionLM for {model_name_or_path}"
         )
-        return RobertaDiffusionConfig, GARDiffusionLM
+        return RobertaDiffusionConfig, RobertaForDiffusionLM
     elif "roberta" in model_name_or_path and use_model == "cdcdgar":
         return CDCDRobertaConfig, CDCDGARRobertaForDiffusionLM
     # default to mistral
@@ -216,4 +216,43 @@ def load_model(model_args, data_args, training_args, diffusion_args, logger):
         # TODO: does this cook anything?
         model.model = get_peft_model(model.model, peft_config).base_model
 
+    # apply liger monkey patching
+    if model_args.use_liger_kernel:
+        from liger_kernel.transformers import apply_liger_kernel_to_mistral
+        apply_liger_kernel_to_mistral()
+
     return tokenizer, model
+
+
+def load_classifier(classifier_model_name_or_path: str):
+    tokenizer = AutoTokenizer.from_pretrained(classifier_model_name_or_path)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        classifier_model_name_or_path,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+    ).eval()
+    model.gradient_checkpointing_enable()
+    # NOTE: for quick testing (reduce vram req)
+    # model.model.layers = torch.nn.ModuleList([model.model.layers[0]])
+    freeze(model)
+    # from liger_kernel.transformers import apply_liger_kernel_to_mistral
+    # apply_liger_kernel_to_mistral()
+    return tokenizer, model
+
+
+def check_tokenizer_equal(tokenizer1, tokenizer2):
+    # check class
+    assert tokenizer1.__class__ is tokenizer2.__class__
+    # check vocab size
+    assert tokenizer1.vocab_size == tokenizer2.vocab_size
+    # check special tokens size
+    assert len(tokenizer1.special_tokens_map) == len(tokenizer2.special_tokens_map)
+    # check special tokens
+    for special_token in ("bos", "eos", "unk", "pad"):
+        attr = f"{special_token}_token_id"
+        assert getattr(tokenizer1, attr) == getattr(tokenizer2, attr)
+    # full decoding check
+    for i in range(tokenizer1.vocab_size + len(tokenizer1.special_tokens_map)):
+        decoded1 = tokenizer1.decode([i])
+        decoded2 = tokenizer2.decode([i])
+        assert decoded1 == decoded2

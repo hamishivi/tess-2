@@ -140,6 +140,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to use flash attention 2."},
     )
+    use_liger_kernel: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to use liger kernel."},
+    )
     is_causal: Optional[bool] = field(
         default=False,
         metadata={"help": "Whether to use causal attention (for Llama)."},
@@ -693,9 +697,7 @@ class DiffusionArguments:
     )
     guidance_scale: float = field(
         default=1.0,
-        metadata={
-            "help": "classifier-free guidance is applied if guidance_scale > 1.0."
-        },
+        metadata={"help": "scale for classifier (or classifier-free) guidance."},
     )
     classifier_free_uncond_input: str = field(
         default="empty_token",
@@ -724,6 +726,28 @@ class DiffusionArguments:
     multiply_factor: float = field(
         default=1.0,
         metadata={"help": "Determines the starting noise level."},
+    )
+    classifier_model_name_or_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Classifier for classifier guidance."},
+    )
+    use_gumbel_softmax: bool = field(
+        default=False,
+        metadata={"help": "Whether to use gumbel softmax for classifier guidance."},
+    )
+    do_hard_sample: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use gumbel softmax hard sampling trick for classifier guidance."
+        },
+    )
+    softmax_temperature: float = field(
+        default=1.0,
+        metadata={"help": "Softmax for classifier guidance."},
+    )
+    num_guidance_steps: int = field(
+        default=1,
+        metadata={"help": "Number of guidance steps per guidance."},
     )
     eval_dataset_name: Optional[str] = field(
         default=None,

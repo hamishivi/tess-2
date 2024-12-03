@@ -31,17 +31,22 @@ python examples/scripts/reward_modeling.py \
 import warnings
 from dataclasses import dataclass
 from functools import partial
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim.lr_scheduler import LambdaLR
 from datasets import load_dataset
 from tqdm import tqdm
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, HfArgumentParser
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, HfArgumentParser, PreTrainedModel
+from transformers.trainer_pt_utils import nested_detach
 
 from trl import ModelConfig, RewardConfig, RewardTrainer, get_kbit_device_map, get_peft_config, get_quantization_config
 from sdlm.models.mistral.modeling_mistral import MistralforSequenceClassificationWithPadding
 from sdlm.models.utils import get_torch_dtype
+from sdlm.schedulers import SimplexDDPMScheduler
 
 tqdm.pandas()
 
@@ -61,14 +66,63 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     )
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
+
 # new little trainer with the scheduler we want.
 class RewardTrainerScheduler(RewardTrainer):
+    def __init__(self, *args, train_on_noisy_inputs=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.train_on_noisy_inputs = train_on_noisy_inputs
+        self.noise_scheduler = SimplexDDPMScheduler(
+        num_train_timesteps=5000,
+        beta_schedule="squaredcos_improved_ddpm",
+        simplex_value=5,
+        clip_sample=False,
+        device='cuda',
+    )
+
+
     def create_scheduler(self, num_training_steps: int, optimizer: torch.optim.Optimizer = None):
         if self.lr_scheduler is None:
             self.lr_scheduler = get_linear_schedule_with_warmup(optimizer, self.args.warmup_steps, num_training_steps, end_lr_ratio=0.1)
             self._created_lr_scheduler = True
         return self.lr_scheduler
-    
+
+
+    def prediction_step(
+        self,
+        model: Union[PreTrainedModel, nn.Module],
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        inputs = self._prepare_inputs(inputs)
+        if ignore_keys is None:
+            if hasattr(self.model, "config"):
+                ignore_keys = getattr(self.model.config, "keys_to_ignore_at_inference", [])
+            else:
+                ignore_keys = []
+
+        with torch.no_grad():
+            loss, logits_dict = self.compute_loss(model, inputs, return_outputs=True)
+
+        if prediction_loss_only:
+            return (loss, None, None)
+
+        loss = loss.detach()
+        logits = tuple(v for k, v in logits_dict.items() if k not in ignore_keys)
+        logits = nested_detach(logits)
+        # Stack accepted against rejected, mean over logits
+        # and softmax to get preferences between accepted and rejected to sum to 1
+        # logits = torch.stack(logits).mean(dim=2).softmax(dim=0).T
+        # removing softmax for now, since I want to see the raw logits.
+        logits = torch.stack(logits).mean(dim=2).T
+
+        labels = torch.zeros(logits.shape[0])
+        labels = self._prepare_inputs(labels)
+
+        return loss, logits, labels
+
+
     # hacky override to set cache to false
     # required to fix FA2 + mistral issues
     # see https://github.com/huggingface/trl/issues/1217
@@ -84,18 +138,69 @@ class RewardTrainerScheduler(RewardTrainer):
                     " if you are using a custom data collator make sure you know what you are doing or"
                     " implement your own compute_loss method."
                 )
-            rewards_chosen = model(
-                input_ids=inputs["input_ids_chosen"],
-                attention_mask=inputs["attention_mask_chosen"],
-                return_dict=True,
-                use_cache=False,
-            )["logits"]
-            rewards_rejected = model(
-                input_ids=inputs["input_ids_rejected"],
-                attention_mask=inputs["attention_mask_rejected"],
-                return_dict=True,
-                use_cache=False,
-            )["logits"]
+            if self.train_on_noisy_inputs:
+                from sdlm.utils import convert_to_simplex
+                def construct_noisy_simplex(input_ids):
+                    # hardcoded simplex value for now TODO: make this a config
+                    simplex = convert_to_simplex(
+                        input_ids, 5, len(self.tokenizer)
+                    )
+                    noise = 5 * torch.randn(
+                        simplex.shape, device=simplex.device, dtype=torch.float32
+                    )
+                    bsz = simplex.shape[0]
+                    timesteps = torch.randint(
+                        0,
+                        5000,  # hardcoded value for now TODO: make this a config
+                        (bsz, input_ids.shape[1])
+                        if False  # is_tokenwise_cdcd_check(self.model)
+                        else (bsz,),
+                        device=simplex.device,
+                        dtype=torch.int64,
+                    )
+                    timesteps = timesteps[:, None].expand(-1, input_ids.shape[1])
+                    # Adds noise to each simplex representation (Forward diffusion process).
+                    noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, timesteps)
+                    return noisy_simplex.detach()  # detach to avoid backpropagating through the noise
+                
+                simplex_chosen = construct_noisy_simplex(inputs["input_ids_chosen"])
+                simplex_chosen = torch.softmax(simplex_chosen, dim=-1).to(torch.bfloat16)
+                # unwrap model for FSDP, to compute input embeddings
+                with FSDP.summon_full_params(model):
+                    embedding_weight = model.get_input_embeddings().weight.data
+                    inputs_embeds_chosen = F.linear(
+                        simplex_chosen, model.get_input_embeddings().weight.data.T
+                    )
+                    simplex_rejected = construct_noisy_simplex(inputs["input_ids_rejected"])
+                    simplex_rejected = torch.softmax(simplex_rejected, dim=-1).to(torch.bfloat16)
+                    inputs_embeds_rejected = F.linear(
+                        simplex_rejected, model.get_input_embeddings().weight.data.T
+                    )   
+                rewards_chosen = model(
+                    inputs_embeds=inputs_embeds_chosen,
+                    attention_mask=inputs["attention_mask_chosen"],
+                    return_dict=True,
+                    use_cache=False,
+                )["logits"]
+                rewards_rejected = model(
+                    inputs_embeds=inputs_embeds_rejected,
+                    attention_mask=inputs["attention_mask_rejected"],
+                    return_dict=True,
+                    use_cache=False,
+                )["logits"]
+            else:
+                rewards_chosen = model(
+                    input_ids=inputs["input_ids_chosen"],
+                    attention_mask=inputs["attention_mask_chosen"],
+                    return_dict=True,
+                    use_cache=False,
+                )["logits"]
+                rewards_rejected = model(
+                    input_ids=inputs["input_ids_rejected"],
+                    attention_mask=inputs["attention_mask_rejected"],
+                    return_dict=True,
+                    use_cache=False,
+                )["logits"]
             # calculate loss, optionally modulate with margin
             if "margin" in inputs:
                 loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - inputs["margin"]).mean()
@@ -116,6 +221,8 @@ class RewardModelingArguments:
     end_lr: float = 1e-6  # final learning rate for the learning rate scheduler.
     dataset_name: str = "argilla/ultrafeedback-binarized-preferences-cleaned"  # dataset to use for reward modeling.
     use_flash_attention2: bool = False  # if true, we use the flash attention2 implementation.
+    eval_only: bool = False  # if true, we only evaluate the model.
+    train_on_noisy_inputs: bool = False  # if true, we emulate the diffusion noise as input during training.
 
 if __name__ == "__main__":
     parser = HfArgumentParser((RewardConfig, ModelConfig, RewardModelingArguments))
@@ -256,9 +363,11 @@ if __name__ == "__main__":
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         peft_config=get_peft_config(model_config),
+        train_on_noisy_inputs=reward_config.train_on_noisy_inputs,
     )
-    trainer.train()
-    trainer.save_model(config.output_dir)
+    if not reward_config.eval_only:
+        trainer.train()
+        trainer.save_model(config.output_dir)
     metrics = trainer.evaluate()
     trainer.log_metrics("eval", metrics)
     print(metrics)

@@ -35,7 +35,7 @@ from sdlm.inference.inference_utils import (
     predict_conditional_generated,
 )
 from sdlm.models.utils import is_cdcd_check
-from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMClassifierGuidancePipeline
 from sdlm.utils import convert_to_simplex, pad_data, scale, self_condition_preds
 
 if is_apex_available():
@@ -424,7 +424,7 @@ class DiffusionTrainer(Trainer):
         self,
         inputs: Dict[str, Union[torch.Tensor, Any]],
         model: nn.Module,
-        pipeline: List[SimplexDDPMPipeline],
+        pipeline: List[SimplexDDPMClassifierGuidancePipeline],
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
         inputs = self._prepare_inputs(inputs)
         # full inference.
@@ -442,6 +442,10 @@ class DiffusionTrainer(Trainer):
                         if self.diffusion_args.generate_with_seed
                         else None,
                         is_generator=False,
+                        use_gumbel_softmax=self.diffusion_args.use_gumbel_softmax,
+                        do_hard_sample=self.diffusion_args.do_hard_sample,
+                        softmax_temperature=self.diffusion_args.softmax_temperature,
+                        num_guidance_steps=self.diffusion_args.num_guidance_steps,
                     )
                 ):
                     outputs = x
@@ -517,7 +521,7 @@ class DiffusionTrainer(Trainer):
 
         model.eval()
 
-        pipeline = SimplexDDPMPipeline(
+        pipeline = SimplexDDPMClassifierGuidancePipeline(
             model=model,
             scheduler=noise_scheduler,
             simplex_value=self.diffusion_args.simplex_value,
@@ -528,6 +532,7 @@ class DiffusionTrainer(Trainer):
             classifier_free_uncond_input=self.diffusion_args.classifier_free_uncond_input,
             temperature=self.diffusion_args.temperature,
             guidance_softmax_combination=self.diffusion_args.guidance_softmax_combination,
+            classifier_model_name_or_path=self.diffusion_args.classifier_model_name_or_path,
         )
 
         self.callback_handler.eval_dataloader = dataloader
