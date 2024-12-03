@@ -15,6 +15,7 @@ from sdlm.inference.inference_utils import process_text
 from sdlm.utils import encode_with_messages_format_v1
 from sdlm.data.instruction_evals.gsm_exemplars import EXEMPLARS as GSM_EXEMPLARS
 from sdlm.data.instruction_evals.codex_evaluation import evaluate_functional_correctness, write_jsonl
+from sdlm.data.instruction_evals.squad_eval_1 import evaluate as squad_evaluate
 
 logger = logging.getLogger(__name__)
 
@@ -335,8 +336,190 @@ class CodexHumanEval():
         eval_dataset = Dataset.from_list(new_eval_dataset)
         return eval_dataset
 
+
+subsets = [
+        'boolean_expressions', 'causal_judgement', 'date_understanding',
+        'disambiguation_qa', 'dyck_languages', 'formal_fallacies', 'geometric_shapes',
+        'hyperbaton', 'logical_deduction_five_objects', 'logical_deduction_seven_objects',
+        'logical_deduction_three_objects', 'movie_recommendation', 'multistep_arithmetic_two',
+        'navigate', 'object_counting', 'penguins_in_a_table', 'reasoning_about_colored_objects',
+        'ruin_names', 'salient_translation_error_detection', 'snarks', 'sports_understanding',
+        'temporal_sequences', 'tracking_shuffled_objects_five_objects',
+        'tracking_shuffled_objects_seven_objects', 'tracking_shuffled_objects_three_objects',
+        'web_of_lies', 'word_sorting'
+    ]
+
+class BBHEval():
+    def compute_metrics(results, skip_special_tokens=True):
+        # grab the instructions from the prefixes key
+        eval_data = [
+            x.replace("<|user|>\n", "").replace("<|assistant|>\nAnswer:", "").strip() for x in results["prefixes"]
+        ]
+        # for each instruction, grab just the final question
+        eval_data = [x.split("\n\nQ:" )[-1].strip() for x in eval_data]
+        question_to_answer = {}
+        for subset in subsets:
+            original_data = load_dataset("lukaemon/bbh", subset, split="test")
+            for example in original_data:
+                question_to_answer[example["input"]] = example["target"]
+        # final, get ground truth by matching the question
+        gold_texts = [question_to_answer.get(x, "") for x in eval_data]
+        # then grab from logits masked.
+        decoded_preds = (
+            process_text(results["pred_texts_from_logits_masked"])
+            if not skip_special_tokens
+            else results["pred_texts_from_logits_masked"]
+        )
+        predictions = []
+        for output in decoded_preds:
+            extracted_answer = re.search(r"[t|T]he answer is (.*?)\.", output)
+            if extracted_answer:
+                predictions.append(extracted_answer.group(1).strip())
+            else:
+                predictions.append(output.strip())
+        metrics = {}
+        # filter out empty gold texts and their corresponding eval data
+        predictions = [x for x, y in zip(predictions, gold_texts) if y]
+        gold_texts = [x for x in gold_texts if x]
+        # now calculate the metrics
+        em_score = exact_match.compute(
+            predictions=predictions,
+            references=gold_texts,
+            ignore_case=True,
+            ignore_punctuation=True
+        )['exact_match']
+        logger.info(f"EM: {em_score}")
+        # update the metrics
+        key_metrics = {"EM": em_score}
+        metrics.update(key_metrics)
+        return metrics
+    
+    def construct_eval_dataset(tokenizer, max_target_length, max_eval_samples=500):
+        # construct prompts
+        subset_to_prompt = {}
+        for subset in subsets:
+            prompt_filename = f"sdlm/data/instruction_evals/bbh-cot-prompts/{subset}.txt"
+            with open(prompt_filename, "r") as f:
+                task_prompt = "".join(f.readlines()[2:])
+            subset_to_prompt[subset] = task_prompt
+        prompts = []
+        # load the actual samples
+        for subset in subsets:
+            dataset = load_dataset("lukaemon/bbh", subset, split="test")
+            dataset = dataset.shuffle(42).select(range(max_eval_samples))
+            for example in dataset:
+                prompt = task_prompt.strip() + "\n\nQ: " + example["input"]
+                messages = [{"role": "user", "content": prompt}]
+                prompt = encode_with_messages_format_v1(
+                    {"messages": messages}, tokenizer, max_target_length, return_string=True
+                )
+                prompt += "A:" if prompt[-1] in ["\n", " "] else " A:"
+                prompts.append(prompt)
+        data = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_target_length,
+            add_special_tokens=False,
+        )
+        eval_dataset = Dataset.from_dict(data)
+        # labels are -100 on any non-pad token
+        labels = []
+        for sample in eval_dataset["input_ids"]:
+            labels.append(
+                [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
+            )
+        eval_dataset = eval_dataset.add_column("labels", labels)
+        # filter out samples without any space for generations.
+        eval_dataset = eval_dataset.filter(
+            lambda x: any([y != -100 for y in x["labels"]])
+        )
+        return eval_dataset
+
+
+squad_shots = [
+    "Architecturally, the school has a Catholic character. Atop the Main Building's gold dome is a golden statue of the Virgin Mary. Immediately in front of the Main Building and facing it, is a copper statue of Christ with arms upraised with the legend \"Venite Ad Me Omnes\". Next to the Main Building is the Basilica of the Sacred Heart. Immediately behind the basilica is the Grotto, a Marian place of prayer and reflection. It is a replica of the grotto at Lourdes, France where the Virgin Mary reputedly appeared to Saint Bernadette Soubirous in 1858. At the end of the main drive (and in a direct line that connects through 3 statues and the Gold Dome), is a simple, modern stone statue of Mary.\n\nTo whom did the Virgin Mary allegedly appear in 1858 in Lourdes France?\n\nSaint Bernadette Soubirous",
+    "Burke was born in Dublin, Ireland. His mother Mary née Nagle (c. 1702 – 1770) was a Roman Catholic who hailed from a déclassé County Cork family (and a cousin of Nano Nagle), whereas his father, a successful solicitor, Richard (died 1761), was a member of the Church of Ireland; it remains unclear whether this is the same Richard Burke who converted from Catholicism. The Burke dynasty descends from an Anglo-Norman knight surnamed de Burgh (latinised as de Burgo) who arrived in Ireland in 1185 following Henry II of England's 1171 invasion of Ireland.\n\nWhere was Burke born?\n\nDublin, Ireland",
+    "The term high definition once described a series of television systems originating from August 1936; however, these systems were only high definition when compared to earlier systems that were based on mechanical systems with as few as 30 lines of resolution. The ongoing competition between companies and nations to create true \"HDTV\" spanned the entire 20th century, as each new system became more HD than the last.In the beginning of the 21st century, this race has continued with 4k, 5k and current 8K systems.\n\nThe term \"high definition\" originally described televisions systems from what year?\n\n1936"
+]
+
+class SquadEval():
+    def compute_metrics(results, skip_special_tokens=True):
+        # grab the instructions from the prefixes key
+        eval_data = [
+            x.replace("<|user|>\n", "").replace("<|assistant|>\nAnswer:", "").strip() for x in results["prefixes"]
+        ]
+        # for each, remove the few-shot prompt
+        eval_data = [x.replace("\n".join(squad_shots) + '\n', "") for x in eval_data]
+        question_to_answer = {}
+        original_data = load_dataset("squad", split="validation")
+        for example in original_data:
+            question_to_answer[example["context"] + "\n\n" + example["question"]] = example["answers"]["text"]
+        # final, get ground truth by matching the question
+        gold_texts = [question_to_answer.get(x, "") for x in eval_data]
+        # then grab from logits masked.
+        decoded_preds = (
+            process_text(results["pred_texts_from_logits_masked"])
+            if not skip_special_tokens
+            else results["pred_texts_from_logits_masked"]
+        )
+        predictions = []
+        for output in decoded_preds:
+            extracted_answer = re.search(r"[t|T]he answer is (.*?)\.", output)
+            if extracted_answer:
+                predictions.append(extracted_answer.group(1).strip())
+            else:
+                predictions.append(output.strip())
+        metrics = {}
+        # filter out empty gold texts and their corresponding eval data
+        predictions = [x for x, y in zip(predictions, gold_texts) if y]
+        references = [x for x in gold_texts if x]
+        # now calculate the metrics
+        results = evaluate(references=references, predictions=predictions)
+        logger.info(f"Results: {results}")
+        metrics.update(results)
+        return metrics
+        
+    def construct_eval_dataset(self, tokenizer, max_target_length, max_eval_samples=500):
+        # load the actual samples
+        dataset = load_dataset("squad", split="validation")
+        dataset = dataset.shuffle(42).select(range(max_eval_samples))
+        # convert everything to tulu
+        prompts = []
+        for sample in dataset:
+            prompt = "\n".join(squad_shots) + '\n' + sample["context"] + "\n\n" + sample["question"]
+            messages = [{"role": "user", "content": prompt}]
+            prompt = encode_with_messages_format_v1(
+                {"messages": messages}, tokenizer, max_target_length, return_string=True
+            )
+            prompts.append(prompt)
+        data = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_target_length,
+            add_special_tokens=False,
+        )
+        eval_dataset = Dataset.from_dict(data)
+        # labels are -100 on any non-pad token
+        labels = []
+        for sample in eval_dataset["input_ids"]:
+            labels.append(
+                [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
+            )
+        eval_dataset = eval_dataset.add_column("labels", labels)
+        # filter out samples without any space for generations.
+        eval_dataset = eval_dataset.filter(
+            lambda x: any([y != -100 for y in x["labels"]])
+        )
+        return eval_dataset
+
+
 EVAL_MAPPING = {
     "alpaca_eval": AlpacaEval,
     "gsm8k": GSM8kEval,
     "human_eval": CodexHumanEval,
+    "bbh": BBHEval,
 }
