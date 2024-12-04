@@ -522,4 +522,5 @@ EVAL_MAPPING = {
     "gsm8k": GSM8kEval,
     "human_eval": CodexHumanEval,
     "bbh": BBHEval,
+    "squad": SquadEval
 }
