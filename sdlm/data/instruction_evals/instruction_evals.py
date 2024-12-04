@@ -482,8 +482,8 @@ class SquadEval():
                 })
         metrics = {}
         # filter out empty gold texts and their corresponding eval data
-        predictions = [{"id": i, "prediction_text": x} for x, y, i in zip(predictions, gold_texts, ids) if y is not None]
-        references = [{"id": i, "answers": x}  for x, i in zip(gold_texts, ids) if x is not None]
+        predictions = [{"id": x['id'], "prediction_text": x} for x, y in zip(predictions, gold_texts) if y is not None]
+        references = [{"id": x["id"], "answers": x["answers"]}  for x in gold_texts if x is not None]
         # now calculate the metrics
         results = squad_evaluate(references=references, predictions=predictions)
         logger.info(f"Results: {results}")
