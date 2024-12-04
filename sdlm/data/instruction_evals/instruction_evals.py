@@ -170,7 +170,7 @@ class GSM8kEval():
         # why 3-shot? 512 context length means we cant fit 8 
         global GSM_EXEMPLARS
         demonstrations = []
-        for example in GSM_EXEMPLARS[:3]:
+        for example in GSM_EXEMPLARS:
             demonstrations.append(
                 "Question: " + example["question"] + "\n" + "Answer: " + example["cot_answer"]
             )
@@ -356,7 +356,7 @@ class BBHEval():
             x.replace("<|user|>\n", "").replace("<|assistant|>\nAnswer:", "").strip() for x in results["prefixes"]
         ]
         # for each instruction, grab just the final question
-        eval_data = [x.split("\n\nQ:" )[-1].strip() for x in eval_data]
+        eval_data = [x.split("\n\nQ:" )[-1].replace("A:", "").strip() for x in eval_data]
         question_to_answer = {}
         for subset in subsets:
             original_data = load_dataset("lukaemon/bbh", subset, split="test")
