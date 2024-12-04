@@ -452,14 +452,14 @@ class SquadEval():
         ]
         # for each, remove the few-shot prompt
         eval_data = [x.replace("\n".join(squad_shots) + '\n', "") for x in eval_data]
-        question_to_answer = {}
+        sample_to_answer = {}
         question_to_id = {}
         original_data = load_dataset("squad", split="validation")
         for example in original_data:
-            question_to_answer[example["context"] + "\n\n" + example["question"]] = example["answers"]["text"]
+            sample_to_answer[example["context"] + "\n\n" + example["question"]] = example
             question_to_id[example["context"] + "\n\n" + example["question"]] = example["id"]
         # final, get ground truth by matching the question
-        gold_texts = [question_to_answer.get(x, "") for x in eval_data]
+        gold_texts = [sample_to_answer.get(x, None) for x in eval_data]
         ids = [question_to_id.get(x, "") for x in eval_data]
         # then grab from logits masked.
         decoded_preds = (
@@ -482,8 +482,8 @@ class SquadEval():
                 })
         metrics = {}
         # filter out empty gold texts and their corresponding eval data
-        predictions = [{"id": i, "prediction_text": x} for x, y, i in zip(predictions, gold_texts, ids) if y]
-        references = [{"id": i, "answers": x}  for x, i in zip(gold_texts, ids) if x]
+        predictions = [{"id": i, "prediction_text": x} for x, y, i in zip(predictions, gold_texts, ids) if y is not None]
+        references = [{"id": i, "answers": x}  for x, i in zip(gold_texts, ids) if x is not None]
         # now calculate the metrics
         results = squad_evaluate(references=references, predictions=predictions)
         logger.info(f"Results: {results}")
