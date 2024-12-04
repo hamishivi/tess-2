@@ -476,7 +476,7 @@ class SquadEval():
         predictions = [x for x, y in zip(predictions, gold_texts) if y]
         references = [x for x in gold_texts if x]
         # now calculate the metrics
-        results = evaluate(references=references, predictions=predictions)
+        results = squad_evaluate(references=references, predictions=predictions)
         logger.info(f"Results: {results}")
         metrics.update(results)
         return metrics
