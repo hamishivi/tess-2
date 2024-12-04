@@ -406,7 +406,9 @@ class BBHEval():
         # load the actual samples
         for subset in subsets:
             dataset = load_dataset("lukaemon/bbh", subset, split="test")
-            dataset = dataset.shuffle(42).select(range(max_eval_samples))
+            dataset = dataset.shuffle(42)
+            if len(dataset) > max_eval_samples:
+                dataset = dataset.select(range(max_eval_samples))
             for example in dataset:
                 prompt = task_prompt.strip() + "\n\nQ: " + example["input"]
                 messages = [{"role": "user", "content": prompt}]
