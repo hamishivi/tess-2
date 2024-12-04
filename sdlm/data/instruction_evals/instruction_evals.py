@@ -453,11 +453,14 @@ class SquadEval():
         # for each, remove the few-shot prompt
         eval_data = [x.replace("\n".join(squad_shots) + '\n', "") for x in eval_data]
         question_to_answer = {}
+        question_to_id = {}
         original_data = load_dataset("squad", split="validation")
         for example in original_data:
             question_to_answer[example["context"] + "\n\n" + example["question"]] = example["answers"]["text"]
+            question_to_id[example["context"] + "\n\n" + example["question"]] = example["id"]
         # final, get ground truth by matching the question
         gold_texts = [question_to_answer.get(x, "") for x in eval_data]
+        ids = [question_to_id.get(x, "") for x in eval_data]
         # then grab from logits masked.
         decoded_preds = (
             process_text(results["pred_texts_from_logits_masked"])
@@ -465,12 +468,18 @@ class SquadEval():
             else results["pred_texts_from_logits_masked"]
         )
         predictions = []
-        for output in decoded_preds:
+        for i, output in zip(ids, decoded_preds):
             extracted_answer = re.search(r"[t|T]he answer is (.*?)\.", output)
             if extracted_answer:
-                predictions.append(extracted_answer.group(1).strip())
+                predictions.append({
+                    "prediction_text": extracted_answer.group(1).strip(),
+                    "id": i
+                })
             else:
-                predictions.append(output.strip())
+                predictions.append({
+                    "prediction_text": output.strip(),
+                    "id": i
+                })
         metrics = {}
         # filter out empty gold texts and their corresponding eval data
         predictions = [x for x, y in zip(predictions, gold_texts) if y]
