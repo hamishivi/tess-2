@@ -467,22 +467,9 @@ class SquadEval():
             if not skip_special_tokens
             else results["pred_texts_from_logits_masked"]
         )
-        predictions = []
-        for i, output in zip(ids, decoded_preds):
-            extracted_answer = re.search(r"[t|T]he answer is (.*?)\.", output)
-            if extracted_answer:
-                predictions.append({
-                    "prediction_text": extracted_answer.group(1).strip(),
-                    "id": i
-                })
-            else:
-                predictions.append({
-                    "prediction_text": output.strip(),
-                    "id": i
-                })
         metrics = {}
         # filter out empty gold texts and their corresponding eval data
-        predictions = [{"id": x['id'], "prediction_text": x} for x, y in zip(predictions, gold_texts) if y is not None]
+        predictions = [{"id": y['id'], "prediction_text": x} for x, y in zip(decoded_preds, gold_texts) if y is not None]
         references = [{"id": x["id"], "answers": x["answers"]}  for x in gold_texts if x is not None]
         # now calculate the metrics
         results = squad_evaluate(references=references, predictions=predictions)
