@@ -481,7 +481,7 @@ class SquadEval():
         metrics.update(results)
         return metrics
         
-    def construct_eval_dataset(self, tokenizer, max_target_length, max_eval_samples=500):
+    def construct_eval_dataset(tokenizer, max_target_length, max_eval_samples=500):
         # load the actual samples
         dataset = load_dataset("squad", split="validation")
         dataset = dataset.shuffle(42).select(range(max_eval_samples))
