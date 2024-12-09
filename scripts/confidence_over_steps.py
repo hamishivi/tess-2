@@ -90,7 +90,6 @@ def main():
         )
         # pipeline.progress_bar = progress.tqdm
         pipeline_args = {
-            "batch_size": 1,
             "seq_length": generated_sequence_length,
             "batch": inputs,
             "guidance_scale": guidance_scale,
@@ -127,6 +126,8 @@ def main():
         #     break
     tokens = [tokenizer.decode(t) for t in output.logits[0].argmax(-1).cpu().numpy()]
     confidences = torch.cat(confidences, dim=0).cpu().numpy()
+    prompt_len = len(tokenizer("When I talk about music, I talk about").input_ids)
+    confidences[:, :prompt_len] = 1
     plt.figure(figsize=(15, 6))
     heatmap = plt.imshow(
         confidences,
@@ -137,7 +138,7 @@ def main():
     plt.xticks(range(len(tokens)), tokens, rotation=90)
     plt.colorbar(heatmap)
     plt.xlabel("token position")
-    plt.ylabel("diffusion step")
+    plt.ylabel("Diffusion Step")
     plt.savefig("confidence_over_steps.png")
     plt.clf()
 
