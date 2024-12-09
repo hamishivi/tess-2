@@ -136,9 +136,11 @@ def main():
         aspect="auto",  # norm=LogNorm(vmin=0.000000001, vmax=1)
     )
     plt.xticks(range(len(tokens)), tokens, rotation=90)
-    plt.colorbar(heatmap)
+    cbr = plt.colorbar(heatmap)
+    cbr.set_label("Confidence")
     plt.xlabel("token position")
     plt.ylabel("Diffusion Step")
+    plt.tight_layout()
     plt.savefig("confidence_over_steps.png")
     plt.clf()
 
