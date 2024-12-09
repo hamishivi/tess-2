@@ -19,6 +19,8 @@ from sdlm.models.cdcd.tokenwise_warper_model import (
     TokenwiseCDCDRobertaConfig,
     TokenwiseCDCDRobertaForDiffusionLM,
 )
+from sdlm.arguments import get_args
+from sdlm.models.utils import load_model
 from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 
@@ -28,90 +30,9 @@ MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DiffusionArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
-        model_args, diffusion_args = parser.parse_json_file(
-            json_file=os.path.abspath(sys.argv[1])
-        )
-    else:
-        model_args, diffusion_args = parser.parse_args_into_dataclasses()
-
-    # Set seed before initializing model.
-    set_seed(42)
-    config_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
-    }
-    config = TokenwiseCDCDRobertaConfig.from_pretrained(
-        model_args.model_name_or_path,
-        self_condition=diffusion_args.self_condition,
-        self_condition_zeros_after_softmax=diffusion_args.self_condition_zeros_after_softmax,
-        deepmind_conditional=diffusion_args.deepmind_conditional,
-        classifier_free_simplex_inputs=diffusion_args.classifier_free_simplex_inputs,
-        classifier_free_uncond_input=diffusion_args.classifier_free_uncond_input,
-        self_condition_mlp_projection=diffusion_args.self_condition_mlp_projection,
-        self_condition_mix_before_weights=diffusion_args.self_condition_mix_before_weights,
-        self_condition_mix_logits_before_weights=diffusion_args.self_condition_mix_logits_before_weights,
-        empty_token_be_mask=diffusion_args.empty_token_be_mask,
-        **config_kwargs,
-    )
-    tokenizer_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "use_fast": model_args.use_fast_tokenizer,
-        "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
-    }
-    if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name, **tokenizer_kwargs
-        )
-    elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path, **tokenizer_kwargs
-        )
-    else:
-        raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script."
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
-        )
-
-    if model_args.model_name_or_path:
-        model = TokenwiseCDCDRobertaForDiffusionLM.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-    else:
-        raise RuntimeError("You need to load a pretrained model")
-
-    # We resize the xs only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    vocab_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > vocab_size:
-        model.resize_token_embeddings(len(tokenizer))
-
-    # for some insane reason some of the model is not correctly loaded using from_pretrained...
-    state_dict = torch.load(
-        os.path.join(model_args.model_name_or_path, "pytorch_model.bin"),
-        map_location="cpu",
-    )
-    # for some insane reason the word embeddings dont get loaded
-    model.roberta.embeddings.word_embeddings.weight = torch.nn.Parameter(
-        state_dict["roberta.embeddings.word_embeddings.weight"]
-    )
-    model.tie_weights()
-    # make sure loading is entirely correct.
-    assert (
-        len(
-            [k for k in state_dict if torch.any(state_dict[k] != model.state_dict()[k])]
-        )
-        == 0
+    model_args, data_args, training_args, diffusion_args = get_args()
+    tokenizer, model = load_model(
+        model_args, data_args, training_args, diffusion_args, logger
     )
 
     def generate(
