@@ -127,7 +127,7 @@ def main():
     tokens = [tokenizer.decode(t) for t in output.logits[0].argmax(-1).cpu().numpy()]
     confidences = torch.cat(confidences, dim=0).cpu().numpy()
     prompt_len = len(tokenizer("When I talk about music, I talk about").input_ids)
-    confidences[:, :prompt_len] = 1
+    confidences[:, :prompt_len-1] = 1
     plt.figure(figsize=(15, 6))
     heatmap = plt.imshow(
         confidences,
