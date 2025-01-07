@@ -67,6 +67,21 @@ shell_scripts/run_tulu_eval.sh <run name> <model path> <eval name>
 
 Valid evaluation names are: `alpaca_eval`, `gsm8k`, `human_eval`, `bbh`, `squad`. Note that Squad, GSM8k, and AlpacaEval are the most tested, and other evaluations may have issues.
 
+## Guidance
+
+To run inference with reward guidance, use:
+```sh
+shell_scripts/run_guidance.sh <model path> <reward model path> <guidance scale> <eval name>
+```
+
+As before, valid evaluation names are `alpaca_eval`, `gsm8k`, `human_eval`, `bbh`, `squad`.
+For example, to run with the released TESS-2 model and associated reward model, use:
+```sh
+export OPENAI_API_KEY=<your openai key>
+export IS_ALPACA_EVAL_2=False
+shell_scripts/run_guidance.sh hamishivi/tess2 hamishivi/tess_mistral_rm 0.5 alpaca_eval
+```
+
 ## Beaker (For people at Ai2)
 
 For all the above scripts, you can run them with gantry by setting `BEAKER` and `WEKA` before running, e.g.:
@@ -85,3 +100,8 @@ We also provide a gradio demo for interacting with the model, which you can run 
 This gives a gradio UI that you can use to interact with the model as shown below:
 
 ![Gif showing the simplex ui in action](figures/ui.gif)
+
+## Other Scripts
+
+We also have scripts for computing perplexity, confidence over steps, and AR training in the `shell_scripts` folder.
+These largely use similar commands and setups to the scripts above, but please feel free to leave an issue or email Hamish Ivison (hamishiv at cs.washington.edu) if you need further assistance.

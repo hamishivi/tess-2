@@ -2,19 +2,19 @@
 
 run_name=$1
 checkpoint_mount=$2
-
+eval_dataset_name=$3
 
 CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_tulu \
     --dataset_name allenai/tulu-v2-sft-mixture \
     --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 16 \
+    --per_device_eval_batch_size 8 \
     --evaluation_strategy steps \
     --do_eval \
     --num_train_epochs 2 \
     --report_to tensorboard \
-    --max_seq_length 512 \
+    --max_seq_length 2048 \
     --simplex_value 5 \
     --num_diffusion_steps 5000 \
     --lr_scheduler_type cosine \
@@ -37,7 +37,7 @@ accelerate launch
     --line_by_line true \
     --mask_padding_in_loss false \
     --skip_special_tokens false \
-    --eval_dataset_name gsm8k
+    --eval_dataset_name ${eval_dataset_name}
 "
 
 # for ai2/jupiter-cirrascale-2 cluster
@@ -70,12 +70,13 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /results
 else
     ${CMD} \
-        --model_name_or_path tulu_mistral_200k \
+        --model_name_or_path ${checkpoint_mount} \
         --eval_steps 3 \
         --save_steps 5 \
-        --max_eval_samples 32 \
+        --max_eval_samples 5000 \
         --gradient_accumulation_steps 1 \
         --num_inference_diffusion_steps 100 \
-        --output_dir outputs/test \
-        --overwrite_output_dir true
+        --output_dir outputs/test_gsm8k_direct \
+        --overwrite_output_dir true \
+        --load_states_in_eval_from_model_path=False
 fi
