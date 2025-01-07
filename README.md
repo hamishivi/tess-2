@@ -101,6 +101,8 @@ This gives a gradio UI that you can use to interact with the model as shown belo
 
 ![Gif showing the simplex ui in action](figures/ui.gif)
 
+As you can see, the UI shows the highest confidence tokens at intermediate diffusion steps as the model generates them, providing a rough idea of the diffusion process.
+
 ## Other Scripts
 
 We also have scripts for computing perplexity, confidence over steps, and AR training in the `shell_scripts` folder.
