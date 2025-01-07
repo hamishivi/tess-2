@@ -1,20 +1,18 @@
 # tulu command.
 # WARNING: eval uses alpaca eval. this costs $$.
 
-checkpoint_mount="01J419EB0RHPECJWGE5VBSW3K5"
-
 CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_tulu \
     --dataset_name allenai/tulu-v2-sft-mixture \
-    --per_device_train_batch_size 16 \
-    --per_device_eval_batch_size 16 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
     --evaluation_strategy epoch \
     --do_train \
     --do_eval \
     --num_train_epochs 3 \
     --report_to tensorboard \
-    --max_seq_length 1024 \
+    --max_seq_length 2048 \
     --simplex_value 5 \
     --num_diffusion_steps 5000 \
     --lr_scheduler_type cosine \
@@ -44,10 +42,11 @@ accelerate launch
     --is_tulu_pair false \
     --is_tulu_multiturn false \
     --is_tulu_sliding_window_multiturn false \
+    --eval_dataset_name alpaca_eval
 "
 
 if [ ! -z "${BEAKER}" ]; then
-    gantry run -y -n tulu_mistral_1k_398k_multiturn -t tulu_mistral_1k_398k_multiturn --allow-dirty \
+    gantry run -y -n tulu_v3_mistral -t tulu_v3_mistral --allow-dirty \
         --workspace ai2/tess2 \
         --gpus 7 \
         --priority normal \
@@ -55,19 +54,20 @@ if [ ! -z "${BEAKER}" ]; then
         --preemptible \
         --no-nfs \
         --cluster ai2/allennlp-cirrascale \
-        --cluster ai2/general-cirrascale-a100-80g-ib \
+        --cluster ai2/saturn-cirrascale \
+        --cluster ai2/pluto-cirrascale \
         --cluster ai2/jupiter-cirrascale-2 \
         --env 'PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python' \
         --env 'IS_ALPACA_EVAL_2=False' \
         --env-secret OPENAI_API_KEY=OPENAI_API_KEY \
+        --env-secret HF_TOKEN=HF_TOKEN \
         --beaker-image 'ai2/pytorch2.0.0-cuda11.8-python3.10' \
-        --dataset "${checkpoint_mount}:/model" \
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --model_name_or_path /model/checkpoint-398000 \
+        --model_name_or_path /model \
         --max_eval_samples 1000 \
-        --gradient_accumulation_steps 1 \
+        --gradient_accumulation_steps 16 \
         --num_inference_diffusion_steps 100 \
         --overwrite_output_dir false \
         --beaker \
@@ -75,11 +75,9 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --model_name_or_path tulu_mistral_diffusion_200k \
-        --eval_steps 3 \
-        --save_steps 5 \
         --max_eval_samples 1000 \
-        --gradient_accumulation_steps 1 \
+        --gradient_accumulation_steps 16 \
         --num_inference_diffusion_steps 100 \
-        --output_dir outputs/test \
-        --overwrite_output_dir true
+        --output_dir instruction_tuned_model \
+        --overwrite_output_dir false
 fi
