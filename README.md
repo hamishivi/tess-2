@@ -7,6 +7,8 @@ For more details, please check out [our paper](ttps://arxiv.todo)!
 
 We note this codebase is based off and is very indebted to [the original TESS codebase](https://github.com/allenai/tess-diffusion).
 
+You can find the models associated with the paper and this codebase [here](https://huggingface.co/collections/hamishivi/tess-2-677ea36894e38f96dfc7b590).
+
 ## Installation
 
 ```sh
