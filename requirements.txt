@@ -2,4 +2,5 @@ flash-attn==2.6.3
 alpaca_eval==0.6.2
 trl==0.9.4
 gradio
-huggingface-hub==0.22.2
+huggingface-hub
+diffusers==0.30.0
