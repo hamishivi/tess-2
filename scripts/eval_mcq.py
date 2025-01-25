@@ -8,6 +8,7 @@ from sdlm.arguments import get_args
 from sdlm.models.utils import load_model
 import logging
 import re
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ def eval_hellaswag(pipeline):
     ds = load_dataset("Rowan/hellaswag", split='validation')
     total_cnt = cor = 0
     
-    for doc in ds:
+    for doc in tqdm(ds):
         total_cnt += 1
         ctx = doc["ctx_a"] + " " + doc["ctx_b"].capitalize()
         query = preprocess(doc["activity_label"] + ": " + ctx)
@@ -108,7 +109,7 @@ def eval_wino(pipeline):
     ds = load_dataset("allenai/winogrande", "winogrande_xl", split='validation')
     total_cnt = cor = 0
     
-    for doc in ds:
+    for doc in tqdm(ds):
         total_cnt += 1
         idx = doc["sentence"].index("_")
         options = [doc["option1"], doc["option2"]]
@@ -130,7 +131,7 @@ def eval_piqa(pipeline):
     ds = load_dataset("ybisk/piqa", split='validation')
     total_cnt = cor = 0
     
-    for doc in ds:
+    for doc in tqdm(ds):
         total_cnt += 1
         query = f"Question: {doc['goal']}\nAnswer: "
         choices = [doc["sol1"], doc["sol2"]]
@@ -145,7 +146,7 @@ def eval_siqa(pipeline):
     ds = load_dataset("allenai/social_i_qa", split='validation')
     total_cnt = cor = 0
 
-    for doc in ds:
+    for doc in tqdm(ds):
         total_cnt += 1
         query = f"Question: {doc['context']} {doc['question']}\nAnswer: "
         choices = [doc['answerA'], doc['answerB'], doc['answerC']]
