@@ -75,7 +75,7 @@ def compute_batch_loss(pipeline, inputs, targets):
         target_ids[~target_mask] = -100
         bsz = target_ids.size(0)
         loss = F.cross_entropy(
-            logits.view(-1, logits.size(-1)).permute(0, 2, 1),
+            logits.view(-1, logits.size(-1)),
             target_ids.view(-1),
             ignore_index=-100,
             reduction='none',
