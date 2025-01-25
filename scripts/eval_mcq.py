@@ -26,7 +26,7 @@ def setup_pipeline(model, tokenizer, diffusion_args):
         model=model.to(device),
         scheduler=TokenWiseSimplexDDPMScheduler(
             num_train_timesteps=diffusion_args.num_train_timesteps
-            if hasattr(diffusion_args, "num_train_timesteps") else 100,
+            if hasattr(diffusion_args, "num_train_timesteps") else 10,
             beta_schedule=getattr(diffusion_args, "beta_schedule", "squaredcos_improved_ddpm"),
             simplex_value=getattr(diffusion_args, "simplex_value", 5.0),
             clip_sample=getattr(diffusion_args, "clip_sample", False),
@@ -120,6 +120,8 @@ def eval_wino(pipeline):
         for opt in options:
             prefix = doc["sentence"][:idx]
             suffix = doc["sentence"][idx+1:].strip()
+            prefix = f"<|user|>\n{prefix}"
+            suffix = f"{suffix}\n<|assistant|>\nAnswer: "
             score_list = compute_batch_loss(pipeline, [prefix] * len(options), [opt + suffix for opt in options])
             
         if np.argmin(score_list) == gold:
@@ -133,7 +135,7 @@ def eval_piqa(pipeline):
     
     for doc in tqdm(ds):
         total_cnt += 1
-        query = f"Question: {doc['goal']}\nAnswer: "
+        query = f"<|user|>\nQuestion: {doc['goal']}\n<|assistant|>\nAnswer: "
         choices = [doc["sol1"], doc["sol2"]]
         
         score_list = compute_batch_loss(pipeline, [query] * len(choices), choices)
@@ -148,7 +150,7 @@ def eval_siqa(pipeline):
 
     for doc in tqdm(ds):
         total_cnt += 1
-        query = f"Question: {doc['context']} {doc['question']}\nAnswer: "
+        query = f"<|user|>\nQuestion: {doc['context']} {doc['question']}\n<|assistant|>\nAnswer: "
         choices = [doc['answerA'], doc['answerB'], doc['answerC']]
         gold = int(doc["label"]) - 1
 
