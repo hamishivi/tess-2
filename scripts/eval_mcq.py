@@ -73,13 +73,15 @@ def compute_batch_loss(pipeline, inputs, targets):
         target_mask = batch["span_mask"] == 1
         target_ids = batch["input_ids"].clone()
         target_ids[~target_mask] = -100
+        bsz = target_ids.size(0)
         loss = F.cross_entropy(
-            logits.view(-1, logits.size(-1)),
-            target_ids.view(-1),
-            ignore_index=-100
+            logits.view(bsz, -1, logits.size(-1)),
+            target_ids.view(bsz, -1),
+            ignore_index=-100,
+            reduce=False,
         )
-        timestep_losses.append(loss.item())
-        
+        timestep_losses.append(loss.cpu().detach().numpy())
+
     # average over timesteps
     losses.append(np.mean(timestep_losses, axis=1))
     
