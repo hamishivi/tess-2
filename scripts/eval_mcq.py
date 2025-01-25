@@ -64,7 +64,7 @@ def compute_batch_loss(pipeline, inputs, targets):
     
     batch = {
         "input_ids": torch.tensor(inps).to(device),
-        "span_mask": torch.tensor(masks).to(device)
+        "span_mask": torch.tensor(masks).to(device).to(torch.bool),
     }
     
     timestep_losses = []
