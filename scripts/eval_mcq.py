@@ -7,6 +7,7 @@ from datasets import load_dataset
 from sdlm.arguments import get_args
 from sdlm.models.utils import load_model
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
