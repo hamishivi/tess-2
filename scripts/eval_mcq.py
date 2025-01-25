@@ -52,7 +52,7 @@ def compute_batch_loss(pipeline, inputs, targets):
     inps, masks = [], []
     for input_text, target_text in zip(inputs, targets):
         inp = tokenizer(input_text + " "  + target_text).input_ids
-        inp_len = tokenizer(input_text).input_ids.shape[0]
+        inp_len = len(tokenizer(input_text).input_ids)
         mask = [0] * inp_len + [1] * (len(inp) - inp_len)
         inps.append(inp)
         masks.append(mask)
