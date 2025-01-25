@@ -6,9 +6,17 @@ import torch.nn.functional as F
 from datasets import load_dataset
 from sdlm.arguments import get_args
 from sdlm.models.utils import load_model
+import logging
 
 logger = logging.getLogger(__name__)
 
+def preprocess(text):
+    text = text.strip()
+    # NOTE: Brackets are artifacts of the WikiHow dataset portion of HellaSwag.
+    text = text.replace(" [title]", ". ")
+    text = re.sub("\\[.*?\\]", "", text)
+    text = text.replace("  ", " ")
+    return text
 
 def setup_pipeline(model, tokenizer, diffusion_args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
