@@ -609,6 +609,7 @@ class SimplexDDPMPipelineForEvaluation(SimplexDDPMPipeline):
             )
             model_output_logits = model_output.logits
             previous_hidden = model_output.hidden_states
+            losses.append(model_output.loss.detach().cpu())
             # no output stuff here, since all we care about is the loss.
             # yield over it. (prolly not optimal, but whatever)
             yield SimplexDiffusionPipelineOutput(
