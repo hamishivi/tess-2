@@ -530,30 +530,6 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
 # Main difference is that we assume that you pass the ground truth, and
 # want to compute the loss.
 class SimplexDDPMPipelineForEvaluation(SimplexDDPMPipeline):
-    def __init__(
-        self,
-        model,
-        scheduler,
-        simplex_value,
-        top_p,
-        sampling_type,
-        is_conditional_generation,
-        tokenizer,
-        classifier_free_uncond_input,
-        temperature,
-        guidance_softmax_combination,
-    ):
-        super().__init__()
-        self.register_modules(model=model, scheduler=scheduler)
-        self.simplex_value = simplex_value
-        self.top_p = top_p
-        self.sampling_type = sampling_type
-        self.is_conditional_generation = is_conditional_generation
-        self.tokenizer = tokenizer
-        self.classifier_free_uncond_input = classifier_free_uncond_input
-        self.temperature = temperature
-        self.guidance_softmax_combination = guidance_softmax_combination
-
     @torch.inference_mode()
     def __call__(
         self,
