@@ -590,7 +590,7 @@ class SimplexDDPMPipelineForEvaluation(SimplexDDPMPipeline):
                 t = original_t
             t_scaled = scale(t, len(self.scheduler))
             warped_steps.append(t)
-            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, t)
+            noisy_simplex = self.scheduler.add_noise(simplex, noise, t)
 
             # TODO: do we care about self-conditioning...?
             model_output = self.model(
