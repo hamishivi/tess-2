@@ -592,20 +592,19 @@ class SimplexDDPMPipelineForEvaluation(SimplexDDPMPipeline):
             warped_steps.append(t)
             noisy_simplex = self.scheduler.add_noise(simplex, noise, t)
 
+            attention_mask = batch["input_ids"] != self.tokenizer.pad_token_id
+
             # TODO: do we care about self-conditioning...?
             model_output = self.model(
-                input_ids=batch["input_ids"]
-                if self.is_conditional_generation
-                else None,
-                span_mask=batch["span_mask"]
-                if self.is_conditional_generation
-                else None,
+                input_ids=batch["input_ids"],
+                span_mask=batch["span_mask"],
+                attention_mask=attention_mask,
                 simplex=noisy_simplex,
                 timesteps=t_scaled,
                 classifier_free_guidance=classifier_free_guidance,
                 reduce_loss="none",
                 max_timestep=len(self.scheduler),
-                previous_hidden=previous_hidden,
+                previous_hidden=None,
             )
             model_output_logits = model_output.logits
             previous_hidden = model_output.hidden_states

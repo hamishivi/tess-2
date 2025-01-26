@@ -28,6 +28,7 @@ class DiffusionModelMixin:
         output_hidden_states: Optional[bool] = None,
         previous_pred: Optional[torch.FloatTensor] = None,
         reduce_loss: str = "mean",
+        attention_mask: Optional[torch.LongTensor] =None,
         **kwargs,
     ):
         # simplex -> weighted avg embedding
@@ -62,7 +63,7 @@ class DiffusionModelMixin:
 
         outputs = self.model(
             input_ids=None,  # TODO(rabeeh): we can remove this hack when we moved loss to outside.
-            attention_mask=None,  # attention_mask,
+            attention_mask=attention_mask,  #  only used for dealing with padding during evals
             position_ids=position_ids,
             past_key_values=None,
             inputs_embeds=inputs_embeds,
