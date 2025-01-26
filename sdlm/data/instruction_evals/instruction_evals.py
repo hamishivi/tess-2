@@ -513,6 +513,78 @@ class SquadEval():
             lambda x: any([y != -100 for y in x["labels"]])
         )
         return eval_dataset
+    
+triviaqa_shots = [
+    "Which American-born Sinclair won the Nobel Prize for Literature in 1930?\n\n(Harry) Sinclair Lewis",
+    "Where in England was Dame Judi Dench born?\n\nYork, England",
+]
+class TriviaQAEval():
+    def compute_metrics(results, skip_special_tokens=True):
+        # grab the instructions from the prefixes key
+        eval_data = [
+            x.replace("<|user|>\n", "").replace("<|assistant|>\nAnswer:", "").strip() for x in results["prefixes"]
+        ]
+        # for each, remove the few-shot prompt
+        eval_data = [x.replace("\n".join(squad_shots) + '\n', "") for x in eval_data]
+        sample_to_answer = {}
+        question_to_id = {}
+        original_data = load_dataset("mandarjoshi/trivia_qa", "rc", split='validation')
+        for example in original_data:
+            sample_to_answer[example["question"]] = example
+            question_to_id[ example["question"]] = example["id"]
+        # final, get ground truth by matching the question
+        gold_texts = [sample_to_answer.get(x, None) for x in eval_data]
+        ids = [question_to_id.get(x, "") for x in eval_data]
+        # then grab from logits masked.
+        decoded_preds = (
+            process_text(results["pred_texts_from_logits_masked"])
+            if not skip_special_tokens
+            else results["pred_texts_from_logits_masked"]
+        )
+        metrics = {}
+        # filter out empty gold texts and their corresponding eval data
+        predictions = [{"id": y['id'], "prediction_text": x} for x, y in zip(decoded_preds, gold_texts) if y is not None]
+        references = [{"id": x["id"], "answers": x["answers"]}  for x in gold_texts if x is not None]
+        # now calculate the metrics
+        results = squad_evaluate(references=references, predictions=predictions)
+        logger.info(f"Results: {results}")
+        metrics.update(results)
+        return metrics
+        
+    def construct_eval_dataset(tokenizer, max_target_length, max_eval_samples=500):
+        # load the actual samples
+        dataset = load_dataset("mandarjoshi/trivia_qa", "rc", split='validation')
+        dataset = dataset.shuffle(42).select(range(max_eval_samples))
+        # convert everything to tulu
+        prompts = []
+        for sample in dataset:
+            prompt = "\n".join(triviaqa_shots) + "\n\n" + sample["question"]
+            messages = [{"role": "user", "content": prompt}]
+            prompt = encode_with_messages_format_v1(
+                {"messages": messages}, tokenizer, max_target_length, return_string=True
+            )
+            prompts.append(prompt)
+        data = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_target_length,
+            add_special_tokens=False,
+        )
+        eval_dataset = Dataset.from_dict(data)
+        # labels are -100 on any non-pad token
+        labels = []
+        for sample in eval_dataset["input_ids"]:
+            labels.append(
+                [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
+            )
+        eval_dataset = eval_dataset.add_column("labels", labels)
+        # filter out samples without any space for generations.
+        eval_dataset = eval_dataset.filter(
+            lambda x: any([y != -100 for y in x["labels"]])
+        )
+        return eval_dataset
 
 
 EVAL_MAPPING = {
