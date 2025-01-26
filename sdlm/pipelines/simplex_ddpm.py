@@ -9,7 +9,7 @@ from diffusers.utils import BaseOutput
 
 from sdlm.inference.inference_utils import logits_projection
 from sdlm.models.utils import check_tokenizer_equal, is_cdcd_check, load_classifier
-from sdlm.utils import scale, self_condition_preds
+from sdlm.utils import scale, self_condition_preds, convert_to_simplex
 
 
 @dataclass
@@ -521,6 +521,125 @@ class SimplexDDPMClassifierGuidancePipeline(SimplexDDPMPipeline):
         # plt.plot(all_rewardst.to(torch.float32).T)
         # plt.savefig("tmp.png")
         # import pdb; pdb.set_trace()
+        return SimplexDiffusionPipelineOutput(
+            simplex=simplex, logits=model_output_logits, loss=loss
+        )
+
+
+# A variant of the SimplexDDPMPipeline that is used for evaluation.
+# Main difference is that we assume that you pass the ground truth, and
+# want to compute the loss.
+class SimplexDDPMPipelineForEvaluation(SimplexDDPMPipeline):
+    def __init__(
+        self,
+        model,
+        scheduler,
+        simplex_value,
+        top_p,
+        sampling_type,
+        is_conditional_generation,
+        tokenizer,
+        classifier_free_uncond_input,
+        temperature,
+        guidance_softmax_combination,
+    ):
+        super().__init__()
+        self.register_modules(model=model, scheduler=scheduler)
+        self.simplex_value = simplex_value
+        self.top_p = top_p
+        self.sampling_type = sampling_type
+        self.is_conditional_generation = is_conditional_generation
+        self.tokenizer = tokenizer
+        self.classifier_free_uncond_input = classifier_free_uncond_input
+        self.temperature = temperature
+        self.guidance_softmax_combination = guidance_softmax_combination
+
+    @torch.inference_mode()
+    def __call__(
+        self,
+        seq_length: int = 512,
+        generator: Optional[torch.Generator] = None,
+        batch: Optional[torch.FloatTensor] = None,
+        guidance_scale: float = 1.0,
+        is_generator: bool = False,
+    ) -> Union[SimplexDiffusionPipelineOutput, Tuple]:
+        # Classifier_free guidance works only in the conditional generation case.
+        classifier_free_guidance = (
+            guidance_scale > 1.0 and self.is_conditional_generation
+        )
+        # Sample gaussian noise to begin loop
+        vocab_size = self.model.config.vocab_size
+        if batch is not None:
+            seq_length = batch["input_ids"].shape[1]
+        # idk why i have the bsz argument.
+        batch_size = batch["input_ids"].shape[0]
+        simplex_shape = (batch_size, seq_length, vocab_size)
+        # simplex here is the simplex of the actual input!
+        simplex = convert_to_simplex(
+            batch["input_ids"], self.simplex_value, self.model.config.vocab_size
+        )
+        noise = self.simplex_value * torch.randn(
+            simplex_shape, generator=generator, device=self.device
+        )
+        if self.model.config.self_condition is not None:
+            previous_pred = torch.zeros(
+                (batch_size, seq_length, vocab_size), device=self.device
+            )
+        logits_projection_fct = lambda x: logits_projection(  # noqa: E731
+            x, self.sampling_type, self.top_p, self.simplex_value, self.temperature
+        )
+        losses = []
+        previous_hidden = None
+
+        warped_steps = []
+        prev_t = 0
+        for t in self.progress_bar(self.scheduler.timesteps):
+            original_t = torch.tensor([t], device=self.device).expand(
+                batch_size, seq_length
+            )
+            if is_cdcd_check(self.model):
+                # warp timesteps based on cdf
+                # we are in inference mode, anything in span_mask is to gen.
+                token_inputs = torch.where(
+                    batch["span_mask"], self.tokenizer.pad_token_id, batch["input_ids"]
+                )
+                t = self.model.warp_timesteps(
+                    original_t,
+                    t_min=0,
+                    t_max=len(self.scheduler) - 1,
+                    token_input=token_inputs,
+                    span_mask=batch["span_mask"],
+                )
+            else:
+                t = original_t
+            t_scaled = scale(t, len(self.scheduler))
+            warped_steps.append(t)
+            noisy_simplex = self.noise_scheduler.add_noise(simplex, noise, t)
+
+            # TODO: do we care about self-conditioning...?
+            model_output = self.model(
+                input_ids=batch["input_ids"]
+                if self.is_conditional_generation
+                else None,
+                span_mask=batch["span_mask"]
+                if self.is_conditional_generation
+                else None,
+                simplex=noisy_simplex,
+                timesteps=t_scaled,
+                classifier_free_guidance=classifier_free_guidance,
+                reduce_loss="none",
+                max_timestep=len(self.scheduler),
+                previous_hidden=previous_hidden,
+            )
+            model_output_logits = model_output.logits
+            previous_hidden = model_output.hidden_states
+            # no output stuff here, since all we care about is the loss.
+            # yield over it. (prolly not optimal, but whatever)
+            yield SimplexDiffusionPipelineOutput(
+                simplex=noisy_simplex, logits=model_output_logits, loss=losses[-1]
+            )
+        # we take the mean loss over all timesteps
+        loss = torch.stack(losses, dim=0)
         return SimplexDiffusionPipelineOutput(
             simplex=simplex, logits=model_output_logits, loss=loss
         )

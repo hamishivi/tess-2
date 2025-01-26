@@ -1,5 +1,5 @@
 import torch
-from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipelineForEvaluation
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 import numpy as np
 import torch.nn.functional as F
@@ -22,7 +22,7 @@ def preprocess(text):
 
 def setup_pipeline(model, tokenizer, diffusion_args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    pipeline = SimplexDDPMPipeline(
+    pipeline = SimplexDDPMPipelineForEvaluation(
         model=model.to(device),
         scheduler=TokenWiseSimplexDDPMScheduler(
             num_train_timesteps=diffusion_args.num_train_timesteps
