@@ -544,7 +544,6 @@ class TriviaQAEval():
         )
         metrics = {}
         # filter out empty gold texts and their corresponding eval data
-        import pdb; pdb.set_trace()
         predictions = [{"id": y['id'], "prediction_text": x} for x, y in zip(decoded_preds, gold_texts) if y is not None]
         references = [{"id": x["id"], "answers": {'text': x["answer"]["aliases"]}}  for x in gold_texts if x is not None]
         # now calculate the metrics
