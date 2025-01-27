@@ -25,7 +25,7 @@ def setup_pipeline(model, tokenizer, diffusion_args):
         model=model.to(device),
         scheduler=TokenWiseSimplexDDPMScheduler(
             num_train_timesteps=diffusion_args.num_train_timesteps
-            if hasattr(diffusion_args, "num_train_timesteps") else 32,
+            if hasattr(diffusion_args, "num_train_timesteps") else 4,
             beta_schedule=getattr(diffusion_args, "beta_schedule", "squaredcos_improved_ddpm"),
             simplex_value=getattr(diffusion_args, "simplex_value", 5.0),
             clip_sample=getattr(diffusion_args, "clip_sample", False),
@@ -50,16 +50,15 @@ def compute_batch_loss(pipeline, inputs, targets):
     for input_text, target_text in zip(inputs, targets):
         full_text = input_text.strip() + " " + target_text.strip()
         full_tokenized = tokenizer(full_text)
-        input_tokenized = tokenizer(input_text)
+        input_tokenized = tokenizer(input_text.strip())
         inp = full_tokenized.input_ids
         inp_len = len(input_tokenized.input_ids) - 1  # eos token
         mask = [0] * inp_len + [1] * (len(inp) - inp_len)
         inps.append(inp)
         masks.append(mask)
-
-    max_len = max(len(x) for x in inps)
+    max_len = 2048 #max(len(x) for x in inps)
     inps_padded = [x + [tokenizer.pad_token_id] * (max_len - len(x)) for x in inps]
-    masks_padded = [x + [0] * (max_len - len(x)) for x in masks]
+    masks_padded = [x + [1] * (max_len - len(x)) for x in masks]
     
     batch = {
         "input_ids": torch.tensor(inps_padded).to(device),
@@ -71,6 +70,7 @@ def compute_batch_loss(pipeline, inputs, targets):
         target_mask = batch["span_mask"] == 1
         target_ids = batch["input_ids"].clone()
         target_ids[~target_mask] = -100
+        target_ids[target_ids == tokenizer.pad_token_id] = -100
         target_ids = target_ids[:, 1:]
         logits = logits[:, :-1]
         loss = F.cross_entropy(
@@ -162,7 +162,7 @@ def eval_wino(pipeline, batch_size=32):
     print(f'Winogrande acc: {final_acc:.4f}')
     return final_acc
 
-def eval_piqa(pipeline, batch_size=32):
+def eval_piqa(pipeline, batch_size=2):
     ds = load_dataset("ybisk/piqa", split='validation')
     all_queries, all_choices, all_labels = [], [], []
 
@@ -189,6 +189,7 @@ def eval_piqa(pipeline, batch_size=32):
 
         losses = compute_batch_loss(pipeline, input_texts, target_texts)
         losses = losses.reshape(-1, 2)
+        print(losses)
         preds = np.argmin(losses, axis=1)
         cor += np.sum(preds == batch_labels)
         pbar.set_postfix({'acc': f'{cor / (i + batch_size):.4f}'})
@@ -237,10 +238,10 @@ def main():
     tokenizer, model = load_model(model_args, data_args, training_args, diffusion_args, logger)
 
     pipeline = setup_pipeline(model, tokenizer, diffusion_args)
-    #eval_hellaswag(pipeline)
     eval_piqa(pipeline)
     eval_wino(pipeline)
     eval_siqa(pipeline)
+    eval_hellaswag(pipeline)
 
 if __name__ == "__main__":
     main()
