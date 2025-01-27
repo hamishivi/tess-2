@@ -529,8 +529,8 @@ class TriviaQAEval():
         sample_to_answer = {}
         question_to_id = {}
         original_data = load_dataset("mandarjoshi/trivia_qa", "rc", split='validation')
-        original_data['id'] = original_data['question_id']
         for example in original_data:
+            example["id"] = example["question_id"]
             sample_to_answer[example["question"]] = example
             question_to_id[ example["question"]] = example["id"]
         # final, get ground truth by matching the question
