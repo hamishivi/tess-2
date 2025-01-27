@@ -545,7 +545,7 @@ class TriviaQAEval():
         metrics = {}
         # filter out empty gold texts and their corresponding eval data
         predictions = [{"id": y['id'], "prediction_text": x} for x, y in zip(decoded_preds, gold_texts) if y is not None]
-        references = [{"id": x["id"], "answers": x["answers"]}  for x in gold_texts if x is not None]
+        references = [{"id": x["id"], "answers": {'text': x["answers"]["aliases"]}}  for x in gold_texts if x is not None]
         # now calculate the metrics
         results = squad_evaluate(references=references, predictions=predictions)
         logger.info(f"Results: {results}")
