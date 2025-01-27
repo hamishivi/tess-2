@@ -518,6 +518,26 @@ triviaqa_shots = [
     "Which American-born Sinclair won the Nobel Prize for Literature in 1930?\n\n(Harry) Sinclair Lewis",
     "Where in England was Dame Judi Dench born?\n\nYork, England",
 ]
+
+def normalize_answer(s):
+    """Lower text and remove punctuation, articles and extra whitespace."""
+
+    def remove_articles(text):
+        return re.sub(r"\b(a|an|the)\b", " ", text)
+
+    def white_space_fix(text):
+        return " ".join(text.split())
+
+    def remove_punc(text):
+        exclude = set(string.punctuation)
+        return "".join(ch for ch in text if ch not in exclude)
+
+    def lower(text):
+        return text.lower()
+
+    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+
 class TriviaQAEval():
     def compute_metrics(results, skip_special_tokens=True):
         # grab the instructions from the prefixes key
@@ -548,6 +568,16 @@ class TriviaQAEval():
         references = [{"id": x["id"], "answers": {'text': x["answer"]["aliases"]}}  for x in gold_texts if x is not None]
         # now calculate the metrics
         results = squad_evaluate(references=references, predictions=predictions)
+        # also do diffullama-style
+        for pred, ref in zip(predictions, references):
+            pred = pred['prediction_text']
+            ref = ref['answers']['text']
+            for ans in ref:
+                if normalize_answer(ans) in normalize_answer(pred.strip()):
+                    cor += 1
+                    break
+        diffullama_acc = cor / len(predictions)
+        results["diffullama_acc"] = diffullama_acc
         logger.info(f"Results: {results}")
         metrics.update(results)
         return metrics
