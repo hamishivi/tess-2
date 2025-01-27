@@ -48,11 +48,11 @@ def compute_batch_loss(pipeline, inputs, targets):
     
     inps, masks = [], []
     for input_text, target_text in zip(inputs, targets):
-        full_text = input_text + " " + target_text
+        full_text = input_text.strip() + " " + target_text.strip()
         full_tokenized = tokenizer(full_text)
         input_tokenized = tokenizer(input_text)
         inp = full_tokenized.input_ids
-        inp_len = len(input_tokenized.input_ids)
+        inp_len = len(input_tokenized.input_ids) - 1  # eos token
         mask = [0] * inp_len + [1] * (len(inp) - inp_len)
         inps.append(inp)
         masks.append(mask)
