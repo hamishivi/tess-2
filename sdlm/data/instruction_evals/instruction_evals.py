@@ -525,7 +525,7 @@ class TriviaQAEval():
             x.replace("<|user|>\n", "").replace("<|assistant|>\nAnswer:", "").strip() for x in results["prefixes"]
         ]
         # for each, remove the few-shot prompt
-        eval_data = [x.replace("\n".join(squad_shots) + '\n', "") for x in eval_data]
+        eval_data = [x.replace("\n".join(triviaqa_shots) + '\n', "").strip() for x in eval_data]
         sample_to_answer = {}
         question_to_id = {}
         original_data = load_dataset("mandarjoshi/trivia_qa", "rc", split='validation')
@@ -544,8 +544,9 @@ class TriviaQAEval():
         )
         metrics = {}
         # filter out empty gold texts and their corresponding eval data
+        import pdb; pdb.set_trace()
         predictions = [{"id": y['id'], "prediction_text": x} for x, y in zip(decoded_preds, gold_texts) if y is not None]
-        references = [{"id": x["id"], "answers": {'text': x["answers"]["aliases"]}}  for x in gold_texts if x is not None]
+        references = [{"id": x["id"], "answers": {'text': x["answer"]["aliases"]}}  for x in gold_texts if x is not None]
         # now calculate the metrics
         results = squad_evaluate(references=references, predictions=predictions)
         logger.info(f"Results: {results}")
