@@ -306,7 +306,7 @@ def eval_piqa(pipeline, batch_size=2):
 
     all_queries, all_choices, all_labels = [], [], []
     for doc in ds:
-        query = f"<|user|>\nQuestion: {doc['goal']}\n<|assistant|>\nAnswer: "
+        query = f"Question: {doc['goal']}\nAnswer: "
         choices = [doc["sol1"], doc["sol2"]]
         all_queries.append(query)
         all_choices.append(choices)
