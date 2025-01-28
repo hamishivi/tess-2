@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 import datetime
 from torch.nn.parallel import DistributedDataParallel as DDP
-from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipelineForEvaluation
+from sdlm.pipelines.simplex_ddpm import SimplexDDPMPipeline
 from sdlm.schedulers import TokenWiseSimplexDDPMScheduler
 import numpy as np
 import torch.nn.functional as F
@@ -63,7 +63,7 @@ def setup_pipeline(model, tokenizer, diffusion_args, local_rank):
     print_rank("Model moved to device", local_rank)
 
     # Create pipeline with base model
-    pipeline = SimplexDDPMPipelineForEvaluation(
+    pipeline = SimplexDDPMPipeline(
         model=model,
         scheduler=TokenWiseSimplexDDPMScheduler(
             num_train_timesteps=diffusion_args.num_train_timesteps
@@ -101,8 +101,6 @@ def compute_batch_loss(pipeline, inputs, targets):
 
     # Use base_model for configuration if available
     model_for_config = getattr(pipeline, 'base_model', pipeline.model)
-    for i, _ in enumerate(inputs):
-        inputs[i] = "<|user|>\n" + inputs[i].strip() + "<|assistant|>\n"
 
     inps, masks = [], []
     for input_text, target_text in zip(inputs, targets):
