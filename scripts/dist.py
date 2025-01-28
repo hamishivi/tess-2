@@ -112,7 +112,7 @@ def compute_batch_loss(pipeline, inputs, targets):
         mask = [0] * inp_len + [1] * (len(inp) - inp_len)
         inps.append(inp)
         masks.append(mask)
-    max_len = 2048
+    max_len = max(len(x) for x in inps)
     inps_padded = [x + [tokenizer.pad_token_id] * (max_len - len(x)) for x in inps]
     masks_padded = [x + [1] * (max_len - len(x)) for x in masks]
 
@@ -364,7 +364,7 @@ def eval_piqa(pipeline, batch_size=2):
         print("-" * 40)
     return final_acc
 
-def eval_siqa(pipeline, batch_size=2):
+def eval_siqa(pipeline, batch_size=1):
     local_rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
 
@@ -452,8 +452,8 @@ def main():
 
         #eval_piqa(pipeline)
         eval_wino(pipeline)
-        eval_siqa(pipeline)
         eval_piqa(pipeline)
+        eval_siqa(pipeline)
         eval_hellaswag(pipeline)
 
         # Clean up
