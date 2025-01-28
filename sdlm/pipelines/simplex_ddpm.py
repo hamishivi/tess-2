@@ -605,7 +605,7 @@ class SimplexDDPMPipelineForEvaluation(SimplexDDPMPipeline):
                 reduce_loss="none",
                 previous_pred=previous_pred,
                 max_timestep=len(self.scheduler),
-                previous_hidden=None,
+                previous_hidden=previous_hidden,
             )
             model_output_logits = model_output.logits
             previous_hidden = model_output.hidden_states
