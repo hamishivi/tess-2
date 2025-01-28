@@ -101,6 +101,8 @@ def compute_batch_loss(pipeline, inputs, targets):
 
     # Use base_model for configuration if available
     model_for_config = getattr(pipeline, 'base_model', pipeline.model)
+    for i, _ in enumerate(inputs):
+        inputs[i] = "<|user|>\n" + inputs[i].strip() + "<|assistant|>\n"
 
     inps, masks = [], []
     for input_text, target_text in zip(inputs, targets):
