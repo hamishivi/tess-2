@@ -6,6 +6,7 @@ without the train flag.
 import logging
 import re
 import json
+import string
 
 import alpaca_eval
 import evaluate
