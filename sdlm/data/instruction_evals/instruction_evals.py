@@ -570,6 +570,7 @@ class TriviaQAEval():
         # now calculate the metrics
         results = squad_evaluate(references=references, predictions=predictions)
         # also do diffullama-style
+        cor = 0
         for pred, ref in zip(predictions, references):
             pred = pred['prediction_text']
             ref = ref['answers']['text']
