@@ -603,12 +603,23 @@ class SimplexDDPMPipelineForEvaluation(SimplexDDPMPipeline):
                 timesteps=t_scaled,
                 classifier_free_guidance=classifier_free_guidance,
                 reduce_loss="none",
+                previous_pred=previous_pred,
                 max_timestep=len(self.scheduler),
                 previous_hidden=None,
             )
             model_output_logits = model_output.logits
             previous_hidden = model_output.hidden_states
             losses.append(model_output.loss.detach().cpu())
+
+            if self.model.config.self_condition is not None:
+                prev_output_logits = model_output_logits
+                previous_pred = self_condition_preds(
+                    self.model.config.self_condition,
+                    prev_output_logits,
+                    logits_projection_fct,
+                )
+
+            old_simplex = simplex
             # no output stuff here, since all we care about is the loss.
             # yield over it. (prolly not optimal, but whatever)
             yield SimplexDiffusionPipelineOutput(
