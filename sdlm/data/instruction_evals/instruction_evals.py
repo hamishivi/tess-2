@@ -17,10 +17,9 @@ from sdlm.utils import encode_with_messages_format_v1
 from sdlm.data.instruction_evals.gsm_exemplars import EXEMPLARS as GSM_EXEMPLARS
 from sdlm.data.instruction_evals.codex_evaluation import evaluate_functional_correctness, write_jsonl
 from sdlm.data.instruction_evals.squad_eval_1 import evaluate as squad_evaluate
+from sdlm.data.instruction_evals.hf_exact_match import exact_match_hf_evaluate as exact_match
 
 logger = logging.getLogger(__name__)
-
-exact_match = evaluate.load("exact_match")
 
 class DiffusionEvaluation():
     def compute_metrics(results, skip_special_tokens=True):
@@ -149,7 +148,7 @@ class GSM8kEval():
         predictions = [x for x, y in zip(predictions, gold_texts) if y]
         gold_texts = [x for x in gold_texts if x]
         # now calculate the metrics
-        em_score = exact_match.compute(
+        em_score = exact_match(
             predictions=predictions,
             references=gold_texts,
             ignore_case=True,
@@ -383,7 +382,7 @@ class BBHEval():
         predictions = [x for x, y in zip(predictions, gold_texts) if y]
         gold_texts = [x for x in gold_texts if x]
         # now calculate the metrics
-        em_score = exact_match.compute(
+        em_score = exact_match(
             predictions=predictions,
             references=gold_texts,
             ignore_case=True,
