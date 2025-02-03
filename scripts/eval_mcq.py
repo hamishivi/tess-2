@@ -160,38 +160,6 @@ def eval_siqa(pipeline):
 
     print('SIQA acc:', cor/total_cnt)
 
-
-def eval_humaneval(pipeline):
-    from human_eval_infilling.data import write_jsonl, read_problems
-    subtasks = "single-line"
-    problems = read_problems(benchmark_name=subtasks)
-    samples = []
-    tokenizer = pipeline.tokenizer
-    for task_id in problems:
-        prompt = problems[task_id]["prompt"]
-        suffix = problems[task_id]["suffix"]
-        middle = problems[task_id]["canonical_solution"]
-
-        prefix = tokenizer.encode(prompt, add_special_tokens=False)
-        suff = tokenizer.encode(suffix, add_special_tokens=False)
-        x0 = prefix + tokenizer.encode(middle, add_special_tokens=False) + suff
-        src_mask = [1]*len(prefix)+[0]*(len(x0)-len(prefix)-len(suff))+[1]*len(suff)
-        # from diffullama code.
-        if len(x0) > 1000:
-            print(task_id)
-            continue
-        
-        inputs = {"input_ids": torch.tensor([x0]), "span_mask": torch.tensor([src_mask])}
-        
-        res = pipeline(batch=inputs,)
-        pred = tokenizer.decode(res.tolist()[0][len(prefix)-1:len(x0)-len(suff)-1])
-    
-        samples.append(dict(task_id=task_id, completion=pred))
-
-    write_jsonl(f"humaneval_{subtasks}.jsonl", samples)
-    print("Then run `python -m human_eval_infilling.evaluate humaneval_{subtasks}.jsonl` to evaluate the model.")
-
-
 def main():
     model_args, data_args, training_args, diffusion_args = get_args()
     tokenizer, model = load_model(model_args, data_args, training_args, diffusion_args, logger)
@@ -201,7 +169,6 @@ def main():
     eval_piqa(pipeline)
     eval_wino(pipeline)
     eval_siqa(pipeline)
-    eval_humaneval(pipeline)
 
 if __name__ == "__main__":
     main()
