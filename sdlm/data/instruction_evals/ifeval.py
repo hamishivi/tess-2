@@ -2,6 +2,8 @@ import dataclasses
 import json
 from typing import Dict, List, Optional, Union
 
+from datasets import load_dataset
+
 import sdlm.data.instruction_evals.ifeval_instruction_registry as instructions_registry
 
 
@@ -22,17 +24,16 @@ class OutputExample:
     follow_instruction_list: List[bool]
 
 
-def read_prompt_list(input_jsonl_filename):
+def load_prompts():
     """Read inputs from jsonl."""
+    ds = load_dataset("google/IFEval", split="train")
     inputs = []
-    with open(input_jsonl_filename, "r") as f:
-        for l in f:
-            example = json.loads(l)
-            inputs.append(
-                InputExample(key=example["key"],
-                            instruction_id_list=example["instruction_id_list"],
-                            prompt=example["prompt"],
-                            kwargs=example["kwargs"]))
+    for example in ds:
+        inputs.append(
+            InputExample(key=example["key"],
+                        instruction_id_list=example["instruction_id_list"],
+                        prompt=example["prompt"],
+                        kwargs=example["kwargs"]))
     return inputs
 
 
