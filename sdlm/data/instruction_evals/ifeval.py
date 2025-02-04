@@ -2,7 +2,7 @@ import dataclasses
 import json
 from typing import Dict, List, Optional, Union
 
-import sdlm.data.instruction_evals.ifeval_instructions_registry as instructions_registry
+import sdlm.data.instruction_evals.ifeval_instruction_registry as instructions_registry
 
 
 @dataclasses.dataclass
