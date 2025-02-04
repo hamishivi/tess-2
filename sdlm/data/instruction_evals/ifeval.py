@@ -24,7 +24,7 @@ class OutputExample:
     follow_instruction_list: List[bool]
 
 
-def load_prompts():
+def load_ifeval_prompts():
     """Read inputs from jsonl."""
     ds = load_dataset("google/IFEval", split="train")
     inputs = []

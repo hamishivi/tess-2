@@ -18,7 +18,7 @@ from sdlm.data.instruction_evals.gsm_exemplars import EXEMPLARS as GSM_EXEMPLARS
 from sdlm.data.instruction_evals.codex_evaluation import evaluate_functional_correctness, write_jsonl
 from sdlm.data.instruction_evals.squad_eval_1 import evaluate as squad_evaluate
 from sdlm.data.instruction_evals.hf_exact_match import exact_match_hf_evaluate as exact_match
-from sdlm.data.instruction_evals.ifeval import test_instruction_following_strict, test_instruction_following_loose, load_prompts
+from sdlm.data.instruction_evals.ifeval import test_instruction_following_strict, test_instruction_following_loose, load_ifeval_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -682,7 +682,7 @@ class IFEval():
         }
 
         # Read input data
-        input_data = load_prompts()
+        input_data = load_ifeval_prompts()
         
         metrics = {}
         strict_outputs = []
@@ -726,7 +726,7 @@ class IFEval():
             Dataset: The constructed evaluation dataset
         """
         # Read the input examples
-        eval_dataset = read_prompt_list(os.path.join("data/eval/ifeval", "input_data.jsonl"))
+        eval_dataset = load_ifeval_prompts()
 
         if max_eval_samples:
             eval_dataset = eval_dataset[:max_eval_samples]
