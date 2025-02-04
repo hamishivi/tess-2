@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Registry of all instructions."""
-from eval.ifeval import instructions
+from sdlm.data.instruction_evals import ifeval_instructions as instructions
 
 _KEYWORD = "keywords:"
 
