@@ -5,11 +5,11 @@ without the train flag.
 '''
 import logging
 import re
-import json
 import string
+import os
 
 import alpaca_eval
-import evaluate
+import collections
 from datasets import load_dataset, Dataset
 
 from sdlm.inference.inference_utils import process_text
@@ -18,6 +18,7 @@ from sdlm.data.instruction_evals.gsm_exemplars import EXEMPLARS as GSM_EXEMPLARS
 from sdlm.data.instruction_evals.codex_evaluation import evaluate_functional_correctness, write_jsonl
 from sdlm.data.instruction_evals.squad_eval_1 import evaluate as squad_evaluate
 from sdlm.data.instruction_evals.hf_exact_match import exact_match_hf_evaluate as exact_match
+from sdlm.data.instruction_evals.ifeval import test_instruction_following_strict, test_instruction_following_loose, read_prompt_list
 
 logger = logging.getLogger(__name__)
 
@@ -617,6 +618,199 @@ class TriviaQAEval():
             lambda x: any([y != -100 for y in x["labels"]])
         )
         return eval_dataset
+    
+
+def calculate_scores(outputs):
+    """Helper function to calculate accuracy scores from outputs.
+    
+    Args:
+        outputs (list): List of OutputExample objects
+        
+    Returns:
+        dict: Dictionary containing accuracy metrics
+    """
+    prompt_total = len(outputs)
+    prompt_correct = sum(1 for o in outputs if o.follow_all_instructions)
+    
+    instruction_total = sum(len(o.instruction_id_list) for o in outputs)
+    instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
+
+    # Calculate per-instruction accuracies
+    instruction_metrics = collections.defaultdict(lambda: {"total": 0, "correct": 0})
+    
+    for output in outputs:
+        for inst_id, followed in zip(output.instruction_id_list, output.follow_instruction_list):
+            instruction_metrics[inst_id]["total"] += 1
+            if followed:
+                instruction_metrics[inst_id]["correct"] += 1
+
+    return {
+        "prompt_level_accuracy": prompt_correct / prompt_total,
+        "instruction_level_accuracy": instruction_correct / instruction_total,
+        "per_instruction_accuracy": {
+            k: v["correct"] / v["total"] 
+            for k, v in instruction_metrics.items()
+        }
+    }
+
+class IFEval():
+    def compute_metrics(results, skip_special_tokens=True):
+        """Computes metrics for instruction following evaluation.
+        
+        Args:
+            results (dict): Contains prediction results including prefixes and predictions
+            skip_special_tokens (bool): Whether to skip special tokens in processing
+        
+        Returns:
+            dict: Dictionary containing computed metrics
+        """
+        # Create mapping from prompts to predictions
+        prompts = [
+            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip() 
+            for x in results["prefixes"]
+        ]
+        
+        predictions = (
+            process_text(results["pred_texts_from_logits_masked"])
+            if not skip_special_tokens
+            else results["pred_texts_from_logits_masked"]
+        )
+        
+        # Create prompt -> prediction mapping
+        prompt_to_response = {
+            prompt: pred.strip() for prompt, pred in zip(prompts, predictions)
+        }
+
+        # Read input data
+        input_data = read_prompt_list(os.path.join("data/eval/ifeval", "input_data.jsonl"))
+        
+        metrics = {}
+        strict_outputs = []
+        loose_outputs = []
+
+        # Process each input example
+        for inp in input_data:
+            # Skip if prompt not found in predictions
+            if inp.prompt not in prompt_to_response:
+                continue
+                
+            # Test instruction following in strict mode
+            strict_result = test_instruction_following_strict(
+                inp,
+                prompt_to_response
+            )
+            strict_outputs.append(strict_result)
+
+            # Test instruction following in loose mode 
+            loose_result = test_instruction_following_loose(
+                inp,
+                prompt_to_response
+            )
+            loose_outputs.append(loose_result)
+
+        # Calculate metrics for both strict and loose evaluation
+        metrics["strict"] = calculate_scores(strict_outputs)
+        metrics["loose"] = calculate_scores(loose_outputs)
+
+        return metrics
+
+    def construct_eval_dataset(tokenizer, max_target_length, max_eval_samples=None):
+        """Constructs evaluation dataset for instruction following.
+        
+        Args:
+            tokenizer: The tokenizer to use
+            max_target_length (int): Maximum sequence length
+            max_eval_samples (int): Maximum number of samples to evaluate
+        
+        Returns:
+            Dataset: The constructed evaluation dataset
+        """
+        # Read the input examples
+        eval_dataset = read_prompt_list(os.path.join("data/eval/ifeval", "input_data.jsonl"))
+
+        if max_eval_samples:
+            eval_dataset = eval_dataset[:max_eval_samples]
+
+        # Format prompts
+        prompts = []
+        for sample in eval_dataset:
+            messages = [{"role": "user", "content": sample.prompt}]
+            prompt = encode_with_messages_format_v1(
+                {"messages": messages}, 
+                tokenizer,
+                max_target_length,
+                return_string=True
+            )
+            prompt = prompt + "\n<|assistant|>\n"
+            prompts.append(prompt)
+
+        # Tokenize the prompts
+        data = tokenizer(
+            prompts,
+            return_tensors="pt", 
+            padding=True,
+            truncation=True,
+            max_length=max_target_length,
+            add_special_tokens=False,
+        )
+        
+        # Convert to Dataset format
+        eval_dataset = Dataset.from_dict(data)
+        
+        # Create labels (-100 for input tokens, 1 for generation space)
+        labels = []
+        for sample in eval_dataset["input_ids"]:
+            labels.append(
+                [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
+            )
+        eval_dataset = eval_dataset.add_column("labels", labels)
+
+        # Filter samples that don't have space for generation
+        eval_dataset = eval_dataset.filter(
+            lambda x: any([y != -100 for y in x["labels"]])
+        )
+
+        return eval_dataset
+
+def calculate_scores(outputs):
+    """Helper function to calculate accuracy scores from outputs.
+    
+    Args:
+        outputs (list): List of OutputExample objects
+        
+    Returns:
+        dict: Dictionary containing accuracy metrics
+    """
+    if not outputs:
+        return {
+            "prompt_level_accuracy": 0.0,
+            "instruction_level_accuracy": 0.0,
+            "per_instruction_accuracy": {}
+        }
+        
+    prompt_total = len(outputs)
+    prompt_correct = sum(1 for o in outputs if o.follow_all_instructions)
+    
+    instruction_total = sum(len(o.instruction_id_list) for o in outputs)
+    instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
+
+    # Calculate per-instruction accuracies
+    instruction_metrics = collections.defaultdict(lambda: {"total": 0, "correct": 0})
+    
+    for output in outputs:
+        for inst_id, followed in zip(output.instruction_id_list, output.follow_instruction_list):
+            instruction_metrics[inst_id]["total"] += 1
+            if followed:
+                instruction_metrics[inst_id]["correct"] += 1
+
+    return {
+        "prompt_level_accuracy": prompt_correct / prompt_total,
+        "instruction_level_accuracy": instruction_correct / instruction_total,
+        "per_instruction_accuracy": {
+            k: v["correct"] / v["total"] 
+            for k, v in instruction_metrics.items()
+        }
+    }
 
 
 EVAL_MAPPING = {
@@ -625,5 +819,6 @@ EVAL_MAPPING = {
     "human_eval": CodexHumanEval,
     "bbh": BBHEval,
     "squad": SquadEval,
-    "triviaqa": TriviaQAEval
+    "triviaqa": TriviaQAEval,
+    "ifeval": IFEval
 }
