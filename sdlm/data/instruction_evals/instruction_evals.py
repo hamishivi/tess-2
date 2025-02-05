@@ -886,6 +886,8 @@ class MMLUEval():
         for i, prompt in enumerate(eval_data):
             # Extract subject from prompt format
             subject = prompt.split("The following are multiple choice questions (with answers) about")[1].split(".")[0].strip()
+
+            subject = subject.replace(" ", "_")
             
             # Load test data for this subject
             test_df = pd.read_csv(
