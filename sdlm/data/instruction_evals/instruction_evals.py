@@ -857,7 +857,7 @@ class MMLUEval():
             
             # Load test data for this subject
             test_df = pd.read_csv(
-                os.path.join("sdlm/data/instruction_evals/mmlu_data/test", f"{subject}_test.csv"),
+                os.path.join("sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
                 header=None
             )
             
@@ -895,7 +895,7 @@ class MMLUEval():
         # Get list of subjects
         subjects = sorted([
             f.split("_test.csv")[0]
-            for f in os.listdir(os.path.join("sdlm/data/instruction_evals/mmlu_data/test"))
+            for f in os.listdir(os.path.join("sdlm/data/instruction_evals/mmlu_data/data/test"))
             if "_test.csv" in f
         ])
         
@@ -906,11 +906,11 @@ class MMLUEval():
         for subject in subjects:
             # Load dev and test data
             dev_df = pd.read_csv(
-                os.path.join("sdlm/data/instruction_evals/mmlu_data/dev", f"{subject}_dev.csv"),
+                os.path.join("sdlm/data/instruction_evals/mmlu_data/data/dev", f"{subject}_dev.csv"),
                 header=None
             )
             test_df = pd.read_csv(
-                os.path.join("sdlm/data/instruction_evals/mmlu_data/test", f"{subject}_test.csv"),
+                os.path.join("sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
                 header=None
             )
             
