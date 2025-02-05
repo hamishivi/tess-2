@@ -174,3 +174,5 @@ tmp2
 .lock
 test_results
 checkpoints
+
+sdlm/data/instruction_evals/mmlu_data
