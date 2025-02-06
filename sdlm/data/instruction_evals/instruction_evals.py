@@ -712,8 +712,13 @@ class IFEval():
             loose_outputs.append(loose_result)
 
         # Calculate metrics for both strict and loose evaluation
-        metrics["strict"] = calculate_scores(strict_outputs)
-        metrics["loose"] = calculate_scores(loose_outputs)
+        metrics = {}
+        strict_metrics = calculate_scores(strict_outputs)
+        for k, v in strict_metrics.items():
+            metrics[f"strict_{k}"] = v
+        loose_metrics = calculate_scores(loose_outputs)
+        for k, v in loose_metrics.items():
+            metrics[f"loose_{k}"] = v
 
         return metrics
 
@@ -742,9 +747,9 @@ class IFEval():
                 {"messages": messages}, 
                 tokenizer,
                 max_target_length,
-                return_string=True
+                return_string=True,
+                add_generation_prompt=True
             )
-            prompt = prompt + "\n<|assistant|>\n"
             prompts.append(prompt)
 
         # Tokenize the prompts
@@ -913,15 +918,11 @@ class MMLUEval():
         # Calculate final metrics
         metrics = {
             "average_acc": np.mean(all_cors),
-            "subcat_acc": {
-                subcat: np.mean(cors) if cors else 0.0 
-                for subcat, cors in subcat_cors.items()
-            },
-            "cat_acc": {
-                cat: np.mean(cors) if cors else 0.0
-                for cat, cors in cat_cors.items()
-            }
         }
+        for subcat in subcat_cors:
+            metrics[f"{subcat}_acc"] = np.mean(subcat_cors[subcat])
+        for cat in cat_cors:
+            metrics[f"{cat}_acc"] = np.mean(cat_cors[cat])
         
         return metrics
         
@@ -950,7 +951,7 @@ class MMLUEval():
             
             # Format prompts with few-shot examples
             for i in range(len(test_df)):
-                k = 5  # Number of few-shot examples
+                k = 0  # Number of few-shot examples
                 prompt_end = format_example(test_df, i, include_answer=False)
                 train_prompt = gen_prompt(dev_df, subject, k)
                 prompt = train_prompt + prompt_end
@@ -960,7 +961,8 @@ class MMLUEval():
                     {"messages": messages},
                     tokenizer,
                     max_target_length,
-                    return_string=True
+                    return_string=True,
+                    add_generation_prompt=True
                 )
                 formatted_prompt += "\nAnswer:"
                 prompts.append(formatted_prompt)
@@ -980,9 +982,16 @@ class MMLUEval():
         # Create labels (-100 for input tokens, 1 for generation space)
         labels = []
         for sample in eval_dataset["input_ids"]:
-            labels.append(
-                [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
-            )
+            first_pad_idx = sample.index(tokenizer.pad_token_id)
+            second_pad_idx = first_pad_idx + 1
+            # if too long, just continue, we will filter out.
+            if second_pad_idx >= len(sample):
+                labels.append([-100 for _ in sample])
+                continue
+            label = [-100 for _ in sample]
+            # MMLU difference: only leave space for answer + eos token
+            label[first_pad_idx] = 1
+            label[second_pad_idx] = 1
         eval_dataset = eval_dataset.add_column("labels", labels)
         
         # Filter samples without generation space
