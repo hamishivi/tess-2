@@ -982,7 +982,10 @@ class MMLUEval():
         # Create labels (-100 for input tokens, 1 for generation space)
         labels = []
         for sample in eval_dataset["input_ids"]:
-            first_pad_idx = sample.index(tokenizer.pad_token_id)
+            first_pad_idx = sample.index(tokenizer.pad_token_id, -1)
+            if first_pad_idx == -1:
+                labels.append([-100 for _ in sample])
+                continue
             second_pad_idx = first_pad_idx + 1
             # if too long, just continue, we will filter out.
             if second_pad_idx >= len(sample):
