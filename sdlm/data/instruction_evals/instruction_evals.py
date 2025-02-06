@@ -964,7 +964,6 @@ class MMLUEval():
                     return_string=True,
                     add_generation_prompt=True
                 )
-                formatted_prompt += "\nAnswer:"
                 prompts.append(formatted_prompt)
                 
         # Tokenize all prompts
@@ -982,10 +981,10 @@ class MMLUEval():
         # Create labels (-100 for input tokens, 1 for generation space)
         labels = []
         for sample in eval_dataset["input_ids"]:
-            first_pad_idx = sample.index(tokenizer.pad_token_id, -1)
-            if first_pad_idx == -1:
+            if tokenizer.pad_token_id not in sample:
                 labels.append([-100 for _ in sample])
                 continue
+            first_pad_idx = sample.index(tokenizer.pad_token_id)
             second_pad_idx = first_pad_idx + 1
             # if too long, just continue, we will filter out.
             if second_pad_idx >= len(sample):
