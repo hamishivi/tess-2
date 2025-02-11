@@ -282,7 +282,7 @@ class CodexHumanEval():
         # only pass through problems we actually evaluate on.
         metrics = evaluate_functional_correctness(
             sample_file=prediction_save_path,
-            k=[1, 10],
+            k=[1, 10, 20],
             problems={example["task_id"]: example for example in original_data if example["task_id"] in generated_solutions},
             n_workers=64
         )
@@ -402,7 +402,7 @@ class BBHEval():
         # construct prompts
         subset_to_prompt = {}
         for subset in subsets:
-            prompt_filename = f"sdlm/data/instruction_evals/bbh-cot-prompts/{subset}.txt"
+            prompt_filename = f"/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/bbh-cot-prompts/{subset}.txt"
             with open(prompt_filename, "r") as f:
                 task_prompt = "".join(f.readlines()[2:])
             subset_to_prompt[subset] = task_prompt
@@ -896,7 +896,7 @@ class MMLUEval():
             
             # Load test data for this subject
             test_df = pd.read_csv(
-                os.path.join("sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
+                os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
                 header=None
             )
             
@@ -930,7 +930,7 @@ class MMLUEval():
         # Get list of subjects
         subjects = sorted([
             f.split("_test.csv")[0]
-            for f in os.listdir(os.path.join("sdlm/data/instruction_evals/mmlu_data/data/test"))
+            for f in os.listdir(os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/test"))
             if "_test.csv" in f
         ])
         
@@ -941,11 +941,11 @@ class MMLUEval():
         for subject in subjects:
             # Load dev and test data
             dev_df = pd.read_csv(
-                os.path.join("sdlm/data/instruction_evals/mmlu_data/data/dev", f"{subject}_dev.csv"),
+                os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/dev", f"{subject}_dev.csv"),
                 header=None
             )
             test_df = pd.read_csv(
-                os.path.join("sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
+                os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
                 header=None
             )
             
@@ -994,6 +994,7 @@ class MMLUEval():
             # MMLU difference: only leave space for answer + eos token
             label[first_pad_idx] = 1
             label[second_pad_idx] = 1
+            labels.append(label)
         eval_dataset = eval_dataset.add_column("labels", labels)
         
         # Filter samples without generation space
