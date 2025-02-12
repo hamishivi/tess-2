@@ -66,7 +66,9 @@ def eval_humaneval(pipeline):
         
         inputs = {"input_ids": torch.tensor([x0]), "span_mask": torch.tensor([src_mask])}
         
-        res = pipeline(batch=inputs,)
+        out = pipeline(batch=inputs,)
+        for x in out:
+            res = x.argmax(dim=-1)
         pred = tokenizer.decode(res.tolist()[0][len(prefix)-1:len(x0)-len(suff)-1])
     
         samples.append(dict(task_id=task_id, completion=pred))
