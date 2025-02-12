@@ -26,7 +26,7 @@ def setup_pipeline(model, tokenizer, diffusion_args):
         model=model.to(device),
         scheduler=TokenWiseSimplexDDPMScheduler(
             num_train_timesteps=diffusion_args.num_train_timesteps
-            if hasattr(diffusion_args, "num_train_timesteps") else 10,
+            if hasattr(diffusion_args, "num_train_timesteps") else 100,
             beta_schedule=getattr(diffusion_args, "beta_schedule", "squaredcos_improved_ddpm"),
             simplex_value=getattr(diffusion_args, "simplex_value", 5.0),
             clip_sample=getattr(diffusion_args, "clip_sample", False),
@@ -68,7 +68,7 @@ def eval_humaneval(pipeline):
         
         out = pipeline(batch=inputs,)
         for x in out:
-            res = x.argmax(dim=-1)
+            res = x.logits.argmax(dim=-1)
         pred = tokenizer.decode(res.tolist()[0][len(prefix)-1:len(x0)-len(suff)-1])
     
         samples.append(dict(task_id=task_id, completion=pred))
