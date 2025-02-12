@@ -64,7 +64,7 @@ def eval_humaneval(pipeline):
             print(task_id)
             continue
         
-        inputs = {"input_ids": torch.tensor([x0]), "span_mask": torch.tensor([src_mask])}
+        inputs = {"input_ids": torch.tensor([x0]).cuda(), "span_mask": torch.tensor([src_mask]).cuda()}
         
         out = pipeline(batch=inputs,)
         for x in out:
