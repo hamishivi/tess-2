@@ -722,7 +722,7 @@ class IFEval():
         loose_metrics = calculate_scores(loose_outputs)
         for k, v in loose_metrics.items():
             metrics[f"loose_{k}"] = v
-
+        print(metrics)
         return metrics
 
     def construct_eval_dataset(tokenizer, max_target_length, max_eval_samples=None):
