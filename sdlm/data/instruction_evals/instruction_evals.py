@@ -658,6 +658,9 @@ def calculate_scores(outputs):
 
 class IFEval():
     def compute_metrics(results, skip_special_tokens=True):
+        import nltk
+        nltk.download('punkt')
+        nltk.download('punkt_tab')
         """Computes metrics for instruction following evaluation.
         
         Args:
