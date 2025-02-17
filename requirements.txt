@@ -2,5 +2,7 @@ flash-attn==2.6.3
 alpaca_eval==0.6.2
 trl==0.9.4
 gradio
-huggingface-hub==0.27.1
-diffusers==0.30.0
+huggingface-hub==0.28.1
+diffusers==0.32.2
+langdetect==1.0.9
+immutabledict==4.2.1

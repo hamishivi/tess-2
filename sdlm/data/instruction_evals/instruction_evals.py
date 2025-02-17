@@ -5,11 +5,13 @@ without the train flag.
 '''
 import logging
 import re
-import json
 import string
+import os
+import numpy as np
+import pandas as pd
 
 import alpaca_eval
-import evaluate
+import collections
 from datasets import load_dataset, Dataset
 
 from sdlm.inference.inference_utils import process_text
@@ -18,6 +20,8 @@ from sdlm.data.instruction_evals.gsm_exemplars import EXEMPLARS as GSM_EXEMPLARS
 from sdlm.data.instruction_evals.codex_evaluation import evaluate_functional_correctness, write_jsonl
 from sdlm.data.instruction_evals.squad_eval_1 import evaluate as squad_evaluate
 from sdlm.data.instruction_evals.hf_exact_match import exact_match_hf_evaluate as exact_match
+from sdlm.data.instruction_evals.ifeval import test_instruction_following_strict, test_instruction_following_loose, load_ifeval_prompts
+from sdlm.data.instruction_evals.mmlu_utils import categories as mmlu_categories, subcategories as mmlu_subcategories
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +282,7 @@ class CodexHumanEval():
         # only pass through problems we actually evaluate on.
         metrics = evaluate_functional_correctness(
             sample_file=prediction_save_path,
-            k=[1, 10],
+            k=[1, 10, 20],
             problems={example["task_id"]: example for example in original_data if example["task_id"] in generated_solutions},
             n_workers=64
         )
@@ -398,7 +402,7 @@ class BBHEval():
         # construct prompts
         subset_to_prompt = {}
         for subset in subsets:
-            prompt_filename = f"sdlm/data/instruction_evals/bbh-cot-prompts/{subset}.txt"
+            prompt_filename = f"/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/bbh-cot-prompts/{subset}.txt"
             with open(prompt_filename, "r") as f:
                 task_prompt = "".join(f.readlines()[2:])
             subset_to_prompt[subset] = task_prompt
@@ -617,6 +621,391 @@ class TriviaQAEval():
             lambda x: any([y != -100 for y in x["labels"]])
         )
         return eval_dataset
+    
+
+def calculate_scores(outputs):
+    """Helper function to calculate accuracy scores from outputs.
+    
+    Args:
+        outputs (list): List of OutputExample objects
+        
+    Returns:
+        dict: Dictionary containing accuracy metrics
+    """
+    prompt_total = len(outputs)
+    prompt_correct = sum(1 for o in outputs if o.follow_all_instructions)
+    
+    instruction_total = sum(len(o.instruction_id_list) for o in outputs)
+    instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
+
+    # Calculate per-instruction accuracies
+    instruction_metrics = collections.defaultdict(lambda: {"total": 0, "correct": 0})
+    
+    for output in outputs:
+        for inst_id, followed in zip(output.instruction_id_list, output.follow_instruction_list):
+            instruction_metrics[inst_id]["total"] += 1
+            if followed:
+                instruction_metrics[inst_id]["correct"] += 1
+
+    return {
+        "prompt_level_accuracy": prompt_correct / prompt_total,
+        "instruction_level_accuracy": instruction_correct / instruction_total,
+        "per_instruction_accuracy": {
+            k: v["correct"] / v["total"] 
+            for k, v in instruction_metrics.items()
+        }
+    }
+
+class IFEval():
+    def compute_metrics(results, skip_special_tokens=True):
+        import nltk
+        nltk.download('punkt')
+        nltk.download('punkt_tab')
+        """Computes metrics for instruction following evaluation.
+        
+        Args:
+            results (dict): Contains prediction results including prefixes and predictions
+            skip_special_tokens (bool): Whether to skip special tokens in processing
+        
+        Returns:
+            dict: Dictionary containing computed metrics
+        """
+        # Create mapping from prompts to predictions
+        prompts = [
+            x.replace("<|user|>\n", "").replace("<|assistant|>\n", "").strip() 
+            for x in results["prefixes"]
+        ]
+        
+        predictions = (
+            process_text(results["pred_texts_from_logits_masked"])
+            if not skip_special_tokens
+            else results["pred_texts_from_logits_masked"]
+        )
+        
+        # Create prompt -> prediction mapping
+        prompt_to_response = {
+            prompt: pred.strip() for prompt, pred in zip(prompts, predictions)
+        }
+
+        # Read input data
+        input_data = load_ifeval_prompts()
+        
+        metrics = {}
+        strict_outputs = []
+        loose_outputs = []
+
+        # Process each input example
+        for inp in input_data:
+            # Skip if prompt not found in predictions
+            if inp.prompt not in prompt_to_response:
+                continue
+                
+            # Test instruction following in strict mode
+            strict_result = test_instruction_following_strict(
+                inp,
+                prompt_to_response
+            )
+            strict_outputs.append(strict_result)
+
+            # Test instruction following in loose mode 
+            loose_result = test_instruction_following_loose(
+                inp,
+                prompt_to_response
+            )
+            loose_outputs.append(loose_result)
+
+        # Calculate metrics for both strict and loose evaluation
+        metrics = {}
+        strict_metrics = calculate_scores(strict_outputs)
+        for k, v in strict_metrics.items():
+            metrics[f"strict_{k}"] = v
+        loose_metrics = calculate_scores(loose_outputs)
+        for k, v in loose_metrics.items():
+            metrics[f"loose_{k}"] = v
+        print(metrics)
+        return metrics
+
+    def construct_eval_dataset(tokenizer, max_target_length, max_eval_samples=None):
+        """Constructs evaluation dataset for instruction following.
+        
+        Args:
+            tokenizer: The tokenizer to use
+            max_target_length (int): Maximum sequence length
+            max_eval_samples (int): Maximum number of samples to evaluate
+        
+        Returns:
+            Dataset: The constructed evaluation dataset
+        """
+        # Read the input examples
+        eval_dataset = load_ifeval_prompts()
+
+        if max_eval_samples:
+            eval_dataset = eval_dataset[:max_eval_samples]
+
+        # Format prompts
+        prompts = []
+        for sample in eval_dataset:
+            messages = [{"role": "user", "content": sample.prompt}]
+            prompt = encode_with_messages_format_v1(
+                {"messages": messages}, 
+                tokenizer,
+                max_target_length,
+                return_string=True,
+                add_generation_prompt=True
+            )
+            prompts.append(prompt)
+
+        # Tokenize the prompts
+        data = tokenizer(
+            prompts,
+            return_tensors="pt", 
+            padding=True,
+            truncation=True,
+            max_length=max_target_length,
+            add_special_tokens=False,
+        )
+        
+        # Convert to Dataset format
+        eval_dataset = Dataset.from_dict(data)
+        
+        # Create labels (-100 for input tokens, 1 for generation space)
+        labels = []
+        for sample in eval_dataset["input_ids"]:
+            labels.append(
+                [-100 if x != tokenizer.pad_token_id else 1 for x in sample]
+            )
+        eval_dataset = eval_dataset.add_column("labels", labels)
+
+        # Filter samples that don't have space for generation
+        eval_dataset = eval_dataset.filter(
+            lambda x: any([y != -100 for y in x["labels"]])
+        )
+
+        return eval_dataset
+
+def calculate_scores(outputs):
+    """Helper function to calculate accuracy scores from outputs.
+    
+    Args:
+        outputs (list): List of OutputExample objects
+        
+    Returns:
+        dict: Dictionary containing accuracy metrics
+    """
+    if not outputs:
+        return {
+            "prompt_level_accuracy": 0.0,
+            "instruction_level_accuracy": 0.0,
+            "per_instruction_accuracy": {}
+        }
+        
+    prompt_total = len(outputs)
+    prompt_correct = sum(1 for o in outputs if o.follow_all_instructions)
+    
+    instruction_total = sum(len(o.instruction_id_list) for o in outputs)
+    instruction_correct = sum(sum(o.follow_instruction_list) for o in outputs)
+
+    # Calculate per-instruction accuracies
+    instruction_metrics = collections.defaultdict(lambda: {"total": 0, "correct": 0})
+    
+    for output in outputs:
+        for inst_id, followed in zip(output.instruction_id_list, output.follow_instruction_list):
+            instruction_metrics[inst_id]["total"] += 1
+            if followed:
+                instruction_metrics[inst_id]["correct"] += 1
+
+    return {
+        "prompt_level_accuracy": prompt_correct / prompt_total,
+        "instruction_level_accuracy": instruction_correct / instruction_total,
+        "per_instruction_accuracy": {
+            k: v["correct"] / v["total"] 
+            for k, v in instruction_metrics.items()
+        }
+    }
+
+
+choices = ["A", "B", "C", "D"]
+
+
+def format_subject(subject):
+    l = subject.split("_")
+    s = ""
+    for entry in l:
+        s += " " + entry
+    return s
+
+
+def format_example(df, idx, include_answer=True):
+    prompt = df.iloc[idx, 0]
+    k = df.shape[1] - 2
+    for j in range(k):
+        prompt += "\n{}. {}".format(choices[j], df.iloc[idx, j + 1])
+    prompt += "\nAnswer:"
+    if include_answer:
+        prompt += " {}\n\n".format(df.iloc[idx, k + 1])
+    return prompt
+
+
+def gen_prompt(train_df, subject, k=-1):
+    prompt = "The following are multiple choice questions (with answers) about {}.\n\n".format(
+        format_subject(subject)
+    )
+    if k == -1:
+        k = train_df.shape[0]
+    for i in range(k):
+        prompt += format_example(train_df, i)
+    return prompt
+
+class MMLUEval():
+    def compute_metrics(results, skip_special_tokens=True):
+        # Extract prefixes and predictions
+        eval_data = [
+            x.replace("<|user|>\n", "").replace("<|assistant|>\nAnswer:", "").strip() 
+            for x in results["prefixes"]
+        ]
+        
+        # Get predictions
+        decoded_preds = (
+            process_text(results["pred_texts_from_logits_masked"])
+            if not skip_special_tokens
+            else results["pred_texts_from_logits_masked"]
+        )
+        
+        # Process each prediction to extract the answer choice
+        predictions = []
+        choices = ["A", "B", "C", "D"]
+        for pred in decoded_preds:
+            pred = pred.strip()
+            # Take first character if it's a valid choice
+            if pred and pred[0] in choices:
+                predictions.append(pred[0])
+            else:
+                # Default to first choice if invalid
+                predictions.append(choices[0])
+                
+        # Calculate metrics for each category and subcategory
+        all_cors = []
+        subcat_cors = {
+            subcat: [] for subcat_lists in mmlu_subcategories.values() for subcat in subcat_lists
+        }
+        cat_cors = {cat: [] for cat in mmlu_categories}
+        
+        # Match questions to answers from the dataset
+        for i, prompt in enumerate(eval_data):
+            # Extract subject from prompt format
+            subject = prompt.split("The following are multiple choice questions (with answers) about")[1].split(".")[0].strip()
+
+            subject = subject.replace(" ", "_")
+            
+            # Load test data for this subject
+            test_df = pd.read_csv(
+                os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
+                header=None
+            )
+            
+            # Get ground truth
+            ground_truth = test_df.iloc[i % len(test_df), -1]
+            correct = predictions[i] == ground_truth
+            
+            # Update metrics
+            all_cors.append(correct)
+            
+            # Update category metrics
+            subcats = mmlu_subcategories[subject]
+            for subcat in subcats:
+                subcat_cors[subcat].append(correct)
+                for key in mmlu_categories.keys():
+                    if subcat in mmlu_categories[key]:
+                        cat_cors[key].append(correct)
+                        
+        # Calculate final metrics
+        metrics = {
+            "average_acc": np.mean(all_cors),
+        }
+        for subcat in subcat_cors:
+            metrics[f"{subcat}_acc"] = np.mean(subcat_cors[subcat])
+        for cat in cat_cors:
+            metrics[f"{cat}_acc"] = np.mean(cat_cors[cat])
+        
+        return metrics
+        
+    def construct_eval_dataset(tokenizer, max_target_length, max_eval_samples=None):
+        # Get list of subjects
+        subjects = sorted([
+            f.split("_test.csv")[0]
+            for f in os.listdir(os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/test"))
+            if "_test.csv" in f
+        ])
+        
+        if max_eval_samples:
+            subjects = subjects[:max_eval_samples]
+            
+        prompts = []
+        for subject in subjects:
+            # Load dev and test data
+            dev_df = pd.read_csv(
+                os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/dev", f"{subject}_dev.csv"),
+                header=None
+            )
+            test_df = pd.read_csv(
+                os.path.join("/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/mmlu_data/data/test", f"{subject}_test.csv"),
+                header=None
+            )
+            
+            # Format prompts with few-shot examples
+            for i in range(len(test_df)):
+                k = 0  # Number of few-shot examples
+                prompt_end = format_example(test_df, i, include_answer=False)
+                train_prompt = gen_prompt(dev_df, subject, k)
+                prompt = train_prompt + prompt_end
+                
+                messages = [{"role": "user", "content": prompt}]
+                formatted_prompt = encode_with_messages_format_v1(
+                    {"messages": messages},
+                    tokenizer,
+                    max_target_length,
+                    return_string=True,
+                    add_generation_prompt=True
+                )
+                prompts.append(formatted_prompt)
+                
+        # Tokenize all prompts
+        data = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_target_length,
+            add_special_tokens=False,
+        )
+        
+        eval_dataset = Dataset.from_dict(data)
+        
+        # Create labels (-100 for input tokens, 1 for generation space)
+        labels = []
+        for sample in eval_dataset["input_ids"]:
+            if tokenizer.pad_token_id not in sample:
+                labels.append([-100 for _ in sample])
+                continue
+            first_pad_idx = sample.index(tokenizer.pad_token_id)
+            second_pad_idx = first_pad_idx + 1
+            # if too long, just continue, we will filter out.
+            if second_pad_idx >= len(sample):
+                labels.append([-100 for _ in sample])
+                continue
+            label = [-100 for _ in sample]
+            # MMLU difference: only leave space for answer + eos token
+            label[first_pad_idx] = 1
+            label[second_pad_idx] = 1
+            labels.append(label)
+        eval_dataset = eval_dataset.add_column("labels", labels)
+        
+        # Filter samples without generation space
+        eval_dataset = eval_dataset.filter(
+            lambda x: any([y != -100 for y in x["labels"]])
+        )
+        
+        return eval_dataset
 
 
 EVAL_MAPPING = {
@@ -625,5 +1014,7 @@ EVAL_MAPPING = {
     "human_eval": CodexHumanEval,
     "bbh": BBHEval,
     "squad": SquadEval,
-    "triviaqa": TriviaQAEval
+    "triviaqa": TriviaQAEval,
+    "ifeval": IFEval,
+    "mmlu": MMLUEval
 }
