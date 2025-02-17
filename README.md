@@ -67,7 +67,7 @@ Finally, to evaluate the model run:
 shell_scripts/run_tulu_eval.sh <run name> <model path> <eval name>
 ```
 
-Valid evaluation names are: `alpaca_eval`, `gsm8k`, `human_eval`, `bbh`, `squad`. Note that Squad, GSM8k, and AlpacaEval are the most tested, and other evaluations may have issues.
+Valid evaluation names are: `alpaca_eval`, `gsm8k`, `human_eval`, `bbh`, `squad`, `triviaqa`, `ifeval`, `mmlu`. Note that Squad, TriviaQA, IFEval, GSM8k, AlpacaEval, BBH are the most tested.
 
 ## Guidance
 
@@ -76,7 +76,7 @@ To run inference with reward guidance, use:
 shell_scripts/run_guidance.sh <model path> <reward model path> <guidance scale> <eval name>
 ```
 
-As before, valid evaluation names are `alpaca_eval`, `gsm8k`, `human_eval`, `bbh`, `squad`.
+This should work with any evaluation stated above, although we primarily tested with AlpacaEval.
 For example, to run with the released TESS-2 model and associated reward model, use:
 ```sh
 export OPENAI_API_KEY=<your openai key>
