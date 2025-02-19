@@ -122,7 +122,7 @@ As you can see, the UI shows the highest confidence tokens at intermediate diffu
 
 ## Other Scripts
 
-We also have scripts for computing perplexity, confidence over steps, and AR training in the `shell_scripts` folder.
+We also have scripts for computing perplexity, confidence over steps, and AR training in the [`shell_scripts`](./shell_scripts/) folder.
 These largely use similar commands and setups to the scripts above, but please feel free to leave an issue or email Hamish Ivison (hamishiv at cs.washington.edu) if you need further assistance.
 
 ## Acknowledgements
@@ -130,4 +130,3 @@ These largely use similar commands and setups to the scripts above, but please f
 This codebase is based off and is very indebted to [the original TESS codebase](https://github.com/allenai/tess-diffusion).
 
 ## License
-
