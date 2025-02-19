@@ -402,7 +402,7 @@ class BBHEval():
         # construct prompts
         subset_to_prompt = {}
         for subset in subsets:
-            prompt_filename = f"/weka/oe-adapt-default/hamishi/simplex-diffusion/sdlm/data/instruction_evals/bbh-cot-prompts/{subset}.txt"
+            prompt_filename = f"sdlm/data/instruction_evals/bbh-cot-prompts/{subset}.txt"
             with open(prompt_filename, "r") as f:
                 task_prompt = "".join(f.readlines()[2:])
             subset_to_prompt[subset] = task_prompt
