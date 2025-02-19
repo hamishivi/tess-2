@@ -28,10 +28,17 @@ If you find this work useful, please cite this work as follows.
 conda env create -n simplex -f environment.yml
 ```
 
-2. Install additional modules specified in [`requirements.txt`](./requirements.txt).
+2. In the conda environment, install additional modules specified in [`requirements.txt`](./requirements.txt).
 
 ```sh
 pip install -r requirements.txt
+```
+
+3. (Optional) To install pre-commit, in the conda environment, run
+
+```
+pip install pre-commit
+pre-commit install
 ```
 
 ## Diffusion Adaptation Training
