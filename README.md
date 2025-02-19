@@ -6,7 +6,7 @@
 This is the codebase for the paper [TESS 2](https://arxiv.todo). TESS 2 is a state-of-the-art diffusion language model created by adapting existing pretrained autoregressive models to a diffusion paradigm.
 For more details, please check out [our paper](ttps://arxiv.todo)!
 
-![Main results from TESS-2 paper](figures/core_results.png)
+![Main results from TESS-2 paper](assets/core_results.png)
 
 We note this codebase is based off and is very indebted to [the original TESS codebase](https://github.com/allenai/tess-diffusion).
 
@@ -104,7 +104,7 @@ We also provide a gradio demo for interacting with the model, which you can run 
 
 This gives a gradio UI that you can use to interact with the model as shown below:
 
-![Gif showing the simplex ui in action](figures/ui.gif)
+![Gif showing the simplex ui in action](assets/ui.gif)
 
 As you can see, the UI shows the highest confidence tokens at intermediate diffusion steps as the model generates them, providing a rough idea of the diffusion process.
 
