@@ -130,3 +130,5 @@ These largely use similar commands and setups to the scripts above, but please f
 This codebase is based off and is very indebted to [the original TESS codebase](https://github.com/allenai/tess-diffusion).
 
 ## License
+
+Released under the [MIT License](./LICENSE).
