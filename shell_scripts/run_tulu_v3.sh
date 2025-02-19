@@ -1,6 +1,8 @@
 # tulu command.
 # WARNING: eval uses alpaca eval. this costs $$.
 
+model_path=$1
+
 CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_tulu \
@@ -64,7 +66,7 @@ if [ ! -z "${BEAKER}" ]; then
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --model_name_or_path mistralai/Mistral-7B-v0.3 \
+        --model_name_or_path ${model_path} \
         --max_eval_samples 1000 \
         --gradient_accumulation_steps 16 \
         --num_inference_diffusion_steps 100 \
@@ -73,7 +75,7 @@ if [ ! -z "${BEAKER}" ]; then
         --output_dir /weka/oe-adapt-default/hamishi/simplex-diffusion/mistral_v3_diffulm_gsm8k_symb
 else
     ${CMD} \
-        --model_name_or_path mistralai/Mistral-7B-v0.3 \
+        --model_name_or_path ${model_path} \
         --max_eval_samples 1000 \
         --gradient_accumulation_steps 16 \
         --num_inference_diffusion_steps 100 \

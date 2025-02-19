@@ -42,7 +42,7 @@ Alternatively, you can use a subset of Dolma 1.7 such as those hosted [here](htt
 ```
 
 This shouldn't yield big changes in performance since we only use roughly 45B tokens for diffusion adaptation training (and the linked dataset contains 305B tokens).
-Note we assume access to a node with 8 80GB GPUs (A100 or H100) for this script.
+**Note we assume you are running on a a node with 8 80GB GPUs (A100 or H100) for this script.**
 
 ## Instruction Tuning
 
@@ -50,18 +50,16 @@ Given this, we can then instruction tune with the following:
 ```sh
 export OPENAI_API_KEY=<your openai key>
 export IS_ALPACA_EVAL_2=False
-shell_scripts/run_tulu.sh
+shell_scripts/run_tulu.sh <model_path>
 ```
 
-Edit the `model_name_or_path` argument to load specific pretrained models:
-```diff
-- --model_name_or_path tulu_mistral_diffusion_200k \
-+ --model_name_or_path <your model path here> \
-```
+Edit `model_path` argument to load specific pretrained models, e.g., the model you just adapted in the previous step.
 
 The API key is used to run AlpacaEval throughout training. Remove the `--do_eval` flag to avoid running this.
 
 You can change the training set with the `--dataset_name` flag. For example, to train on the symbolic GSM8k data used for training our GSM8k-specific model, use `--dataset_name hamishivi/gsm8k-symbolic`.
+
+**Note we assume you are running on a a node with 8 80GB GPUs (A100 or H100) for this script.**
 
 ## Evaluation
 
@@ -71,6 +69,8 @@ shell_scripts/run_tulu_eval.sh <run name> <model path> <eval name>
 ```
 
 Valid evaluation names are: `alpaca_eval`, `gsm8k`, `human_eval`, `bbh`, `squad`, `triviaqa`, `ifeval`, `mmlu`. Note that Squad, TriviaQA, IFEval, GSM8k, AlpacaEval, BBH are the most tested.
+
+This script works with arbitrary numbers of GPUs. Feel free to also try out different numbers of diffusion steps!
 
 ## Guidance
 
@@ -89,7 +89,7 @@ shell_scripts/run_guidance.sh hamishivi/tess2 hamishivi/tess_mistral_rm 0.5 alpa
 
 ## Beaker (For people at Ai2)
 
-For all the above scripts, you can run them with gantry by setting `BEAKER` and `WEKA` before running, e.g.:
+For most of the above scripts, you can run them with gantry by setting `BEAKER` and `WEKA` before running, e.g.:
 ```sh
 BEAKER=1 WEKA=1 shell_scripts/run_pretrain.sh
 ```

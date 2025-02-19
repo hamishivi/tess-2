@@ -1,6 +1,8 @@
 # tulu command.
 # WARNING: eval uses alpaca eval. this costs $$.
 
+model_path=$1
+
 CMD="
 accelerate launch
     --mixed_precision bf16 -m sdlm.run_tulu \
@@ -65,18 +67,18 @@ if [ ! -z "${BEAKER}" ]; then
         --venv 'base' \
         --pip requirements.txt \
         -- ${CMD} \
-        --model_name_or_path /model \
+        --model_name_or_path ${model_path} \
         --max_eval_samples 1000 \
-        --gradient_accumulation_steps 16 \
+        --gradient_accumulation_steps 8 \
         --num_inference_diffusion_steps 100 \
         --overwrite_output_dir false \
         --beaker \
         --output_dir /results
 else
     ${CMD} \
-        --model_name_or_path tulu_mistral_diffusion_200k \
+        --model_name_or_path ${model_path} \
         --max_eval_samples 1000 \
-        --gradient_accumulation_steps 16 \
+        --gradient_accumulation_steps 8 \
         --num_inference_diffusion_steps 100 \
         --output_dir instruction_tuned_model \
         --overwrite_output_dir false

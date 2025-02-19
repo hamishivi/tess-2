@@ -66,8 +66,8 @@ else
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --eval_steps 10 \
         --save_steps 10 \
-        --max_eval_samples 16 \
-        --gradient_accumulation_steps 1 \
+        --max_eval_samples 1000 \
+        --gradient_accumulation_steps 8 \
         --num_inference_diffusion_steps 10 \
         --output_dir outputs/test
 fi

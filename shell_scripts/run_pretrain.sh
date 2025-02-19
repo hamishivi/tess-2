@@ -72,9 +72,9 @@ else
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
         --eval_steps 2000 \
         --save_steps 2000 \
-        --max_eval_samples 16 \
-        --gradient_accumulation_steps 1 \
+        --max_eval_samples 200 \
+        --gradient_accumulation_steps 16 \
         --num_inference_diffusion_steps 100 \
         --output_dir pretrained_tess_model \
-        --overwrite_output_dir true
+        --overwrite_output_dir false
 fi

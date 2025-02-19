@@ -45,9 +45,8 @@ if [ ! -z "${BEAKER}" ]; then
 else
     ${CMD} \
         --model_name_or_path mistralai/Mistral-7B-v0.1 \
-        --eval_steps 1 \
-        --eval_steps 5 \
-        --save_steps 5 \
-        --gradient_accumulation_steps 1 \
+        --eval_steps 200 \
+        --save_steps 400 \
+        --gradient_accumulation_steps 128 \
         --output_dir outputs/test
 fi
