@@ -8,6 +8,18 @@ For more details, please check out [our paper](https://arxiv.todo) and model che
 
 ![Main results from TESS-2 paper](assets/core_results.png)
 
+## Citation
+
+If you find this work useful, please cite this work as follows.
+
+```bibtex
+@misc{taeivison2025tess2,
+  title={TESS 2: A Large-Scale Generalist Diffusion Language Model},
+  author={Jaesung Tae and Hamish Ivison and Sachin Kumar and Arman Cohan},
+  year={2025}
+ }
+```
+
 ## Setup
 
 1. Build a conda virtual environment from [`environment.yml`](./environment.yml).
