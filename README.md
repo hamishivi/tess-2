@@ -3,15 +3,22 @@
 [![arXiv](https://img.shields.io/badge/arXiv-todo-b31b1b.svg)](https://arxiv.org/abs/tidi)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-blue)](https://huggingface.co/collections/hamishivi/tess-2-677ea36894e38f96dfc7b590)
 
-This is the codebase for the paper [TESS 2](https://arxiv.todo). TESS 2 is a state-of-the-art diffusion language model created by adapting existing pretrained autoregressive models to a diffusion paradigm.
-For more details, please check out [our paper](ttps://arxiv.todo) and model checkpoints on [Hugging Face](https://huggingface.co/collections/hamishivi/tess-2-677ea36894e38f96dfc7b590).
+Official implementation of [TESS 2](https://arxiv.todo). TESS 2 is a state-of-the-art diffusion language model created by adapting existing pretrained autoregressive models to a diffusion paradigm.
+For more details, please check out [our paper](https://arxiv.todo) and model checkpoints on [Hugging Face](https://huggingface.co/collections/hamishivi/tess-2-677ea36894e38f96dfc7b590).
 
 ![Main results from TESS-2 paper](assets/core_results.png)
 
-## Installation
+## Setup
+
+1. Build a conda virtual environment from [`environment.yml`](./environment.yml).
 
 ```sh
 conda env create -n simplex -f environment.yml
+```
+
+2. Install additional modules specified in [`requirements.txt`](./requirements.txt).
+
+```sh
 pip install -r requirements.txt
 ```
 
@@ -46,12 +53,10 @@ This shouldn't yield big changes in performance since we only use roughly 45B to
 
 ## Instruction Tuning
 
-After diffusion adaptation, we can then run instruction tuning with the following command:
+After diffusion adaptation, we can run instruction tuning with the following command:
 
 ```sh
-export OPENAI_API_KEY=<your openai key>
-export IS_ALPACA_EVAL_2=False
-shell_scripts/run_tulu.sh <model_path>
+OPENAI_API_KEY=<your openai key> IS_ALPACA_EVAL_2=False shell_scripts/run_tulu.sh <model_path>
 ```
 
 > [!NOTE]  
@@ -87,14 +92,15 @@ This should work with any evaluation stated above, although we primarily tested 
 For example, to run with the released TESS 2 model and associated reward model, use:
 
 ```sh
-export OPENAI_API_KEY=<your openai key>
-export IS_ALPACA_EVAL_2=False
-shell_scripts/run_guidance.sh hamishivi/tess2 hamishivi/tess_mistral_rm 0.5 alpaca_eval
+OPENAI_API_KEY=<your openai key> IS_ALPACA_EVAL_2=False shell_scripts/run_guidance.sh hamishivi/tess2 hamishivi/tess_mistral_rm 0.5 alpaca_eval
 ```
 
-## Beaker (For people at Ai2)
+## Beaker
 
-For most of the above scripts, you can run them with gantry by setting `BEAKER` and `WEKA` before running, e.g.:
+> [!NOTE]  
+> This section is primarily for people at Ai2.
+
+For most of the above scripts, you can run them with gantry by setting `BEAKER` and `WEKA` before running, e.g.,
 
 ```sh
 BEAKER=1 WEKA=1 shell_scripts/run_pretrain.sh
@@ -122,3 +128,6 @@ These largely use similar commands and setups to the scripts above, but please f
 ## Acknowledgements
 
 This codebase is based off and is very indebted to [the original TESS codebase](https://github.com/allenai/tess-diffusion).
+
+## License
+
