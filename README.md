@@ -72,14 +72,14 @@ This shouldn't yield big changes in performance since we only use roughly 45B to
 
 ## Instruction Tuning
 
+> [!NOTE]  
+> We assume you are running on a a node with 8 80GB GPUs (A100 or H100).
+
 After diffusion adaptation, we can run instruction tuning with the following command:
 
 ```sh
 OPENAI_API_KEY=<your openai key> IS_ALPACA_EVAL_2=False shell_scripts/run_tulu.sh <model_path>
 ```
-
-> [!NOTE]  
-> We assume you are running on a a node with 8 80GB GPUs (A100 or H100).
 
 Edit `model_path` argument to load specific pretrained models, e.g., the model you just adapted in the previous step.
 
