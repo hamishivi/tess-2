@@ -14,9 +14,13 @@ If you find this work useful, please cite this work as follows.
 
 ```bibtex
 @misc{taeivison2025tess2,
-  title={TESS 2: A Large-Scale Generalist Diffusion Language Model},
+  title={{TESS 2: A Large-Scale Generalist Diffusion Language Model}},
   author={Jaesung Tae and Hamish Ivison and Sachin Kumar and Arman Cohan},
-  year={2025}
+  year={2025},
+  eprint={2502.13917},
+  archivePrefix={arXiv},
+  primaryClass={cs.CL},
+  url={https://arxiv.org/abs/2502.13917},
  }
 ```
 
